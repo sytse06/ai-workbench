@@ -5,6 +5,7 @@
 !.gitignore
 !pyproject.toml
 !config.yaml
+!README.md
 !notetaking_conversion/
 !notetaking_conversion/__init__.py
 !notetaking_conversion/note_converter.py
