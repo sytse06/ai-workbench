@@ -1,0 +1,12 @@
+# Ignore everything
+*
+
+# Except for these files
+!.gitignore
+!pyproject.toml
+!config.yaml
+!notetaking_conversion/
+!notetaking_conversion/__init__.py
+!notetaking_conversion/note_converter.py
+!tests/
+!tests/test_note_converter.py

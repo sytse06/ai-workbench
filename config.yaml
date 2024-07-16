@@ -1,0 +1,4 @@
+directories:
+  input_directory: "input"
+  output_directory: "output"
+  test-directory: "tests"
