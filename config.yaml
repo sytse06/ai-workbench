@@ -1,4 +1,4 @@
 directories:
-  input_directory: "input"
-  output_directory: "output"
-  test-directory: "tests"
+  input_directory: "/Users/sytsevanderschaaf/documents/dev/projects/notes_recognition/input"
+  output_directory: "/Users/sytsevanderschaaf/documents/dev/projects/notes_recognition/output"
+  test-directory: "/Users/sytsevanderschaaf/documents/dev/projects/notes_recognition/tests"

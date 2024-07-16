@@ -5,9 +5,30 @@ import yaml
 from tqdm import tqdm
 
 def load_config():
-    with open('config.yaml', 'r') as file:
-        return yaml.safe_load(file)
-
+    # Construct path to config.yaml relative to the current script
+    config_path = os.path.join(os.path.dirname(__file__), '../config.yaml')
+    
+    # Load config from config.yaml
+    with open(config_path, 'r') as file:
+        config = yaml.safe_load(file)
+    
+    # Check if 'directories' section exists in config
+    if 'directories' not in config:
+        raise KeyError("Config file is missing 'directories' section")
+    
+    # Adjust directory paths based on the config
+    config['directories']['input_directory'] = os.path.join(os.path.dirname(__file__), config['directories']['input_directory'])
+    config['directories']['output_directory'] = os.path.join(os.path.dirname(__file__), config['directories']['output_directory'])
+    config['directories']['test_directory'] = os.path.join(os.path.dirname(__file__), config['directories']['test-directory'])
+    
+    # Validate directory paths
+    for directory_key in ['input_directory', 'output_directory', 'test_directory']:
+        directory_path = config['directories'][directory_key]
+        if not os.path.exists(directory_path):
+            raise FileNotFoundError(f"Directory not found: {directory_path}")
+    
+    return config
+    
 def encode_image_to_base64(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode('utf-8')
@@ -42,9 +63,10 @@ def process_image_with_llava(image_path):
         return f"Error: {response.status_code}, {response.text}"
 
 def batch_process_directory(config):
-    input_directory = config['directories']['input']
-    output_directory = config['directories']['output']
-
+    input_directory = config['directories']['input_directory']
+    output_directory = config['directories']['output_directory']
+    test_directory = config['directories']['test-directory']
+    
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
     
@@ -57,6 +79,8 @@ def batch_process_directory(config):
         output_file = os.path.join(output_directory, f"{os.path.splitext(image_file)[0]}.md")
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(llava_output)
+
+# Process files in input_directory
 
 if __name__ == "__main__":
     config = load_config()
