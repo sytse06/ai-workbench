@@ -4,10 +4,12 @@ This project converts handwritten notes to digital text using LLaVA and Ollama.
 
 ## Setup
 
-1. Ensure you have Poetry installed.
-2. Clone this repository.
-3. Navigate to the project directory.
-4. Project structure:
+- Ensure you have Poetry installed.
+- Clone this repository.
+- Navigate to the project directory.
+
+### Project structure:
+```
     notetaking-conversion/
     ├── pyproject.toml
     ├── config.yaml
@@ -18,13 +20,15 @@ This project converts handwritten notes to digital text using LLaVA and Ollama.
     │   └── test_note_converter.py
     ├── input/
     └── output/
-5. Run `poetry install` to set up the virtual environment and install dependencies.
-6. Ensure Ollama is installed and the LLaVA model is pulled (`ollama pull llava`).
+```
+
+- Run `poetry install` to set up the virtual environment and install dependencies.
+- Ensure Ollama is installed and the LLaVA model is pulled (`ollama pull llava`).
 
 ## Usage
 
-1. Activate the virtual environment: `poetry shell`
-2. Edit the `note_converter.py` file to set the correct input and output directories.
-3. Run the script: `python note_converter.py`
+- Activate the virtual environment: `poetry shell`
+- Copy/add the image files with the notes to the input directory.
+- Run the script: `python note_converter.py`
 
 The script will process all images in the input directory and save the results as markdown files in the output directory.
