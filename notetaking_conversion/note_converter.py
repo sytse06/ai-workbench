@@ -38,6 +38,9 @@ def process_image_with_llava(image_path, ollama_client):
     base64_image = encode_image_to_base64(image_path)
     input_file_name = os.path.basename(image_path)
     
+    # Initialize the Ollama client
+    ollama_client = ollama.OllamaClient()
+    
     prompt = f'''Analyze this image (original filename: {input_file_name}) and provide the following information in Markdown format:
     
 1. The printed text in the image (if any)
