@@ -3,6 +3,7 @@ import requests
 import base64
 import yaml
 from tqdm import tqdm
+import ollama
 
 def load_config():
     # Construct path to config.yaml relative to the current script
@@ -33,39 +34,47 @@ def encode_image_to_base64(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode('utf-8')
 
-def process_image_with_llava(image_path):
+def process_image_with_llava(image_path, ollama_client):
     base64_image = encode_image_to_base64(image_path)
     input_file_name = os.path.basename(image_path)
     
-    response = requests.post('http://localhost:11434/api/generate',
-        json={
-            'model': 'llava',
-            'prompt': f'''Analyze this image (original filename: {input_file_name}) and provide the following information in Markdown format:
-            1. The printed text in the image (if any)
-            2. The handwritten notes or annotations in the image (if any)
-            
-            Format your response as follows:
-            # Original File: {input_file_name}
-            
-            # Printed Text
-            [Printed text content here]
-            
-            # Handwritten Notes
-            [Handwritten notes content here]
-            
-            If either printed text or handwritten notes are not present, include the heading but leave the content blank.''',
-            'images': [base64_image]
-        })
+    prompt = f'''Analyze this image (original filename: {input_file_name}) and provide the following information in Markdown format:
     
-    if response.status_code == 200:
-        return response.json()['response']
-    else:
-        return f"Error: {response.status_code}, {response.text}"
+1. The printed text in the image (if any)
 
-def batch_process_directory(config):
+2. The handwritten notes or annotations in the image (if any)
+
+Format your response as follows:
+# Original File: {input_file_name}
+
+# Printed Text
+[Printed text content here]
+
+# Handwritten Notes
+[Handwritten notes content here]
+
+If either printed text or handwritten notes are not present, include the heading but leave the content blank.'''
+    
+    message = {
+        'role': 'user',
+        'content': prompt,
+        'images': [base64_image]
+    }
+    
+    response = ollama_client.chat(
+        model="llava:13b",  # Specify the desired LLaVA model size
+        messages=[message]
+    )
+    
+    if response['status'] == 'success':
+        return response['messages'][-1]['content']
+    else:
+        return f"Error: {response['status']} - {response.get('error_message', 'Unknown error')}"
+
+def batch_process_directory(config, ollama_client):
     input_directory = config['directories']['input_directory']
     output_directory = config['directories']['output_directory']
-    test_directory = config['directories']['test-directory']
+    test_directory = config['directories']['test_directory']
     
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
@@ -74,12 +83,12 @@ def batch_process_directory(config):
     
     for image_file in tqdm(image_files, desc="Processing images"):
         image_path = os.path.join(input_directory, image_file)
-        llava_output = process_image_with_llava(image_path)
+        llava_output = process_image_with_llava(image_path, ollama_client)
         
         output_file = os.path.join(output_directory, f"{os.path.splitext(image_file)[0]}.md")
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(llava_output)
-
+            
 # Process files in input_directory
 
 if __name__ == "__main__":
