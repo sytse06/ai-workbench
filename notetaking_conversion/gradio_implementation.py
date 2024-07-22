@@ -15,21 +15,20 @@ VL_CHAT_LIST = []
 # model_names = [model['model'] for model in model_list['models']]
 
 # List running Ollama models in interface
-import ollama
-
-def get_model_list():
+def get_running_models():
     try:
-        model_list = ollama.list()
-        return [model['name'] for model in model_list['models']]
-    except Exception as e:
-        print(f"Error getting model list: {str(e)}")
+        running_models = ollama.ps()
+        if 'models' in running_models:
+            return [(model['model'], model['model']) for model in running_models['models']]
+        else:
+            print("Unexpected structure of the response from ollama.ps().")
+            return []
+    except ollama.exceptions.OllamaError as e:  # Catch specific Ollama-related exceptions
+        print(f"Error getting running models: {str(e)}")
         return []
-
-model_names = get_model_list()
-
-def refresh_models():
-    new_models = get_model_list()
-    return gr.Dropdown(choices=new_models, value=new_models[0] if new_models else "")
+    except Exception as e:  # Catch any other potential errors
+        print(f"An unexpected error occurred: {str(e)}")
+        return []
 
 # Load settings from config.yaml file
 def load_config():
@@ -260,68 +259,88 @@ def get_vl_message(history_flag,chinese_flag):
         messages.insert(0,system_message)
     return messages
 
-with gr.Blocks(title="Ollama WebUI", fill_height=True) as demo:
-    with gr.Tab("Chat"):
+def main():
+    choices = get_running_models()
+    
+    with gr.Blocks(title="Ollama WebUI", fill_height=True) as demo:
         with gr.Row():
             with gr.Column(scale=1):
-                model_info = gr.Dropdown(choices=model_names, value=model_names[0] if model_names else "", label="Model Selection")
+                model_info = gr.Dropdown(
+                    choices = choices, 
+                    label="Select a running model"
+                    )
                 refresh_btn = gr.Button("Refresh Models")
-                history_flag = gr.Checkbox(label="Enable Context")
-            with gr.Column(scale=4):
-                chat_bot = gr.Chatbot(height=600, render=False)
-                text_box = gr.Textbox(scale=4, render=False)
-                gr.ChatInterface(
-                    fn=ollama_chat,
-                    chatbot=chat_bot,
-                    textbox=text_box,
-                    additional_inputs=[model_info, history_flag],
-                    submit_btn="Submit",
-                    retry_btn="🔄 Retry",
-                    undo_btn="↩️ Undo",
-                    clear_btn="🗑️ Clear",
-                    fill_height=True
-                )
-        refresh_btn.click(fn=refresh_models, outputs=model_info)    
-                
-    with gr.Tab("Agent"):
-        with gr.Row():
-            with gr.Column(scale=1):
-                prompt_model_info = gr.Dropdown(model_names, value="", allow_custom_value=True, label="Model Selection")
-                prompt_info = gr.Dropdown(choices=PROMPT_LIST, value=PROMPT_LIST[0] if PROMPT_LIST else None, label="Agent Selection", interactive=True)
-            with gr.Column(scale=4):
-                prompt_chat_bot = gr.Chatbot(height=600, render=False)
-                prompt_text_box = gr.Textbox(scale=4, render=False)
-                gr.ChatInterface(
-                    fn=ollama_prompt,
-                    chatbot=prompt_chat_bot,
-                    textbox=prompt_text_box,
-                    additional_inputs=[prompt_model_info, prompt_info],
-                    submit_btn="Submit",
-                    retry_btn="🔄 Retry",
-                    undo_btn="↩️ Undo",
-                    clear_btn="🗑️ Clear",
-                    fill_height=True
-                )
-    with gr.Tab("Vision Assistant"):
-        with gr.Row():
-            with gr.Column(scale=1):
-                history_flag = gr.Checkbox(label="Enable Context")
-                chinese_flag = gr.Checkbox(value=True, label="Force Chinese")
-                image = gr.Image(type="filepath")
-            with gr.Column(scale=4):
-                chat_bot = gr.Chatbot(height=600)
+                    
+        with gr.Tab():                
+            with gr.Tab("Chat"):
                 with gr.Row():
-                    retry_btn = gr.Button("🔄 Retry")
-                    undo_btn = gr.Button("↩️ Undo")
-                    clear_btn = gr.Button("🗑️ Clear")
-                with gr.Row():
-                    message = gr.Textbox(show_label=False, container=False, scale=5)
-                    submit_btn = gr.Button("Submit", variant="primary", scale=1)
-        image.upload(fn=vl_image_upload, inputs=[image, chat_bot], outputs=[image, chat_bot])
-        submit_btn.click(fn=vl_submit_message, inputs=[message, chat_bot], outputs=[message, chat_bot]).then(fn=vl_submit, inputs=[history_flag, chinese_flag, chat_bot], outputs=[chat_bot])
-        retry_btn.click(fn=vl_retry, inputs=[chat_bot], outputs=[chat_bot]).then(fn=vl_submit, inputs=[history_flag, chinese_flag, chat_bot], outputs=[chat_bot])
-        undo_btn.click(fn=vl_undo, inputs=[chat_bot], outputs=[message, chat_bot])
-        clear_btn.click(fn=vl_clear, inputs=[], outputs=[image, message, chat_bot])
-    demo.load(fn=init)
+                    with gr.Column(scale=1):        
+                        history_flag = gr.Checkbox(label="Enable Context")
+                    with gr.Column(scale=4):
+                        chat_bot = gr.Chatbot(height=600, render=False)
+                        text_box = gr.Textbox(scale=4, render=False)
+                        chat_interface = gr.ChatInterface(
+                            fn=ollama_chat,
+                            chatbot=chat_bot,
+                            textbox=text_box,
+                            additional_inputs=[model_info, history_flag],
+                            submit_btn="Submit",
+                            retry_btn="🔄 Retry",
+                            undo_btn="↩️ Undo",
+                            clear_btn="🗑️ Clear",
+                            fill_height=True
+                        )
+                                    
+        with gr.Tab("Agent"):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    prompt_model_info = gr.Dropdown(choices=choices, value="", allow_custom_value=True, label="Model Selection")
+                    prompt_info = gr.Dropdown(choices=PROMPT_LIST, value=PROMPT_LIST[0] if PROMPT_LIST else None, label="Agent Selection", interactive=True)
+                with gr.Column(scale=4):
+                    prompt_chat_bot = gr.Chatbot(height=600, render=False)
+                    prompt_text_box = gr.Textbox(scale=4, render=False)
+                    gr.ChatInterface(
+                        fn=ollama_prompt,
+                        chatbot=prompt_chat_bot,
+                        textbox=prompt_text_box,
+                        additional_inputs=[prompt_model_info, prompt_info],
+                        submit_btn="Submit",
+                        retry_btn="🔄 Retry",
+                        undo_btn="↩️ Undo",
+                        clear_btn="🗑️ Clear",
+                        fill_height=True
+                    )
+        with gr.Tab("Vision Assistant"):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    history_flag = gr.Checkbox(label="Enable Context")
+                    chinese_flag = gr.Checkbox(value=True, label="Force Chinese")
+                    image = gr.Image(type="filepath")
+                with gr.Column(scale=4):
+                    chat_bot = gr.Chatbot(height=600)
+                    with gr.Row():
+                        retry_btn = gr.Button("🔄 Retry")
+                        undo_btn = gr.Button("↩️ Undo")
+                        clear_btn = gr.Button("🗑️ Clear")
+                    with gr.Row():
+                        message = gr.Textbox(show_label=False, container=False, scale=5)
+                        submit_btn = gr.Button("Submit", variant="primary", scale=1)
+            image.upload(fn=vl_image_upload, inputs=[image, chat_bot], outputs=[image, chat_bot])
+            submit_btn.click(fn=vl_submit_message, inputs=[message, chat_bot], outputs=[message, chat_bot]).then(fn=vl_submit, inputs=[history_flag, chinese_flag, chat_bot], outputs=[chat_bot])
+            retry_btn.click(fn=vl_retry, inputs=[chat_bot], outputs=[chat_bot]).then(fn=vl_submit, inputs=[history_flag, chinese_flag, chat_bot], outputs=[chat_bot])
+            undo_btn.click(fn=vl_undo, inputs=[chat_bot], outputs=[message, chat_bot])
+            clear_btn.click(fn=vl_clear, inputs=[], outputs=[image, message, chat_bot])
+            
+        refresh_btn.click(fn=refresh_models, inputs=[], outputs=[model_info, prompt_model_info])
+            
+        demo.load(fn=init)
+        
+    return demo
+
+def refresh_models():
+    new_choices = get_running_models()
+    return gr.Dropdown.update(choices=new_choices), gr.Dropdown.update(choices=new_choices)
+    
 if __name__ == "__main__":
+    demo = main()
     demo.launch(share=False)
