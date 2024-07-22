@@ -4,11 +4,22 @@ import ollama
 import json
 import base64
 import copy
+import os
 
 model_list = ollama.list()
 model_names = [model['model'] for model in model_list['models']]
 PROMPT_LIST = []
 VL_CHAT_LIST = []
+
+def load_json(filename):
+    # Construct path to the JSON file relative to the current script
+    json_path = os.path.join(os.path.dirname(__file__), filename)
+    
+    # Load data from the JSON file
+    with open(json_path, 'r', encoding='utf-8') as file:
+        data = json.load(file)
+    
+    return data
 
 # parse prompt in same directory
 with open("prompt.json", "r", encoding="utf-8") as f:
