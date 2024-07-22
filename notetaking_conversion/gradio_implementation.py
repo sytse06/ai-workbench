@@ -1,37 +1,92 @@
-# Link to original repo https://github.com/ycyy/ollama-gradio-webui/tree/main
+# Link to original repo which enables Ollama models with vision language interaction https://github.com/ycyy/ollama-gradio-webui/tree/main
 import gradio as gr
 import ollama
-import json
 import base64
 import copy
 import os
+import yaml
 
-model_list = ollama.list()
-model_names = [model['model'] for model in model_list['models']]
+# Initialize prompts and chat memory
 PROMPT_LIST = []
 VL_CHAT_LIST = []
 
-def load_json(filename):
-    # Construct path to the JSON file relative to the current script
-    json_path = os.path.join(os.path.dirname(__file__), filename)
-    
-    # Load data from the JSON file
-    with open(json_path, 'r', encoding='utf-8') as file:
-        data = json.load(file)
-    
-    return data
+# List running Ollama models
+# model_list = ollama.list()
+# model_names = [model['model'] for model in model_list['models']]
 
-# parse prompt in same directory
-with open("prompt.json", "r", encoding="utf-8") as f:
-    PROMPT_DICT = json.load(f)
-    for key in PROMPT_DICT:
-        PROMPT_LIST.append(key)
+# List running Ollama models in interface
+import ollama
+
+def get_running_models():
+    try:
+        client = Client()
+        response = client.list()
+        print(f"Ollama list response: {response}")  # Debug print
+        
+        # Filter for running models (you may need to adjust this based on Ollama's API)
+        running_models = [model['name'] for model in response['models'] if model.get('status') == 'ready']
+        
+        print(f"Running models: {running_models}")  # Debug print
+        return running_models
+    except Exception as e:
+        print(f"Error getting running models: {str(e)}")
+        return []
+
+# Initial model names
+model_names = get_running_models()
+
+def refresh_models():
+    new_models = get_running_models()
+    return gr.Dropdown(choices=new_models, value=new_models[0] if new_models else "")
+
+# Load settings from config.yaml file
+def load_config():
+    # Construct path to config.yaml relative to the current script
+    config_path = os.path.join(os.path.dirname(__file__), '../config.yaml')
+    
+    try:
+        # Load config from config.yaml
+        with open(config_path, 'r') as file:
+            config = yaml.safe_load(file)
+        
+        # Check if 'system' section exists in config
+        if 'system' not in config:
+            raise KeyError("Config file is missing 'system' section")
+        
+        # Check if 'directories' section exists in config
+        if 'directories' not in config['system']:
+            raise KeyError("Config file is missing 'directories' section")
+        
+        # Check if 'prompts' section exists in config
+        if 'prompts' not in config:
+            raise KeyError("Config file is missing 'prompts' section")
+        
+        return config
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Config file not found at {config_path}")
+    except yaml.YAMLError as e:
+        raise ValueError(f"Error parsing YAML file: {e}")
+
+# Example usage
+try:
+    config = load_config()
+    print("Config loaded successfully")
+    print(f"Input directory: {config['system']['directories']['input_directory']}")
+    print(f"Output directory: {config['system']['directories']['output_directory']}")
+    print(f"Vision Assistant prompt loaded: {config['prompts']['Vision Assistant'][:50]}...")
+    PROMPT_LIST = list(config['prompts'].keys())
+except Exception as e:
+    print(f"Error loading config: {e}")
         
 # Initialize function
 def init():
     VL_CHAT_LIST.clear()
     
-def ollama_chat(message, history,model_name,history_flag):
+def ollama_chat(message, history, model_name, history_flag):
+    if not model_name:
+        return "Please select a running model."
+    
+    client = Client()
     messages = []
     chat_message = {
         'role': 'user', 
@@ -62,11 +117,11 @@ def ollama_chat(message, history,model_name,history_flag):
             yield partial_message
 
 # Generate agent response
-def ollama_prompt(message, history,model_name,prompt_info):
+def ollama_prompt(message, history, model_name,prompt_info):
     messages = []
     system_message = {
         'role': 'system', 
-        'content': PROMPT_DICT[prompt_info]
+        'content': config['prompts'][prompt_info]
     }
     user_message = {
         'role': 'user', 
@@ -84,6 +139,14 @@ def ollama_prompt(message, history,model_name,prompt_info):
         if len(chunk['message']['content']) != 0:
             partial_message = partial_message + chunk['message']['content']
             yield partial_message
+        try:
+            stream = ollama.chat(
+                model=model_name,
+                messages=messages,
+                stream=True
+            )
+        except Exception as e:
+            return f"Error: {str(e)}"
             
 # Image upload
 def vl_image_upload(image_path,chat_history):
@@ -217,7 +280,8 @@ with gr.Blocks(title="Ollama WebUI", fill_height=True) as demo:
     with gr.Tab("Chat"):
         with gr.Row():
             with gr.Column(scale=1):
-                model_info = gr.Dropdown(model_names, value="", allow_custom_value=True, label="Model Selection")
+                model_info = gr.Dropdown(choices=model_names, value=model_names[0] if model_names else "", label="Model Selection")
+                refresh_btn = gr.Button("Refresh Models")
                 history_flag = gr.Checkbox(label="Enable Context")
             with gr.Column(scale=4):
                 chat_bot = gr.Chatbot(height=600, render=False)
@@ -233,11 +297,13 @@ with gr.Blocks(title="Ollama WebUI", fill_height=True) as demo:
                     clear_btn="🗑️ Clear",
                     fill_height=True
                 )
+                
+        refresh_btn.click(fn=refresh_models, outputs=model_info)
     with gr.Tab("Agent"):
         with gr.Row():
             with gr.Column(scale=1):
                 prompt_model_info = gr.Dropdown(model_names, value="", allow_custom_value=True, label="Model Selection")
-                prompt_info = gr.Dropdown(choices=PROMPT_LIST, value=PROMPT_LIST[0], label="Agent Selection", interactive=True)
+                prompt_info = gr.Dropdown(choices=PROMPT_LIST, value=PROMPT_LIST[0] if PROMPT_LIST else None, label="Agent Selection", interactive=True)
             with gr.Column(scale=4):
                 prompt_chat_bot = gr.Chatbot(height=600, render=False)
                 prompt_text_box = gr.Textbox(scale=4, render=False)
