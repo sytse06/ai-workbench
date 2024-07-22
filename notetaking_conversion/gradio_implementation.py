@@ -17,26 +17,18 @@ VL_CHAT_LIST = []
 # List running Ollama models in interface
 import ollama
 
-def get_running_models():
+def get_model_list():
     try:
-        client = Client()
-        response = client.list()
-        print(f"Ollama list response: {response}")  # Debug print
-        
-        # Filter for running models (you may need to adjust this based on Ollama's API)
-        running_models = [model['name'] for model in response['models'] if model.get('status') == 'ready']
-        
-        print(f"Running models: {running_models}")  # Debug print
-        return running_models
+        model_list = ollama.list()
+        return [model['name'] for model in model_list['models']]
     except Exception as e:
-        print(f"Error getting running models: {str(e)}")
+        print(f"Error getting model list: {str(e)}")
         return []
 
-# Initial model names
-model_names = get_running_models()
+model_names = get_model_list()
 
 def refresh_models():
-    new_models = get_running_models()
+    new_models = get_model_list()
     return gr.Dropdown(choices=new_models, value=new_models[0] if new_models else "")
 
 # Load settings from config.yaml file
@@ -84,37 +76,29 @@ def init():
     
 def ollama_chat(message, history, model_name, history_flag):
     if not model_name:
-        return "Please select a running model."
+        return "Please select a running Ollama model."
     
-    client = Client()
     messages = []
-    chat_message = {
-        'role': 'user', 
-        'content': message
-    }
-    if history_flag and len(history)>0:
-        for element in history:  
-            history_user_message = {
-                'role': 'user', 
-                'content': element[0]
-            }
-            history_assistant_message = {
-                'role': 'assistant', 
-                'content': element[1]
-            }
-            messages.append(history_user_message)
-            messages.append(history_assistant_message)   
-    messages.append(chat_message)
-    stream = ollama.chat(
-        model = model_name,
-        messages = messages,
-        stream=True
-    )
-    partial_message = ""
-    for chunk in stream:
-        if len(chunk['message']['content']) != 0:
-            partial_message = partial_message + chunk['message']['content']
-            yield partial_message
+    if history_flag and history:
+        for user_msg, assistant_msg in history:
+            messages.append({"role": "user", "content": user_msg})
+            messages.append({"role": "assistant", "content": assistant_msg})
+    
+    messages.append({"role": "user", "content": message})
+    
+    try:
+        stream = ollama.chat(
+            model=model_name,
+            messages=messages,
+            stream=True
+        )
+        partial_message = ""
+        for chunk in stream:
+            if chunk['message']['content']:
+                partial_message += chunk['message']['content']
+                yield partial_message
+    except Exception as e:
+        yield f"Error: {str(e)}"
 
 # Generate agent response
 def ollama_prompt(message, history, model_name,prompt_info):
@@ -297,8 +281,8 @@ with gr.Blocks(title="Ollama WebUI", fill_height=True) as demo:
                     clear_btn="🗑️ Clear",
                     fill_height=True
                 )
+        refresh_btn.click(fn=refresh_models, outputs=model_info)    
                 
-        refresh_btn.click(fn=refresh_models, outputs=model_info)
     with gr.Tab("Agent"):
         with gr.Row():
             with gr.Column(scale=1):
