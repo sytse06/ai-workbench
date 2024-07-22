@@ -6,8 +6,12 @@
 !pyproject.toml
 !config.yaml
 !README.md
+!notetaking_conversion/prompts.json
 !notetaking_conversion/
-!notetaking_conversion/__init__.py
-!notetaking_conversion/note_converter.py
+
+# Include all .py files
+!**/*.py
+
+# Include specific directories and their contents
+!notetaking_conversion/
 !tests/
-!tests/test_note_converter.py
