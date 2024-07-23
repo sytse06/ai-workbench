@@ -14,22 +14,18 @@ VL_CHAT_LIST = []
 # model_list = ollama.list()
 # model_names = [model['model'] for model in model_list['models']]
 
-# List running Ollama models in interface
-def get_running_models():
+# List downloaded Ollama models on system
+def get_available_models():
     try:
-        running_models = ollama.ps()
-        if 'models' in running_models:
-            return [(model['model'], model['model']) for model in running_models['models']]
-        else:
-            print("Unexpected structure of the response from ollama.ps().")
-            return []
-    except ollama.exceptions.OllamaError as e:  # Catch specific Ollama-related exceptions
-        print(f"Error getting running models: {str(e)}")
+        models = ollama.list()
+        return [(model['name'], model['name']) for model in models['models']]
+    except ollama.exceptions.OllamaError as e:
+        print(f"Error getting available models: {str(e)}")
         return []
-    except Exception as e:  # Catch any other potential errors
+    except Exception as e:
         print(f"An unexpected error occurred: {str(e)}")
         return []
-
+    
 # Load settings from config.yaml file
 def load_config():
     # Construct path to config.yaml relative to the current script
@@ -260,16 +256,20 @@ def get_vl_message(history_flag,chinese_flag):
     return messages
 
 def main():
-    choices = get_running_models()
+    initial_choices = get_available_models()
     
     with gr.Blocks(title="Ollama WebUI", fill_height=True) as demo:
         with gr.Row():
             with gr.Column(scale=1):
                 model_info = gr.Dropdown(
-                    choices = choices, 
+                    choices =initial_choices, 
                     label="Select a running model"
                     )
                 refresh_btn = gr.Button("Refresh Models")
+        refresh_btn.click(
+            fn=refresh_models,
+            outputs=[model_info]
+        )
                     
         with gr.Tab():                
             with gr.Tab("Chat"):
@@ -294,7 +294,7 @@ def main():
         with gr.Tab("Agent"):
             with gr.Row():
                 with gr.Column(scale=1):
-                    prompt_model_info = gr.Dropdown(choices=choices, value="", allow_custom_value=True, label="Model Selection")
+                    prompt_model_info = gr.Dropdown(choices=initial_choices, value="", allow_custom_value=True, label="Model Selection")
                     prompt_info = gr.Dropdown(choices=PROMPT_LIST, value=PROMPT_LIST[0] if PROMPT_LIST else None, label="Agent Selection", interactive=True)
                 with gr.Column(scale=4):
                     prompt_chat_bot = gr.Chatbot(height=600, render=False)
@@ -338,8 +338,9 @@ def main():
     return demo
 
 def refresh_models():
-    new_choices = get_running_models()
-    return gr.Dropdown.update(choices=new_choices), gr.Dropdown.update(choices=new_choices)
+    new_choices = get_available_models()
+    print("New choices:", new_choices)
+    return gr.Dropdown.update(choices=new_choices)
     
 if __name__ == "__main__":
     demo = main()
