@@ -269,26 +269,24 @@ def main():
         refresh_btn.click(
             fn=refresh_models,
             outputs=[model_info]
-        )
-                    
-        with gr.Tab():                
-            with gr.Tab("Chat"):
-                with gr.Row():
-                    with gr.Column(scale=1):        
-                        history_flag = gr.Checkbox(label="Enable Context")
-                    with gr.Column(scale=4):
-                        chat_bot = gr.Chatbot(height=600, render=False)
-                        text_box = gr.Textbox(scale=4, render=False)
-                        chat_interface = gr.ChatInterface(
-                            fn=ollama_chat,
-                            chatbot=chat_bot,
-                            textbox=text_box,
-                            additional_inputs=[model_info, history_flag],
-                            submit_btn="Submit",
-                            retry_btn="🔄 Retry",
-                            undo_btn="↩️ Undo",
-                            clear_btn="🗑️ Clear",
-                            fill_height=True
+        )                
+        with gr.Tab("Chat"):
+            with gr.Row():
+                with gr.Column(scale=1):        
+                    history_flag = gr.Checkbox(label="Enable Context")
+                with gr.Column(scale=4):
+                    chat_bot = gr.Chatbot(height=600, render=False)
+                    text_box = gr.Textbox(scale=4, render=False)
+                    chat_interface = gr.ChatInterface(
+                        fn=ollama_chat,
+                        chatbot=chat_bot,
+                        textbox=text_box,
+                        additional_inputs=[model_info, history_flag],
+                        submit_btn="Submit",
+                        retry_btn="🔄 Retry",
+                        undo_btn="↩️ Undo",
+                        clear_btn="🗑️ Clear",
+                        fill_height=True
                         )
                                     
         with gr.Tab("Agent"):
