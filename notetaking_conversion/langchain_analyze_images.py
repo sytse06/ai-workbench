@@ -64,12 +64,14 @@ def process_image(image, question):
                     },
                     {
                         "type": "image_url",
-                        "image_url": f"data:image/png;base64,{image_b64}"
+                        "image_url": {
+                            "url": f"data:image/png;base64,{image_b64}"
+                        }
                     }
                 ]
             )
         ]
-        
+                
         response = chat_model.invoke(messages)
         logger.info("Successfully processed image and generated response")
         return response.content
