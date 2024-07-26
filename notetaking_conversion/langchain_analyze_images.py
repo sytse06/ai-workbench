@@ -6,8 +6,13 @@ import os
 import json
 import logging
 import langchain
+from langchain_core.messages import AIMessage
 from langchain_community.chat_models import ChatOpenAI, ChatOllama
 from langchain.schema import HumanMessage, SystemMessage, BaseMessage, AIMessage
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 def load_credentials():
     # Try to get the path from an environment variable
@@ -15,7 +20,7 @@ def load_credentials():
     
     if not cred_path:
         # Fallback to a relative path
-        cred_path = '../../credentials.json'
+        cred_path = '../../../credentials.json'
     
     try:
         with open(cred_path, 'r', encoding='utf-8') as f:
@@ -31,13 +36,10 @@ def load_credentials():
     except KeyError:
         logger.error("'openai_api_key' not found in credentials file")
         raise
+    logger.info("Credentials loaded successfully")
 
 # Call the function to load credentials
 load_credentials()
-
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 def convert_to_base64(pil_image: Image):
     buffered = BytesIO()
@@ -55,26 +57,22 @@ def process_image(image, question, model_choice):
 
     try:
         if model_choice == "Ollama (LLaVA)":
-            chat_model = ChatOllama(base_url="http://localhost:11434", model="llava")
-            messages = [
-                HumanMessage(
-                    content=[
-                        {"type": "text", "text": question},
-                        {"type": "image_url", "image_url": f"data:image/jpeg;base64,{image_b64}"}
-                    ]
-                )
-            ]
+            chat_model = ChatOllama(model="llava:7b-v1.6", max_tokens=300)
         elif model_choice == "OpenAI GPT-4 Vision":
-            chat_model = ChatOpenAI(model="gpt-4o-mini", max_tokens=300)
-            messages = [
-                HumanMessage(
-                    content=[
-                        {"type": "text", "text": question},
-                        {"type": "image_url", "image_url": f"data:image/jpeg;base64,{image_b64}"}
+            chat_model = ChatOpenAI(model="gpt-4-vision-preview", max_tokens=300)
+        else:
+            logger.error(f"Invalid model choice: {model_choice}")
+            return f"Invalid model choice: {model_choice}"
+        
+        messages = [
+            HumanMessage(
+                content=[
+                    {"type": "text", "text": question},
+                    {"type": "image_url", "image_url": f"data:image/jpeg;base64,{image_b64}"}
                     ]
                 )
             ]
-
+        
         response = chat_model.invoke(messages)
         logger.info("Successfully processed image and generated response")
         return response.content
@@ -87,9 +85,8 @@ iface = gr.Interface(
     fn=process_image,
     inputs=[
         gr.Image(type="pil", label="Upload Image"),
-        gr.Textbox(label="Ask a question about the image"),
-        gr.Dropdown(choices=["Ollama (LLaVA)", "OpenAI GPT-4 Vision"], label="Select Model")
-    ],
+        gr.Dropdown(choices=["Ollama (LLaVA)", "OpenAI GPT-4 Vision"], label="Select Model"),
+        gr.Textbox(label="Ask a question about the image")],
     outputs=gr.Textbox(label="Response"),
     title="Image Question Answering",
     description="Upload an image and ask questions about it using Ollama (LLaVA) or OpenAI GPT-4 Vision."
