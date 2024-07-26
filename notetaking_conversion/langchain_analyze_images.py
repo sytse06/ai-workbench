@@ -47,32 +47,26 @@ def convert_to_base64(pil_image: Image):
     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
     return img_str
 
-def process_image(image, question, model_choice):
+def process_image(image, question):
     if image is None:
         logger.warning("No image uploaded")
         return "Please upload an image first."
 
-    logger.info(f"Processing image with model: {model_choice}")
+    logger.info("Processing image with model: llava")
     image_b64 = convert_to_base64(image)
 
     try:
-        if model_choice == "Ollama (LLaVA)":
-            chat_model = ChatOllama(model="llava:7b-v1.6", max_tokens=300)
-        elif model_choice == "OpenAI GPT-4 Vision":
-            chat_model = ChatOpenAI(model="gpt-4-vision-preview", max_tokens=300)
-        else:
-            logger.error(f"Invalid model choice: {model_choice}")
-            return f"Invalid model choice: {model_choice}"
-        
+        chat_model = ChatOllama(base_url="http://localhost:11434", model="llava")
+
         messages = [
             HumanMessage(
                 content=[
                     {"type": "text", "text": question},
                     {"type": "image_url", "image_url": f"data:image/jpeg;base64,{image_b64}"}
-                    ]
-                )
-            ]
-        
+                ]
+            )
+        ]
+
         response = chat_model.invoke(messages)
         logger.info("Successfully processed image and generated response")
         return response.content
@@ -85,11 +79,11 @@ iface = gr.Interface(
     fn=process_image,
     inputs=[
         gr.Image(type="pil", label="Upload Image"),
-        gr.Dropdown(choices=["Ollama (LLaVA)", "OpenAI GPT-4 Vision"], label="Select Model"),
-        gr.Textbox(label="Ask a question about the image")],
+        gr.Textbox(label="Ask a question about the image")
+    ],
     outputs=gr.Textbox(label="Response"),
     title="Image Question Answering",
-    description="Upload an image and ask questions about it using Ollama (LLaVA) or OpenAI GPT-4 Vision."
+    description="Upload an image and ask questions about it using Ollama (LLaVA)."
 )
 
 if __name__ == "__main__":
