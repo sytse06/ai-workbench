@@ -100,17 +100,19 @@ with gr.Blocks() as demo:
     gr.Markdown("Upload an image and ask questions about it using your choice of model.")
     
     with gr.Row():
-        image_input = gr.Image(type="pil", label="Upload Image", image_mode="RGB")
-        model_choice = gr.Radio(
-            ["Ollama (LLaVA)", "OpenAI GPT-4o-mini"],
-            label="Choose Model",
-            value="Ollama (LLaVA)"
-        )
-    
-    question_input = gr.Textbox(label="Ask a question about the image")
-    submit_btn = gr.Button("Submit")
-    output = gr.Textbox(label="Response")
-
+        with gr.Column(scale=1):
+            image_input = gr.Image(type="pil", label="Upload Image", image_mode="RGB")
+            model_choice = gr.Dropdown(
+                ["Ollama (LLaVA)", "OpenAI GPT-4o-mini"],
+                label="Choose Model",
+                value="Ollama (LLaVA)"
+            )
+            question_input = gr.Textbox(label="Ask a question about the image")
+            submit_btn = gr.Button("Submit")
+        
+        with gr.Column(scale=1):
+            output = gr.Textbox(label="Response", lines=10)
+            
     # Process image when submit button is clicked
     submit_btn.click(
         process_image,
