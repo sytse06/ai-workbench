@@ -3,10 +3,14 @@ import os
 import json
 from io import BytesIO
 import base64
+import sys
 from PIL import Image
 import gradio as gr
 from langchain_openai import ChatOpenAI
+from langchain_community.chat_models import ChatOllama
 from langchain.schema import HumanMessage
+
+print(sys.path)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -46,10 +50,10 @@ def convert_to_base64(pil_image: Image):
 
 
 def get_model(choice):
-    if choice == "OpenAI GPT-4 Vision":
-        return ChatOpenAI(model="gpt-4-vision-preview", max_tokens=300)
-    elif choice == "Ollama (LLaVA)":
-        return ChatOllama(base_url="http://localhost:11434", model="llava")
+    if choice == "Ollama (LLaVA)":
+        return ChatOllama(base_url="http://localhost:11434", model="llava") 
+    elif choice == "OpenAI GPT-4o-mini":
+        return ChatOpenAI(model="gpt-4o-mini", max_tokens=300)
     else:
         raise ValueError(f"Invalid model choice: {choice}")
 
@@ -64,7 +68,7 @@ def process_image(image, question, model_choice):
     try:
         model = get_model(model_choice)
         
-        if model_choice == "OpenAI GPT-4 Vision":
+        if model_choice == "OpenAI GPT-4o-mini":
             messages = [
                 HumanMessage(
                     content=[
@@ -98,9 +102,9 @@ with gr.Blocks() as demo:
     with gr.Row():
         image_input = gr.Image(type="pil", label="Upload Image", image_mode="RGB")
         model_choice = gr.Radio(
-            ["OpenAI GPT-4 Vision", "Ollama (LLaVA)"],
+            ["Ollama (LLaVA)", "OpenAI GPT-4o-mini"],
             label="Choose Model",
-            value="OpenAI GPT-4 Vision"
+            value="Ollama (LLaVA)"
         )
     
     question_input = gr.Textbox(label="Ask a question about the image")
