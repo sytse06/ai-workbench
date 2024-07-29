@@ -7,8 +7,9 @@ import sys
 from PIL import Image
 import gradio as gr
 from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatOllama
-from langchain.schema import HumanMessage
+from langchain.schema import HumanMessage, AIMessage
 
 print(sys.path)
 
@@ -28,6 +29,7 @@ def load_credentials():
         with open(cred_path, 'r', encoding='utf-8') as f:
             credentials = json.load(f)
         os.environ['OPENAI_API_KEY'] = credentials['openai_api_key']
+        os.environ['anthropic_api_key'] = credentials['anthropic_api_key']
         logger.info("Credentials loaded successfully")
     except FileNotFoundError:
         logger.error(f"Credentials file not found at {cred_path}")
@@ -54,6 +56,21 @@ def get_model(choice):
         return ChatOllama(base_url="http://localhost:11434", model="llava") 
     elif choice == "OpenAI GPT-4o-mini":
         return ChatOpenAI(model="gpt-4o-mini", max_tokens=300)
+    elif choice == "Anthropic Claude":
+        # Load credentials if not already loaded
+        if 'anthropic_api_key' not in os.environ:
+            load_credentials()
+        
+        # Get the Anthropic API key from environment variables
+        anthropic_api_key = os.getenv('anthropic_api_key')
+        
+        if not anthropic_api_key:
+            raise ValueError("Anthropic API key not found in credentials")
+        
+        return ChatAnthropic(
+            anthropic_api_key=anthropic_api_key,
+            model="claude-3-sonnet-20240229"  # or another Claude model version
+        )
     else:
         raise ValueError(f"Invalid model choice: {choice}")
 
@@ -74,6 +91,15 @@ def process_image(image, question, model_choice):
                     content=[
                         {"type": "text", "text": question},
                         {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}}
+                    ]
+                )
+            ]
+        elif model_choice == "Anthropic Claude":
+            messages = [
+                HumanMessage(
+                    content=[
+                        {"type": "text", "text": question},
+                        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": image_b64}}
                     ]
                 )
             ]
@@ -103,7 +129,7 @@ with gr.Blocks() as demo:
         with gr.Column(scale=1):
             image_input = gr.Image(type="pil", label="Upload Image", image_mode="RGB")
             model_choice = gr.Dropdown(
-                ["Ollama (LLaVA)", "OpenAI GPT-4o-mini"],
+                ["Ollama (LLaVA)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
                 label="Choose Model",
                 value="Ollama (LLaVA)"
             )
