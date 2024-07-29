@@ -13,5 +13,7 @@
 !**/*.py
 
 # Include specific directories and their contents
+!ai_model_interface/
+!models/
 !notetaking_conversion/
 !tests/
