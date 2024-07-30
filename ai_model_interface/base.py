@@ -1,7 +1,7 @@
 # ai_model_interface/base.py
 from abc import ABC, abstractmethod
 from typing import List, Union, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 class Message(BaseModel):
     role: str
@@ -9,6 +9,8 @@ class Message(BaseModel):
 
 class BaseAIModel(BaseModel, ABC):
     model_name: str
+        
+    model_config = ConfigDict(protected_namespaces=())
 
     @abstractmethod
     async def chat(self, message: str, history: List[tuple[str, str]], stream: bool = False) -> Union[str, Any]:

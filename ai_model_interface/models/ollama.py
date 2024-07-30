@@ -2,9 +2,11 @@
 from ..base import BaseAIModel, Message
 from typing import List, Union, Any
 import ollama
-
+from pydantic import Field, ConfigDict
 class OllamaModel(BaseAIModel):
     base_url: str = Field(default="http://localhost:11434")
+    
+    model_config = ConfigDict(protected_namespaces=())
 
     async def chat(self, message: str, history: List[tuple[str, str]], stream: bool = False) -> Union[str, Any]:
         messages = self._format_history(history)

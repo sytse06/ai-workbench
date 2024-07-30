@@ -15,5 +15,6 @@
 # Include specific directories and their contents
 !ai_model_interface/
 !models/
+!config/
 !notetaking_conversion/
 !tests/

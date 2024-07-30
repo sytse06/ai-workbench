@@ -2,10 +2,14 @@
 from ..base import BaseAIModel, Message
 from typing import List, Union, Any
 from openai import AsyncOpenAI
-from pydantic import Field
-
+from pydantic import Field, ConfigDict
+from ..config.credentials import get_api_key
 class OpenAIModel(BaseAIModel):
-    os.environ['OPENAI_API_KEY'] = credentials['openai_api_key']
+    model_config = ConfigDict(protected_namespaces=())
+    
+    def __init__(self, model_name: str, **kwargs):
+        super().__init__(model_name=model_name, **kwargs)
+        self.client = AsyncOpenAI(api_key=get_api_key('openai'))
     
     async def chat(self, message: str, history: List[tuple[str, str]], stream: bool = False) -> Union[str, Any]:
         messages = self._format_history(history)
