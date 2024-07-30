@@ -1,24 +1,23 @@
 from ..base import BaseAIModel, Message
-from typing import List, AsyncGenerator, Union, Any
+from typing import List, AsyncGenerator, Union, Any, Tuple
 from langchain_community.chat_models import ChatOllama
-from langchain.schema import HumanMessage, AIMessage
+from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from PIL import Image
 from io import BytesIO
 import base64
 from pydantic import Field, BaseModel, ConfigDict
 
 class OllamaModel(BaseAIModel):
-    def __init__(
-        self, 
-        model_name: str, 
-        base_url: str = "http://localhost:11434",
-        model_config: ConfigDict = ConfigDict(protected_namespaces=())
-    ):
-        super().__init__(model_name=model_name)
+    base_url: str = "http://localhost:11434"
+    model: ChatOllama = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, **data):
+        super().__init__(**data)
         self.model = ChatOllama(
-            model=model_name,
-            base_url=base_url,
-            config=model_config
+            model=self.model_name,
+            base_url=self.base_url
         )
 
     async def chat(self, message: str, history: List[tuple[str, str]], stream: bool = False) -> AsyncGenerator[str, None]:
