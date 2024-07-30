@@ -12,7 +12,7 @@ from typing import List, Union, Any
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatOllama
-from langchain.schema import HumanMessage, AIMessage
+from langchain.schema import HumanMessage, AIMessage, SystemMessage
 
 print(sys.path)
 
@@ -25,22 +25,28 @@ load_credentials()
 config = load_config()
 
 async def chat(message: str, history: List[tuple[str, str]], model_choice: str, history_flag: bool):
+    logger.info(f"Chat function called with message: {message}, history_flag: {history_flag}, model_choice: {model_choice}")
     model = get_model(model_choice)
+    logger.info(f"Model instantiated: {model}")
     return await model.chat(message, history if history_flag else [], stream=True)
 
 async def prompt(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str):
+    logger.info(f"Prompt function called with message: {message}, model_choice: {model_choice}, prompt_info: {prompt_info}")
     model = get_model(model_choice)
     system_prompt = get_prompt(prompt_info)
+    logger.info(f"Model instantiated: {model}, system_prompt: {system_prompt}")
     return await model.prompt(message, system_prompt, stream=True)
 
 async def process_image(image: bytes, question: str, model_choice: str):
+    logger.info(f"Process image called with question: {question}, model_choice: {model_choice}")
     if image is None:
         return "Please upload an image first."
     
     model = get_model(model_choice)
+    logger.info(f"Model instantiated: {model}")
     return await model.image_chat(image, question)
 
-# If you're using Gradio, you might need to wrap these async functions
+# Wrapping async functions for Gradio
 def chat_wrapper(*args, **kwargs):
     return asyncio.run(chat(*args, **kwargs))
 
@@ -49,7 +55,6 @@ def prompt_wrapper(*args, **kwargs):
 
 def process_image_wrapper(*args, **kwargs):
     return asyncio.run(process_image(*args, **kwargs))
-
     
 with gr.Blocks() as demo:
     gr.Markdown("# Image Question Answering")
@@ -71,7 +76,7 @@ with gr.Blocks() as demo:
             
     # Process image when submit button is clicked
     submit_btn.click(
-        process_image,
+        process_image_wrapper,
         inputs=[image_input, question_input, model_choice],
         outputs=[output]
     )
