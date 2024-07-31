@@ -28,20 +28,16 @@ async def chat(message: str, history: List[tuple[str, str]], model_choice: str, 
     logger.info(f"Chat function called with message: {message}, history_flag: {history_flag}, model_choice: {model_choice}")
     model = get_model(model_choice)
     logger.info(f"Model instantiated: {model}")
-    result = ""
-    async for chunk in model.chat(message, history if history_flag else [], stream=True):
-        result += chunk
-        yield result  # This allows for streaming output
+    result = await model.chat(message, history if history_flag else [], stream=False)
+    return result
 
 async def prompt(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str):
     logger.info(f"Prompt function called with message: {message}, model_choice: {model_choice}, prompt_info: {prompt_info}")
     model = get_model(model_choice)
     system_prompt = get_prompt(prompt_info)
     logger.info(f"Model instantiated: {model}, system_prompt: {system_prompt}")
-    result = ""
-    async for chunk in model.prompt(message, system_prompt, stream=True):
-        result += chunk
-        yield result  # This allows for streaming output
+    result = await model.prompt(message, system_prompt, stream=False)
+    return result
 
 async def process_image(image: bytes, question: str, model_choice: str):
     logger.info(f"Process image called with question: {question}, model_choice: {model_choice}")
@@ -50,34 +46,23 @@ async def process_image(image: bytes, question: str, model_choice: str):
     
     model = get_model(model_choice)
     logger.info(f"Model instantiated: {model}")
-    result = ""
-    async for chunk in model.image_chat(image, question):
-        result += chunk
+    result = await model.image_chat(image, question)
     return result
 
 # Wrapping async functions for Gradio
 def chat_wrapper(*args, **kwargs):
     async def run():
-        result = ""
-        async for chunk in chat(*args, **kwargs):
-            result = chunk
-        return result
+        return await chat(*args, **kwargs)
     return asyncio.run(run())
 
 def prompt_wrapper(*args, **kwargs):
     async def run():
-        result = ""
-        async for chunk in prompt(*args, **kwargs):
-            result = chunk
-        return result
+        return await prompt(*args, **kwargs)
     return asyncio.run(run())
 
 def process_image_wrapper(*args, **kwargs):
     async def run():
-        result = ""
-        async for chunk in process_image(*args, **kwargs):
-            result = chunk
-        return result
+        return await process_image(*args, **kwargs)
     return asyncio.run(run())
     
 with gr.Blocks() as demo:
