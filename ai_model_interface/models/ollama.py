@@ -5,8 +5,12 @@ from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from PIL import Image
 from io import BytesIO
 import base64
+import logging
 from pydantic import Field, BaseModel, ConfigDict
 
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 class OllamaModel(BaseAIModel):
     base_url: str = "http://localhost:11434"
     model: ChatOllama = None
@@ -43,11 +47,22 @@ class OllamaModel(BaseAIModel):
             yield response.content
 
     def _convert_to_base64(self, image: Image.Image, format: str = "PNG") -> str:
-        buffered = BytesIO()
-        image.save(buffered, format=format)
-        return base64.b64encode(buffered.getvalue()).decode('utf-8')
+        """
+        Converts a PIL Image to a base64 encoded string.
 
-    async def image_chat(self, image: bytes, question: str, stream: bool = False, image_format: str = "PNG") -> AsyncGenerator[str, None]:
+        :param image: PIL Image to be encoded
+        :param format: Image format to save as, default is "PNG"
+        :return: Base64 encoded string of the image
+        """
+        try:
+            buffered = BytesIO()
+            image.save(buffered, format=format)
+            return base64.b64encode(buffered.getvalue()).decode('utf-8')
+        except Exception as e:
+            logger.error(f"Error converting image to base64: {e}")
+            return ""
+
+    async def image_chat(self, image: Image.Image, question: str, stream: bool = False, image_format: str = "PNG") -> AsyncGenerator[str, None]:
         image_b64 = self._convert_to_base64(image, format=image_format)
         messages = [
             HumanMessage(

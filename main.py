@@ -13,6 +13,7 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatOllama
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from ai_model_interface.config.credentials import get_api_key
 
 print(sys.path)
 
@@ -45,7 +46,7 @@ async def prompt(message: str, history: List[tuple[str, str]], model_choice: str
         result = [chunk async for chunk in model.prompt(message, system_prompt, stream=False)]
     return result
 
-async def process_image(image: bytes, question: str, model_choice: str, stream: bool = False):
+async def process_image(image: Image.Image, question: str, model_choice: str, stream: bool = False):
     logger.info(f"Process image called with question: {question}, model_choice: {model_choice}")
     if image is None:
         return "Please upload an image first."

@@ -2,6 +2,7 @@
 from .models.ollama import OllamaModel
 from .models.openai import OpenAIModel
 from .models.anthropic import AnthropicModel
+from ai_model_interface.config.credentials import get_api_key
 
 def get_model(choice: str, **kwargs):
     if choice == "Ollama (LLaVA)":

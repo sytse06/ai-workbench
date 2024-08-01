@@ -1,68 +1,95 @@
 # ai_model_interface/models/openai.py
 from ..base import BaseAIModel, Message
-from typing import List, Union, Any
-from openai import AsyncOpenAI
+from typing import List, AsyncGenerator, Union
+from langchain_openai import ChatOpenAI
+from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from pydantic import Field, ConfigDict
+import logging
+from PIL import Image
+from io import BytesIO
+import base64
 from ..config.credentials import get_api_key
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 class OpenAIModel(BaseAIModel):
-    model_config = ConfigDict(protected_namespaces=())
+    model: ChatOpenAI = None
+    api_key: str = Field(default_factory=lambda: get_api_key('openai'))
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     
-    def __init__(self, model_name: str, **kwargs):
-        super().__init__(model_name=model_name, **kwargs)
-        self.client = AsyncOpenAI(api_key=get_api_key('openai'))
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.model = ChatOpenAI(
+            model=self.model_name,
+            api_key=self.api_key
+        )
     
-    async def chat(self, message: str, history: List[tuple[str, str]], stream: bool = False) -> Union[str, Any]:
+    async def chat(self, message: str, history: List[tuple[str, str]], stream: bool = False) -> AsyncGenerator[str, None]:
         messages = self._format_history(history)
-        messages.append({"role": "user", "content": message})
-        return await self._openai_chat(messages, stream)
+        messages.append(HumanMessage(content=message))
+        if stream:
+            async for chunk in self.model.astream(messages):
+                yield chunk.content
+        else:
+            response = await self.model.ainvoke(messages)
+            yield response.content
 
-    async def prompt(self, message: str, system_prompt: str, stream: bool = False) -> Union[str, Any]:
+    async def prompt(self, message: str, system_prompt: str, stream: bool = False) -> AsyncGenerator[str, None]:
         messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message}
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=message)
         ]
-        return await self._openai_chat(messages, stream)
+        if stream:
+            async for chunk in self.model.astream(messages):
+                yield chunk.content
+        else:
+            response = await self.model.ainvoke(messages)
+            yield response.content
+    
+    def _convert_to_base64(self, image: Image.Image, format: str = "PNG") -> str:
+        """
+        Converts a PIL Image to a base64 encoded string.
 
-    async def image_chat(self, image: bytes, question: str) -> str:
-        image_b64 = self._convert_to_base64(image)
+        :param image: PIL Image to be encoded
+        :param format: Image format to save as, default is "PNG"
+        :return: Base64 encoded string of the image
+        """
+        buffered = BytesIO()
+        image.save(buffered, format=format)
+        return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+    async def image_chat(self, image: Image.Image, question: str, stream: bool = False, image_format: str = "PNG") -> AsyncGenerator[str, None]:
+        image_b64 = self._convert_to_base64(image, format=image_format)
         messages = [
-            {"role": "user", "content": [
-                {"type": "text", "text": question},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}}
-            ]}
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": question
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/{image_format.lower()};base64,{image_b64}"
+                        }
+                    }
+                ]
+            }
         ]
-        return await self._openai_chat(messages, stream=False)
+        
+        if stream:
+            async for chunk in self.model.astream(messages):
+                yield chunk.content
+        else:
+            response = await self.model.ainvoke(messages)
+            yield response.content
 
-    async def _openai_chat(self, messages: List[dict], stream: bool) -> Union[str, Any]:
-        client = AsyncOpenAI(api_key=self.api_key)
-        try:
-            response = await client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                stream=stream
-            )
-            if stream:
-                return self._stream_response(response)
-            else:
-                return response.choices[0].message.content
-        except Exception as e:
-            return f"Error: {str(e)}"
-
-    async def _stream_response(self, stream):
-        partial_message = ""
-        async for chunk in stream:
-            if chunk.choices[0].delta.content:
-                partial_message += chunk.choices[0].delta.content
-                yield partial_message
-
-    def _format_history(self, history: List[tuple[str, str]]) -> List[dict]:
-        return [
-            {"role": "user", "content": user_msg}
-            if i % 2 == 0 else
-            {"role": "assistant", "content": assistant_msg}
-            for i, (user_msg, assistant_msg) in enumerate(history)
-        ]
-
-    def _convert_to_base64(self, image: bytes) -> str:
-        import base64
-        return base64.b64encode(image).decode('utf-8')
+    def _format_history(self, history: List[tuple[str, str]]) -> List[Union[HumanMessage, AIMessage]]:
+        formatted_history = []
+        for user_msg, ai_msg in history:
+            formatted_history.append(HumanMessage(content=user_msg))
+            formatted_history.append(AIMessage(content=ai_msg))
+        return formatted_history
