@@ -23,11 +23,15 @@ def load_credentials():
     except KeyError as e:
         logger.error(f"Key {str(e)} not found in credentials file")
         raise
-
+    
 def get_api_key(provider: str) -> str:
     if provider.lower() == 'openai':
-        return os.getenv('OPENAI_API_KEY')
+        key = os.getenv('OPENAI_API_KEY')
+        logger.debug("Accessed OpenAI API key.")  # Avoid logging the actual key
+        return key
     elif provider.lower() == 'anthropic':
-        return os.getenv('ANTHROPIC_API_KEY')
+        key = os.getenv('ANTHROPIC_API_KEY')
+        logger.debug("Accessed Anthropic API key.")  # Avoid logging the actual key
+        return key
     else:
         raise ValueError(f"Unknown provider: {provider}")

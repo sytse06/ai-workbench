@@ -17,8 +17,13 @@ from ai_model_interface.config.credentials import get_api_key
 
 print(sys.path)
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Set up logging to only show warnings and errors
+DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
+
+if DEBUG_MODE:
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+else:
+    logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Load credentials and config for directory and prompt settings
@@ -155,4 +160,4 @@ with gr.Blocks() as demo:
 
 if __name__ == "__main__":
     logger.info("Starting the Gradio interface")
-    demo.launch(debug=True)
+    demo.launch(debug=False)
