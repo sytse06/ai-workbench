@@ -24,45 +24,57 @@ logger = logging.getLogger(__name__)
 load_credentials()
 config = load_config()
 
-async def chat(message: str, history: List[tuple[str, str]], model_choice: str, history_flag: bool):
+async def chat(message: str, history: List[tuple[str, str]], model_choice: str, history_flag: bool, stream: bool = False):
     logger.info(f"Chat function called with message: {message}, history_flag: {history_flag}, model_choice: {model_choice}")
     model = get_model(model_choice)
     logger.info(f"Model instantiated: {model}")
-    result = await model.chat(message, history if history_flag else [], stream=False)
+    if stream:
+        result = [chunk async for chunk in model.chat(message, history if history_flag else [], stream=True)]
+    else:
+        result = [chunk async for chunk in model.chat(message, history if history_flag else [], stream=False)]
     return result
 
-async def prompt(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str):
+async def prompt(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, stream: bool = False):
     logger.info(f"Prompt function called with message: {message}, model_choice: {model_choice}, prompt_info: {prompt_info}")
     model = get_model(model_choice)
     system_prompt = get_prompt(prompt_info)
     logger.info(f"Model instantiated: {model}, system_prompt: {system_prompt}")
-    result = await model.prompt(message, system_prompt, stream=False)
+    if stream:
+        result = [chunk async for chunk in model.prompt(message, system_prompt, stream=True)]
+    else:
+        result = [chunk async for chunk in model.prompt(message, system_prompt, stream=False)]
     return result
 
-async def process_image(image: bytes, question: str, model_choice: str):
+async def process_image(image: bytes, question: str, model_choice: str, stream: bool = False):
     logger.info(f"Process image called with question: {question}, model_choice: {model_choice}")
     if image is None:
         return "Please upload an image first."
     
     model = get_model(model_choice)
     logger.info(f"Model instantiated: {model}")
-    result = await model.image_chat(image, question)
+    if stream:
+        result = [chunk async for chunk in model.image_chat(image, question, stream=True)]
+    else:
+        result = [chunk async for chunk in model.image_chat(image, question, stream=False)]
     return result
 
 # Wrapping async functions for Gradio
 def chat_wrapper(*args, **kwargs):
     async def run():
-        return await chat(*args, **kwargs)
+        result = await chat(*args, **kwargs, stream=True)
+        return "".join(result)
     return asyncio.run(run())
 
 def prompt_wrapper(*args, **kwargs):
     async def run():
-        return await prompt(*args, **kwargs)
+        result = await prompt(*args, **kwargs, stream=True)
+        return "".join(result)
     return asyncio.run(run())
 
 def process_image_wrapper(*args, **kwargs):
     async def run():
-        return await process_image(*args, **kwargs)
+        result = await process_image(*args, **kwargs, stream=True)
+        return "".join(result)
     return asyncio.run(run())
     
 with gr.Blocks() as demo:
