@@ -59,23 +59,46 @@ async def process_image(image: bytes, question: str, model_choice: str, stream: 
     return result
 
 # Wrapping async functions for Gradio
-def chat_wrapper(*args, **kwargs):
+def chat_wrapper(message, history, model_choice, history_flag):
     async def run():
-        result = await chat(*args, **kwargs, stream=True)
-        return "".join(result)
+        result = await chat(message, history, model_choice, history_flag, stream=True)
+        return result
     return asyncio.run(run())
 
-def prompt_wrapper(*args, **kwargs):
+def prompt_wrapper(message, history, model_choice, prompt_info):
     async def run():
-        result = await prompt(*args, **kwargs, stream=True)
-        return "".join(result)
+        result = await prompt(message, history, model_choice, prompt_info, stream=True)
+        return result
     return asyncio.run(run())
 
-def process_image_wrapper(*args, **kwargs):
+def process_image_wrapper(image, question, model_choice):
     async def run():
-        result = await process_image(*args, **kwargs, stream=True)
-        return "".join(result)
+        result = await process_image(image, question, model_choice, stream=True)
+        return result
     return asyncio.run(run())
+
+def copy_conversation_js():
+    return """
+    <script>
+    function copyToClipboard() {
+        let chatbox = document.querySelector('.chatbot');
+        let text = Array.from(chatbox.querySelectorAll('.message')).map(msg => msg.innerText).join('\\n');
+        navigator.clipboard.writeText(text).then(function() {
+            console.log('Text copied to clipboard');
+        }).catch(function(error) {
+            console.error('Error copying text: ', error);
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        let button = document.getElementById('copy-btn');
+        button.addEventListener('click', copyToClipboard);
+    });
+    </script>
+    """
+       
+def clear_chat(image_input, chatbot):
+    image_input.clear()
+    return [], ""
     
 with gr.Blocks() as demo:
     gr.Markdown("# Image Question Answering")
@@ -84,24 +107,51 @@ with gr.Blocks() as demo:
     with gr.Row():
         with gr.Column(scale=1):
             image_input = gr.Image(type="pil", label="Upload Image", image_mode="RGB")
+            history_flag = gr.Checkbox(label="Include conversation history", value=True)
             model_choice = gr.Dropdown(
                 ["Ollama (LLaVA)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
                 label="Choose Model",
                 value="Ollama (LLaVA)"
             )
-            question_input = gr.Textbox(label="Ask a question about the image")
-            submit_btn = gr.Button("Submit")
         
-        with gr.Column(scale=1):
-            output = gr.Textbox(label="Response", lines=10)
+        with gr.Column(scale=2):
+            chatbot = gr.Chatbot(show_copy_button=True, height=400)
+            question_input = gr.Textbox(label="Start a conversation about the image", placeholder="Type your question about the image here and press submit to chat....")
+            with gr.Row():
+                submit_btn = gr.Button("Submit")
+                copy_btn = gr.Button("Copy Conversation", elem_id="copy-btn")
+                clear_btn = gr.Button("Clear")
             
     # Process image when submit button is clicked
+    def handle_submit(image, question, model_choice, history, history_flag):
+        if not question:
+            return history, "Please enter a question."
+        if not image:
+            return history, "Please upload an image."
+
+        response = process_image_wrapper(image, question, model_choice)
+        history.append((question, "".join(response)))
+        return history, ""
+
     submit_btn.click(
-        process_image_wrapper,
-        inputs=[image_input, question_input, model_choice],
-        outputs=[output]
+        handle_submit,
+        inputs=[image_input, question_input, model_choice, chatbot, history_flag],
+        outputs=[chatbot, question_input]
     )
+    
+    clear_btn.click(
+        lambda: clear_chat(image_input, chatbot),
+        inputs=[],
+        outputs=[chatbot, question_input]
+    )
+    
+    copy_btn.click(
+        lambda: gr.HTML(copy_conversation_js()),
+        inputs=[],
+        outputs=[]
+    )
+    gr.HTML(copy_conversation_js())
 
 if __name__ == "__main__":
     logger.info("Starting the Gradio interface")
-    demo.launch()
+    demo.launch(debug=True)
