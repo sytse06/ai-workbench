@@ -107,27 +107,62 @@ def clear_chat(image_input, chatbot):
     return [], ""
     
 with gr.Blocks() as demo:
-    gr.Markdown("# Image Question Answering")
-    gr.Markdown("Upload an image and ask questions about it using your choice of model.")
+    gr.Markdown("# Langchain Working Bench")
+    gr.Markdown("Chat with LLM's of choice and use agents to get work done.")
     
     with gr.Row():
         with gr.Column(scale=1):
-            image_input = gr.Image(type="pil", label="Upload Image", image_mode="RGB")
-            history_flag = gr.Checkbox(label="Include conversation history", value=True)
             model_choice = gr.Dropdown(
                 ["Ollama (LLaVA)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
                 label="Choose Model",
                 value="Ollama (LLaVA)"
             )
-        
-        with gr.Column(scale=2):
-            chatbot = gr.Chatbot(show_copy_button=True, height=400)
-            question_input = gr.Textbox(label="Start a conversation about the image", placeholder="Type your question about the image here and press submit to chat....")
+    
+    with gr.Tabs():
+        with gr.Tab("Chat"):
+            chat_bot = gr.Chatbot(height=600)
+            chat_text_box = gr.Textbox(label="Chat input", placeholder="Type your message here...")
+            chat_history_flag = gr.Checkbox(label="Include conversation history", value=True)
+            chat_interface = gr.ChatInterface(
+                fn=chat_wrapper,
+                chatbot=chat_bot,
+                textbox=chat_text_box,
+                additional_inputs=[model_choice, chat_history_flag],
+                submit_btn="Submit",
+                retry_btn="🔄 Retry",
+                undo_btn="↩️ Undo",
+                clear_btn="🗑️ Clear",
+            )
+
+        with gr.Tab("Agent"):
+            prompt_chat_bot = gr.Chatbot(height=600)
+            prompt_text_box = gr.Textbox(label="Prompt input", placeholder="Type your prompt here...")
+            prompt_info = gr.Dropdown(choices=get_prompt_list(), label="Agent Selection", interactive=True)
+            prompt_interface = gr.ChatInterface(
+                fn=prompt_wrapper,
+                chatbot=prompt_chat_bot,
+                textbox=prompt_text_box,
+                additional_inputs=[model_choice, prompt_info],
+                submit_btn="Submit",
+                retry_btn="🔄 Retry",
+                undo_btn="↩️ Undo",
+                clear_btn="🗑️ Clear",
+            )
+
+        with gr.Tab("Vision Assistant"):
             with gr.Row():
-                submit_btn = gr.Button("Submit")
-                copy_btn = gr.Button("Copy Conversation", elem_id="copy-btn")
-                clear_btn = gr.Button("Clear")
-            
+                with gr.Column(scale=1):
+                    image_input = gr.Image(type="pil", label="Upload Image", image_mode="RGB")
+                    history_flag = gr.Checkbox(label="Include conversation history", value=True)
+                
+                with gr.Column(scale=2):
+                    vision_chatbot = gr.Chatbot(show_copy_button=True, height=400)
+                    vision_question_input = gr.Textbox(label="Ask about the image", placeholder="Type your question about the image here...")
+                    with gr.Row():
+                        vision_submit_btn = gr.Button("Submit")
+                        vision_copy_btn = gr.Button("Copy Conversation", elem_id="vision-copy-btn")
+                        vision_clear_btn = gr.Button("Clear")
+                        
     # Process image when submit button is clicked
     def handle_submit(image, question, model_choice, history, history_flag):
         if not question:
@@ -138,24 +173,26 @@ with gr.Blocks() as demo:
         response = process_image_wrapper(image, question, model_choice)
         history.append((question, "".join(response)))
         return history, ""
-
-    submit_btn.click(
+    
+    # Vision Assistant event handlers
+    vision_submit_btn.click(
         handle_submit,
-        inputs=[image_input, question_input, model_choice, chatbot, history_flag],
-        outputs=[chatbot, question_input]
+        inputs=[image_input, vision_question_input, model_choice, vision_chatbot, history_flag],
+        outputs=[vision_chatbot, vision_question_input]
     )
     
-    clear_btn.click(
-        lambda: clear_chat(image_input, chatbot),
+    vision_clear_btn.click(
+        lambda: clear_chat(image_input, vision_chatbot),
         inputs=[],
-        outputs=[chatbot, question_input]
+        outputs=[vision_chatbot, vision_question_input]
     )
     
-    copy_btn.click(
+    vision_copy_btn.click(
         lambda: gr.HTML(copy_conversation_js()),
         inputs=[],
         outputs=[]
     )
+
     gr.HTML(copy_conversation_js())
 
 if __name__ == "__main__":
