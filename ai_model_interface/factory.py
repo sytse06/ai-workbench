@@ -5,8 +5,12 @@ from .models.anthropic import AnthropicModel
 from ai_model_interface.config.credentials import get_api_key
 
 def get_model(choice: str, **kwargs):
-    if choice == "Ollama (LLaVA)":
+    if choice == "Ollama (LLama3.1)":
+        return OllamaModel(model_name="llama3.1", **kwargs)
+    elif choice == "Ollama (LLaVA)":
         return OllamaModel(model_name="llava", **kwargs)
+    elif choice == "Ollama (Deepseek-coder-v2)":
+        return OllamaModel(model_name="deepseek-coder-v2", **kwargs)
     elif choice == "OpenAI GPT-4o-mini":
         api_key = get_api_key('openai')
         return OpenAIModel(model_name="gpt-4o-mini", api_key=api_key, **kwargs)
