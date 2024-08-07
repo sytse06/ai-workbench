@@ -7,7 +7,7 @@ from io import BytesIO
 import base64
 import logging
 from pydantic import Field, BaseModel, ConfigDict
-from ..factory import format_prompt
+from ..utils import format_prompt
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

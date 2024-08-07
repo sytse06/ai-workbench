@@ -1,4 +1,4 @@
-# Notetaking Conversion Project
+# Langchain working bench project
 
 This project converts handwritten notes to digital text using LLaVA and Ollama.
 
@@ -10,16 +10,25 @@ This project converts handwritten notes to digital text using LLaVA and Ollama.
 
 ### Project structure:
 ```
-    notetaking-conversion/
-    ├── pyproject.toml
-    ├── config.yaml
-    ├── notetaking_conversion/
-    │   ├── __init__.py
-    │   └── note_converter.py
-    ├── tests/
-    │   └── test_note_converter.py
-    ├── input/
-    └── output/
+langchain working bench/
+├── ai_model_interface/
+│   ├── __init__.py
+│   ├── base.py
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── ollama.py
+│   │   ├── openai.py
+│   │   └── anthropic.py
+│   ├── factory.py
+│   └── config/
+│       ├── __init__.py
+│       ├── credentials.py
+│       ├── settings.py
+│       └── config.yaml
+├── input/
+├── output/
+├── tests/
+└── main.py
 ```
 
 - Run `poetry install` to set up the virtual environment and install dependencies.

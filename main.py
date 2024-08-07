@@ -7,7 +7,6 @@ import base64
 import sys
 from PIL import Image
 import gradio as gr
-from ai_model_interface import get_model, load_credentials, load_config, format_prompt, get_prompt, get_prompt_list
 import asyncio
 from typing import List, Union, Any
 from langchain_openai import ChatOpenAI
@@ -15,6 +14,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatOllama
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from ai_model_interface.config.credentials import get_api_key
+from ai_model_interface import get_model, load_credentials, load_config, format_prompt, get_prompt, get_prompt_list, update_prompt_list
 
 print(sys.path)
 
@@ -114,16 +114,6 @@ def copy_conversation_js():
       });
     </script>
     """
-# Function to return prompt list based on language
-# Function to return prompt list based on configuration
-def get_prompt_list(language: str) -> List[str]:
-    config = load_config()
-    prompts = config.get("prompts", {})
-    return prompts.get(language, [])
-
-# Function to update prompt list based on language choice
-def update_prompt_list(language: str):
-    return gr.Dropdown.update(choices=get_prompt_list(language))
            
 def clear_chat():
     return None
@@ -133,7 +123,7 @@ def clear_vision_chat():
     
 with gr.Blocks() as demo:
     gr.Markdown("# Langchain Working Bench")
-    gr.Markdown("### Chat with LLM's of choice and use agents to get work done.")
+    gr.Markdown("### Chat with LLM's of choice and reuse prompts to get work done.")
 
     with gr.Tabs():
         with gr.Tab("Chat"):
@@ -159,35 +149,35 @@ with gr.Blocks() as demo:
                         clear_btn="🗑️ Clear",
                     )
 
-    with gr.Tab("Prompting"):
-        with gr.Row():
-            with gr.Column(scale=1):
-                model_choice = gr.Dropdown(
-                    ["Ollama (LLama3.1)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
-                    label="Choose Model",
-                    value="Ollama (LLama3.1)"
-                )
-                language_choice = gr.Dropdown(
-                    ["english", "dutch"],
-                    label="Choose Language",
-                    value="english"
-                )
-                prompt_info = gr.Dropdown(choices=get_prompt_list("english"), label="Prompt Selection", interactive=True)
-                history_flag_prompt = gr.Checkbox(label="Include conversation history", value=True)
+        with gr.Tab("Prompting"):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    model_choice = gr.Dropdown(
+                        ["Ollama (LLama3.1)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
+                        label="Choose Model",
+                        value="Ollama (LLama3.1)"
+                    )
+                    language_choice = gr.Dropdown(
+                        ["english", "dutch"],
+                        label="Choose Language",
+                        value="english"
+                    )
+                    prompt_info = gr.Dropdown(choices=get_prompt_list("english"), label="Prompt Selection", interactive=True)
+                    history_flag_prompt = gr.Checkbox(label="Include conversation history", value=True)
 
-            with gr.Column(scale=4):
-                prompt_chat_bot = gr.Chatbot(height=600, show_copy_button=True)
-                prompt_text_box = gr.Textbox(label="Prompt input", placeholder="Type your prompt here...")
-                gr.ChatInterface(
-                    fn=prompt_wrapper,
-                    chatbot=prompt_chat_bot,
-                    textbox=prompt_text_box,
-                    additional_inputs=[model_choice, prompt_info],
-                    submit_btn="Submit",
-                    retry_btn="🔄 Retry",
-                    undo_btn="↩️ Undo",
-                    clear_btn="🗑️ Clear",
-                )
+                with gr.Column(scale=4):
+                    prompt_chat_bot = gr.Chatbot(height=600, show_copy_button=True)
+                    prompt_text_box = gr.Textbox(label="Prompt input", placeholder="Type your prompt here...")
+                    gr.ChatInterface(
+                        fn=prompt_wrapper,
+                        chatbot=prompt_chat_bot,
+                        textbox=prompt_text_box,
+                        additional_inputs=[model_choice, prompt_info],
+                        submit_btn="Submit",
+                        retry_btn="🔄 Retry",
+                        undo_btn="↩️ Undo",
+                        clear_btn="🗑️ Clear",
+                    )
 
         with gr.Tab("Vision Assistant"):
             with gr.Row():
@@ -212,7 +202,7 @@ with gr.Blocks() as demo:
                         retry_btn="🔄 Retry",
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear"
-                    )
+                        )
 
             vision_clear_btn = gr.Button("Clear All")
             vision_clear_btn.click(

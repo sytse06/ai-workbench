@@ -2,6 +2,8 @@
 import os
 import yaml
 import logging
+from typing import List
+import gradio as gr
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,12 @@ def get_prompt(prompt_name: str) -> str:
     config = load_config()
     return config['prompts'].get(prompt_name)
 
-def get_prompt_list() -> list:
+def get_prompt_list(language: str) -> List[str]:
     config = load_config()
-    return list(config['prompts'].keys())
+    prompts = config.get("prompts", {})
+    return prompts.get(language, [])
+
+# Function to update prompt list based on language choice
+def update_prompt_list(language: str):
+    new_prompts = get_prompt_list(language)
+    return gr.Dropdown.update(choices=get_prompt_list(language))

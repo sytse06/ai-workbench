@@ -9,7 +9,7 @@ from PIL import Image
 from io import BytesIO
 import base64
 from ..config.credentials import get_api_key
-from ..factory import format_prompt
+from ..utils import format_prompt
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
