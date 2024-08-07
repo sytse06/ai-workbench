@@ -6,22 +6,78 @@ system:
     model_settings_directory: "/Users/sytsevanderschaaf/documents/projects/notes_recognition/ai_model_interface"
     config_directory: "/Users/sytsevanderschaaf/documents/dev/projects/notes_recognition/ai_model_interface/config"
 
+# Language specific prompts
 prompts:
-  Vision Assistant: "Check if the uploaded image has the correct orientation for optimal visual recognition. If the image is twisted, rotate it for optimal image recognition by humans and machines. Give a short description of what you see in the image with a maximum of 10 words in MD."
-  Transcribe Assistant: "Analyze the uploaded image (original filename: {input_file_name}) and provide the following information in Markdown format:
+  english:
+    Python Code Optimizer and Debugger: |
+      Analyze the following Python code:
+      [Paste existing code here]
+
+      1. Identify potential issues or inefficiencies in the code.
+      2. Suggest improvements to make the code more readable and efficient.
+      3. If there are specific bugs, explain how to fix them.
+      4. Provide an improved version of the code with comments on the changes.
+      5. Propose a testing strategy to validate the improved code.
+
+      Focus on [specific aspect or functionality] and consider [any limitations or requirements].
     
-              1. The printed text in the image (if any)
+    Transcribe Assistant: |
+      Analyze the uploaded image (original filename: {input_file_name}) and provide the following information in Markdown format:
+      
+      1. The printed text in the image (if any)
 
-              2. The handwritten notes or annotations in the image (if any)
+      2. The handwritten notes or annotations in the image (if any)
 
-              Format your response as follows:
-              # Original File: {input_file_name}
+      Format your response as follows:
+      # Original File: {input_file_name}
 
-              # Printed Text
-              [Printed text content here]
+      # Printed Text
+      [Printed text content here]
 
-              # Handwritten Notes
-              [Handwritten notes content here]
+      # Handwritten Notes
+      [Handwritten notes content here]
 
-              If either printed text or handwritten notes are not present, include the heading but leave the content blank."
-  Translation Assistant: "You're a handy translation assistant. Translate my text from Dutch into English and vice versa. Just provide the translation results in a natural manner."
+      If either printed text or handwritten notes are not present, include the heading but leave the content blank.
+    
+    Translation Assistant: "You're a handy translation assistant. Translate my text from Dutch into English and vice versa. Just provide the translation results in a natural manner."
+    
+    Chain of Thought Analyzer: |
+      Analyze the following problem: [describe problem]. Use a chain of thought approach to unfold your reasoning. Start by identifying core components, consider different options, evaluate pros and cons, and conclude with a recommendation. Think out loud at each step.
+    
+    Tree of Thoughts: |
+      Solve the following problem: [problem]. Use the Tree of Thoughts method. Generate three initial thoughts, develop each into two follow-up steps, and evaluate which path is most promising.
+    
+    Least-to-Most: |
+      We're going to tackle [complex task]. Let's start by identifying the smallest, most basic subtask. Solve that first, and use that result to approach the next, slightly more complex subtask. Continue this process until the main task is completed.
+    
+    Few-Shot Chain-of-Thought: |
+      Here are two examples of [problem type] with worked-out solutions:
+      [Example 1 with step-by-step explanation]
+      [Example 2 with step-by-step explanation]
+      Now solve the following problem in the same way: [new problem]
+    
+    Vision Assistant: |
+      Check if the uploaded image has the correct orientation for optimal visual recognition. If the image is twisted, rotate it for optimal image recognition by humans and machines. Give a short description of what you see in the image with a maximum of 10 words in MD.
+
+# language_specific:
+  dutch:
+    Concept Analyzer: |
+      Analyseer [concept X] in deze tekst, en beschrijf hoe het resoneert met [specifieke doelgroep]. Denk stap voor stap.
+      
+    Constrained Content Generator: |
+      Schrijf 3 nieuwe versies van de inleiding, rekening houdend met [recente markttrend]. Volg deze constraints: [lijst].
+      
+    Step-by-Step Evaluator: |
+      Evalueer deze opzet op conversiekracht voor [doelgroep]. Wat werkt goed en wat kan beter? Analyseer per onderdeel.
+      
+    Concise Context Responder: |
+      Geef prikkelende antwoorden van 10-15 woorden op deze vragen, gebaseerd op de context. Eindig elk antwoord met een call-to-action.
+      
+    Blog Improvement Extractor: |
+      Identificeer verbeterpunten in deze blog die direct bijdragen aan [specifiek marketingdoel]. Herformuleer voor maximale impact.
+      
+    Industry Wisdom Challenger: |
+      Noem 10 conventionele wijsheden op in [industrie]. Daag ze uit met jouw unieke inzichten en voorspel hun relevantie over 5 jaar.
+      
+    Incremental Summary Refiner: |
+      Vat dit artikel samen, focus op [Brand Entity 1, 2, 3]. Voeg stapsgewijs [Brand USP 1, 2, etc.] toe zonder de lengte te vergroten.

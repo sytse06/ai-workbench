@@ -5,6 +5,7 @@
 !.gitignore
 !pyproject.toml
 !config.yaml
+!config-schema.json
 !README.md
 !notetaking_conversion/prompts.json
 !notetaking_conversion/

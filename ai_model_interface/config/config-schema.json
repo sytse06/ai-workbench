@@ -1,0 +1,74 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "system": {
+        "type": "object",
+        "properties": {
+          "directories": {
+            "type": "object",
+            "properties": {
+              "input_directory": { "type": "string" },
+              "output_directory": { "type": "string" },
+              "test_directory": { "type": "string" },
+              "model_settings_directory": { "type": "string" },
+              "config_directory": { "type": "string" }
+            },
+            "required": ["input_directory", "output_directory", "test_directory", "model_settings_directory", "config_directory"]
+          }
+        },
+        "required": ["directories"]
+      },
+      "prompts": {
+        "type": "object",
+        "properties": {
+          "english": {
+            "type": "object",
+            "properties": {
+              "Python Code Optimizer and Debugger": { "type": "string" },
+              "Transcribe Assistant": { "type": "string" },
+              "Translation Assistant": { "type": "string" },
+              "Chain of Thought Analyzer": { "type": "string" },
+              "Tree of Thoughts": { "type": "string" },
+              "Least-to-Most": { "type": "string" },
+              "Few-Shot Chain-of-Thought": { "type": "string" },
+              "Vision Assistant": { "type": "string" }
+            },
+            "required": [
+              "Python Code Optimizer and Debugger",
+              "Transcribe Assistant",
+              "Translation Assistant",
+              "Chain of Thought Analyzer",
+              "Tree of Thoughts",
+              "Least-to-Most",
+              "Few-Shot Chain-of-Thought",
+              "Vision Assistant"
+            ]
+          },
+          "dutch": {
+            "type": "object",
+            "properties": {
+              "Concept Analyzer": { "type": "string" },
+              "Constrained Content Generator": { "type": "string" },
+              "Step-by-Step Evaluator": { "type": "string" },
+              "Concise Context Responder": { "type": "string" },
+              "Blog Improvement Extractor": { "type": "string" },
+              "Industry Wisdom Challenger": { "type": "string" },
+              "Incremental Summary Refiner": { "type": "string" }
+            },
+            "required": [
+              "Concept Analyzer",
+              "Constrained Content Generator",
+              "Step-by-Step Evaluator",
+              "Concise Context Responder",
+              "Blog Improvement Extractor",
+              "Industry Wisdom Challenger",
+              "Incremental Summary Refiner"
+            ]
+          }
+        },
+        "required": ["english", "dutch"]
+      }
+    },
+    "required": ["system", "prompts"]
+  }  
