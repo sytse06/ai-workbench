@@ -4,7 +4,7 @@ from typing import List, Union, Any
 from anthropic import AsyncAnthropic
 from pydantic import Field, ConfigDict
 from ..config.credentials import get_api_key
-
+from ..factory import format_prompt
 class AnthropicModel(BaseAIModel):
     model_config = ConfigDict(protected_namespaces=())
 
@@ -17,13 +17,14 @@ class AnthropicModel(BaseAIModel):
         messages.append({"role": "user", "content": message})
         return await self._anthropic_chat(messages, stream)
 
-    async def prompt(self, message: str, system_prompt: str, stream: bool = False) -> Union[str, Any]:
+        async def prompt(self, message: str, system_prompt: str, prompt_info: str, stream: bool = False) -> Union[str, Any]:
+        formatted_prompt = format_prompt(system_prompt, message, prompt_info)
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message}
+            {"role": "user", "content": formatted_prompt}
         ]
         return await self._anthropic_chat(messages, stream)
-
+    
     async def image_chat(self, image: bytes, question: str) -> str:
         image_b64 = self._convert_to_base64(image)
         messages = [

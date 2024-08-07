@@ -9,6 +9,7 @@ from PIL import Image
 from io import BytesIO
 import base64
 from ..config.credentials import get_api_key
+from ..factory import format_prompt
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -36,11 +37,14 @@ class OpenAIModel(BaseAIModel):
             response = await self.model.ainvoke(messages)
             yield response.content
 
-    async def prompt(self, message: str, system_prompt: str, stream: bool = False) -> AsyncGenerator[str, None]:
+    async def prompt(self, message: str, system_prompt: str, prompt_info: str, stream: bool = False) -> AsyncGenerator[str, None]:
+        formatted_prompt = format_prompt(system_prompt, message, prompt_info)
+
         messages = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=message)
+            HumanMessage(content=formatted_prompt)
         ]
+
         if stream:
             async for chunk in self.model.astream(messages):
                 yield chunk.content
