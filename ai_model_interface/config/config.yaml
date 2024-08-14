@@ -6,6 +6,12 @@ system:
     model_settings_directory: "/Users/sytsevanderschaaf/documents/projects/notes_recognition/ai_model_interface"
     config_directory: "/Users/sytsevanderschaaf/documents/dev/projects/notes_recognition/ai_model_interface/config"
 
+system_prompt_settings:
+  english:
+    system_prompt: "You are a helpful AI assistant that speaks English."
+  dutch:
+    system_prompt: "Je bent een behulpzame AI-assistent die Nederlands spreekt."
+
 # Language specific prompts
 prompts:
   english:

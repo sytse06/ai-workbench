@@ -2,6 +2,7 @@ import logging
 import os
 import json
 import yaml
+from functools import partial
 from io import BytesIO
 import base64
 import sys
@@ -13,8 +14,10 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatOllama
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import Runnable
 from ai_model_interface.config.credentials import get_api_key
-from ai_model_interface import get_model, load_credentials, load_config, format_prompt, get_prompt, get_prompt_list, update_prompt_list
+from ai_model_interface import get_model, load_credentials, format_prompt, OllamaRunnable
 
 print(sys.path)
 
@@ -28,14 +31,20 @@ else:
 logger = logging.getLogger(__name__)
 
 # Load credentials and config for directory and prompt settings
-load_credentials()
-config = load_config()
-
-# ai_model_interface/config/settings.py
 def load_config() -> dict:
     with open("config.yaml", "r") as file:
         config = yaml.safe_load(file)
     return config
+
+load_credentials()
+config = load_config()
+
+def get_system_prompt(language_choice: str, config: dict) -> str:
+    try:
+        return config["system_prompt_settings"][language_choice]["system_prompt"]
+    except KeyError:
+        logger.error(f"System prompt not found for language: {language_choice}")
+        return "Default system prompt"
 
 async def chat(message: str, history: List[tuple[str, str]], model_choice: str, history_flag: bool, stream: bool = False):
     logger.info(f"Chat function called with message: {message}, history_flag: {history_flag}, model_choice: {model_choice}")
@@ -47,20 +56,23 @@ async def chat(message: str, history: List[tuple[str, str]], model_choice: str, 
         result = [chunk async for chunk in model.chat(message, history if history_flag else [], stream=False)]
     return result
 
-async def prompt(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, stream: bool = False):
-    logger.info(f"Prompt function called with message: {message}, model_choice: {model_choice}, prompt_info: {prompt_info}")
+async def prompt(formatted_prompt: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, stream: bool = False):
+    logger.info(f"Formatting prompt with system_prompt: {system_prompt}, user_message: {user_message}, prompt_info: {prompt_info}")
     model = get_model(model_choice)
     system_prompt = get_prompt(prompt_info)
     logger.info(f"Model instantiated: {model}, system_prompt: {system_prompt}")
     
-    # Format the prompt using format_prompt function
-    formatted_prompt = format_prompt(system_prompt, message, prompt_info)
-    
     if stream:
-        result = [chunk async for chunk in model.prompt(formatted_prompt, system_prompt, stream=True)]
+        result = []
+        async for chunk in model.prompt(formatted_prompt, system_prompt, stream=True):
+            result.append(chunk)
+        return result
     else:
-        result = [chunk async for chunk in model.prompt(formatted_prompt, system_prompt, stream=False)]
-    return result
+        result = await model.prompt(formatted_prompt, system_prompt, stream=False)
+        if isinstance(result, str):
+            return [result]
+        else:
+            return result
 
 async def process_image(image: Image.Image, question: str, model_choice: str, stream: bool = False):
     logger.info(f"Process image called with question: {question}, model_choice: {model_choice}")
@@ -82,11 +94,16 @@ def chat_wrapper(message, history, model_choice, history_flag):
         return ''.join(result)
     return asyncio.run(run())
 
-def prompt_wrapper(message, history, model_choice, prompt_info):
-    async def run():
-        result = await prompt(message, history, model_choice, prompt_info, stream=True)
-        return ''.join(result)
-    return asyncio.run(run())
+async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str):
+    config = load_config()
+    system_prompt = get_system_prompt(language_choice, config)
+    prompt_template = format_prompt(system_prompt, message, prompt_info)
+    model = get_model(model_choice)
+    model_runnable = OllamaRunnable(model)
+
+    chain = prompt_template | model_runnable
+    result = await chain.arun({"user_message": message, "system_prompt": system_prompt, "prompt_info": prompt_info})
+    return ''.join(result)
 
 def process_image_wrapper(message, history, image, model_choice, history_flag):
     if not image:
@@ -129,12 +146,12 @@ with gr.Blocks() as demo:
         with gr.Tab("Chat"):
             with gr.Row():
                 with gr.Column(scale=1):
-                    chat_history_flag = gr.Checkbox(label="Include conversation history", value=True)
                     model_choice = gr.Dropdown(
                         ["Ollama (LLama3.1)", "Ollama (Deepseek-coder-v2)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
                         label="Choose Model",
                         value="Ollama (LLama3.1)"
                     )
+                    history_flag = gr.Checkbox(label="Include conversation history", value=True)
                 with gr.Column(scale=4):
                     chat_bot = gr.Chatbot(height=600, show_copy_button=True)
                     chat_text_box = gr.Textbox(label="Chat input", placeholder="Type your message here...")
@@ -142,7 +159,7 @@ with gr.Blocks() as demo:
                         fn=chat_wrapper,
                         chatbot=chat_bot,
                         textbox=chat_text_box,
-                        additional_inputs=[model_choice, chat_history_flag],
+                        additional_inputs=[model_choice, history_flag],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",
                         undo_btn="↩️ Undo",
@@ -162,7 +179,7 @@ with gr.Blocks() as demo:
                         label="Choose Language",
                         value="english"
                     )
-                    prompt_info = gr.Dropdown(choices=get_prompt_list("english"), label="Prompt Selection", interactive=True)
+                    prompt_info = gr.Dropdown(choices=get_prompt_list(language_choice.value), label="Prompt Selection", interactive=True)
                     history_flag_prompt = gr.Checkbox(label="Include conversation history", value=True)
 
                 with gr.Column(scale=4):
@@ -172,7 +189,7 @@ with gr.Blocks() as demo:
                         fn=prompt_wrapper,
                         chatbot=prompt_chat_bot,
                         textbox=prompt_text_box,
-                        additional_inputs=[model_choice, prompt_info],
+                        additional_inputs=[model_choice, prompt_info, language_choice],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",
                         undo_btn="↩️ Undo",
@@ -188,7 +205,7 @@ with gr.Blocks() as demo:
                         label="Choose Model",
                         value="Ollama (LLaVA)"
                     )
-                    history_flag_vision = gr.Checkbox(label="Include conversation history", value=True)
+                    history_flag = gr.Checkbox(label="Include conversation history", value=True)
 
                 with gr.Column(scale=4):
                     vision_chatbot = gr.Chatbot(height=600, show_copy_button=True)
@@ -197,7 +214,7 @@ with gr.Blocks() as demo:
                         fn=process_image_wrapper,
                         chatbot=vision_chatbot,
                         textbox=vision_question_input,
-                        additional_inputs=[image_input, model_choice, history_flag_vision],
+                        additional_inputs=[image_input, model_choice, history_flag],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",
                         undo_btn="↩️ Undo",

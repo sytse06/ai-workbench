@@ -1,5 +1,7 @@
 from ..base import BaseAIModel, Message
+from ..utils import format_prompt
 from typing import List, AsyncGenerator, Union, Any, Tuple
+from langchain_core.runnables import Runnable
 from langchain_community.chat_models import ChatOllama
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from PIL import Image
@@ -7,7 +9,6 @@ from io import BytesIO
 import base64
 import logging
 from pydantic import Field, BaseModel, ConfigDict
-from ..utils import format_prompt
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -89,3 +90,14 @@ class OllamaModel(BaseAIModel):
             formatted_history.append(HumanMessage(content=user_msg))
             formatted_history.append(AIMessage(content=ai_msg))
         return formatted_history
+
+class OllamaRunnable(Runnable):
+    def __init__(self, model: OllamaModel):
+        self.model = model
+
+    async def arun(self, messages: List[Union[HumanMessage, AIMessage, SystemMessage]]) -> AsyncGenerator[str, None]:
+        if isinstance(messages, list) and all(isinstance(msg, (HumanMessage, AIMessage, SystemMessage)) for msg in messages):
+            async for chunk in self.model.chat(messages[0].content, []):
+                yield chunk
+        else:
+            raise ValueError("Input to `arun` must be a list of HumanMessage, AIMessage, or SystemMessage instances.")
