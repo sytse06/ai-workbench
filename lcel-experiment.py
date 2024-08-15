@@ -26,27 +26,31 @@ class OllamaModel(BaseModel):
         # Initialize the ChatOllama model using the langchain_community package
         self.chat_model = ChatOllama(
             model=self.ollama_model_name,  # model_name is passed to ChatOllama
-            base_url=self.base_url   # base_url for the API
-        )
+            base_url=self.base_url,   # base_url for the API
+            verbose=True
+            )
 
-    def __call__(self, inputs: dict):
-        messages = [
-            SystemMessage(content=inputs["system_prompt"]),
-            HumanMessage(content=inputs["human_message"])
-        ]
+    def __invoke__(self, inputs: dict):
+        # Debugging: Log the inputs received
+        print("Debug - Inputs received in __call__:", inputs)
+        
+        messages = inputs.get("messages", [])
+        
         # Add chat history if available
         if "history" in inputs and inputs["history"]:
-            for human, ai in inputs["history"]:
-                messages.append(HumanMessage(content=human))
-                messages.append(AIMessage(content=ai))
-        # Add prompt_info if available
-        if "prompt_info" in inputs and inputs["prompt_info"]:
-            messages.append(HumanMessage(content=inputs["prompt_info"]))
-        
-        # Use the model to generate a response
-        response = self.chat_model(messages)
-        return response.content  # Assuming response has a 'content' field
+            for entry in inputs["history"]:
+                # Check the structure of the history entry
+                if isinstance(entry, (list, tuple)) and len(entry) == 2:
+                    human, ai = entry
+                    messages.append(HumanMessage(content=human))
+                    messages.append(AIMessage(content=ai))
+                else:
+                    print("Unexpected history entry format:", entry)
 
+        # Use the chat_model to generate a response
+        response = self.chat_model(messages)
+        return response.content
+    
     def as_runnable(self):
         return RunnableParallel(
             {
@@ -149,7 +153,6 @@ async def prompt(formatted_prompt: str, history: List[tuple[str, str]], model_ch
 
 async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool):
     config = load_config()
-    system_prompt = get_system_prompt(language_choice, config)
     prompt_template = get_prompt_template(prompt_info, config)
 
     # Get the appropriate model using the get_model function
@@ -161,18 +164,26 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
     # Create the retrieval chain
     retrieval = RunnableParallel(
         {
-            "user_message": RunnablePassthrough(),
-            "system_prompt": lambda _: system_prompt,
-            "prompt_info": lambda _: prompt_info,
+            "messages": lambda user_message: prompt_template.format_messages(
+                prompt_info=prompt_info,
+                user_message=user_message
+            ),
             "history": lambda _: history if history_flag else []
         }
     )
 
     # Create the full chain
-    chain = retrieval | prompt_template | model_runnable | StrOutputParser()
+    chain = retrieval | model_runnable | StrOutputParser()
+    
+        # Debugging: Inspect what the retrieval chain outputs
+    inputs = {
+        "messages": prompt_template.format_messages(prompt_info=prompt_info, user_message=message),
+        "history": history if history_flag else []
+    }
+    print("Debug Input before invoking the chain:", inputs)
 
     # Run the chain
-    result = await chain.ainvoke(message)
+    result = await chain.ainvoke(inputs)
     return result
 
 def clear_chat():
