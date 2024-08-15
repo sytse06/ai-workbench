@@ -3,8 +3,13 @@ import os
 import logging
 from PIL import Image
 import gradio as gr
-from typing import List, Union, Any
+from typing import List, Optional, Any, Dict
 from langchain_community.chat_models import ChatOllama
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_community.llms.ollama import _OllamaCommon
+from langchain_core.callbacks import CallbackManagerForLLMRun, AsyncCallbackManagerForLLMRun
+from langchain_core.outputs import ChatResult
+from langchain_core.messages import BaseMessage
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
@@ -14,53 +19,89 @@ from pydantic import Field, BaseModel, ConfigDict
 # Set up logging
 logger = logging.getLogger(__name__)
 
-class OllamaModel(BaseModel):
+class OllamaModelConfig(BaseModel):
     base_url: str = Field(default="http://localhost:11434")
     ollama_model_name: str = Field(...)
     chat_model: ChatOllama = Field(default=None)
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = {
+        "arbitrary_types_allowed": True
+    }
     
-    def __init__(self, **data):
-        super().__init__(**data)
-        # Initialize the ChatOllama model using the langchain_community package
-        self.chat_model = ChatOllama(
-            model=self.ollama_model_name,  # model_name is passed to ChatOllama
-            base_url=self.base_url,   # base_url for the API
+class OllamaModel(BaseChatModel):
+    config: OllamaModelConfig
+    chat_model: ChatOllama
+    
+    def __init__(self, **kwargs):
+        config = OllamaModelConfig(**kwargs)
+        chat_model = ChatOllama(
+            model=config.ollama_model_name,
+            base_url=config.base_url,
             verbose=True
-            )
+        )
+        super().__init__(config=config, chat_model=chat_model)
 
-    def __invoke__(self, inputs: dict):
-        # Debugging: Log the inputs received
-        print("Debug - Inputs received in __call__:", inputs)
+    def _generate(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any
+    ) -> ChatResult:
+        # Incorporate the logic from your __invoke__ method
+        print("Debug - Messages received in _generate:", messages)
         
-        messages = inputs.get("messages", [])
-        
-        # Add chat history if available
-        if "history" in inputs and inputs["history"]:
-            for entry in inputs["history"]:
-                # Check the structure of the history entry
+        history_messages = []
+        if "history" in kwargs and kwargs["history"]:
+            for entry in kwargs["history"]:
                 if isinstance(entry, (list, tuple)) and len(entry) == 2:
                     human, ai = entry
-                    messages.append(HumanMessage(content=human))
-                    messages.append(AIMessage(content=ai))
+                    history_messages.append(HumanMessage(content=human))
+                    history_messages.append(AIMessage(content=ai))
                 else:
                     print("Unexpected history entry format:", entry)
 
-        # Use the chat_model to generate a response
-        response = self.chat_model(messages)
-        return response.content
-    
-    def as_runnable(self):
-        return RunnableParallel(
-            {
-                "system_prompt": RunnablePassthrough(),
-                "human_message": RunnablePassthrough(),
-                "history": RunnablePassthrough(),
-                "prompt_info": RunnablePassthrough()
-            }
-        ) | self
+        all_messages = messages + history_messages
+        response = self.chat_model.generate([all_messages], stop=stop, run_manager=run_manager)
+        
+        # Convert the response to ChatResult format
+        return ChatResult(generations=[
+            ChatGeneration(message=gen.message, generation_info=gen.generation_info)
+            for gen in response.generations[0]
+        ])
 
+    async def _agenerate(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
+        **kwargs: Any
+    ) -> ChatResult:
+        # Similar logic to _generate, but asynchronous
+        print("Debug - Messages received in _agenerate:", messages)
+        
+        history_messages = []
+        if "history" in kwargs and kwargs["history"]:
+            for entry in kwargs["history"]:
+                if isinstance(entry, (list, tuple)) and len(entry) == 2:
+                    human, ai = entry
+                    history_messages.append(HumanMessage(content=human))
+                    history_messages.append(AIMessage(content=ai))
+                else:
+                    print("Unexpected history entry format:", entry)
+
+        all_messages = messages + history_messages
+        response = await self.chat_model.agenerate([all_messages], stop=stop, run_manager=run_manager)
+        
+        return ChatResult(generations=[
+            ChatGeneration(message=gen.message, generation_info=gen.generation_info)
+            for gen in response.generations[0]
+        ])
+
+    @property
+    def _llm_type(self) -> str:
+        return "ollama-chat"
+    
 def get_model(choice: str, **kwargs):
     if choice == "Ollama (LLama3.1)":
         return OllamaModel(ollama_model_name="llama3.1", **kwargs)
@@ -134,22 +175,24 @@ def update_prompt_list(language: str):
 
 # Define comms functions
 async def prompt(formatted_prompt: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, stream: bool = False):
-    logger.info(f"Formatting prompt with system_prompt: {system_prompt}, user_message: {user_message}, prompt_info: {prompt_info}")
+    logger.info(f"Formatting prompt with prompt_info: {prompt_info}")
     model = get_model(model_choice)
     system_prompt = get_prompt(prompt_info)
     logger.info(f"Model instantiated: {model}, system_prompt: {system_prompt}")
     
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=formatted_prompt)
+    ]
+    
     if stream:
         result = []
-        async for chunk in model.prompt(formatted_prompt, system_prompt, stream=True):
-            result.append(chunk)
+        async for chunk in model.astream(messages, history=history):
+            result.append(chunk.content)
         return result
     else:
-        result = await model.prompt(formatted_prompt, system_prompt, stream=False)
-        if isinstance(result, str):
-            return [result]
-        else:
-            return result
+        result = await model.agenerate([messages], history=history)
+        return [result.generations[0][0].message.content]
 
 async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool):
     config = load_config()
@@ -157,9 +200,6 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
 
     # Get the appropriate model using the get_model function
     model = get_model(model_choice)
-
-    # Create the ModelRunnable instance
-    model_runnable = model.as_runnable()
 
     # Create the retrieval chain
     retrieval = RunnableParallel(
@@ -171,15 +211,19 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
             "history": lambda _: history if history_flag else []
         }
     )
+    # Create a function to convert the retrieval output to the correct format
+    def format_chat_input(retrieval_output):
+        messages = retrieval_output["messages"]
+        if history_flag:
+            for human, ai in retrieval_output["history"]:
+                messages.extend([HumanMessage(content=human), AIMessage(content=ai)])
+        return messages
 
     # Create the full chain
-    chain = retrieval | model_runnable | StrOutputParser()
+    chain = retrieval | model | StrOutputParser()
     
-        # Debugging: Inspect what the retrieval chain outputs
-    inputs = {
-        "messages": prompt_template.format_messages(prompt_info=prompt_info, user_message=message),
-        "history": history if history_flag else []
-    }
+    # Debugging: Inspect what the retrieval chain outputs
+    inputs = message
     print("Debug Input before invoking the chain:", inputs)
 
     # Run the chain
