@@ -15,16 +15,17 @@ from pydantic import Field, BaseModel, ConfigDict
 logger = logging.getLogger(__name__)
 
 class OllamaModel(BaseModel):
-    base_url: str = "http://localhost:11434"
-    model: ChatOllama = None
+    base_url: str = Field(default="http://localhost:11434")
+    ollama_model_name: str = Field(...)
+    chat_model: ChatOllama = Field(default=None)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
+    
     def __init__(self, **data):
         super().__init__(**data)
         # Initialize the ChatOllama model using the langchain_community package
-        self.model = ChatOllama(
-            model=self.model_name,  # model_name is passed to ChatOllama
+        self.chat_model = ChatOllama(
+            model=self.ollama_model_name,  # model_name is passed to ChatOllama
             base_url=self.base_url   # base_url for the API
         )
 
@@ -43,7 +44,7 @@ class OllamaModel(BaseModel):
             messages.append(HumanMessage(content=inputs["prompt_info"]))
         
         # Use the model to generate a response
-        response = self.model(messages)
+        response = self.chat_model(messages)
         return response.content  # Assuming response has a 'content' field
 
     def as_runnable(self):
@@ -58,7 +59,7 @@ class OllamaModel(BaseModel):
 
 def get_model(choice: str, **kwargs):
     if choice == "Ollama (LLama3.1)":
-        return OllamaModel(model_name="llama3.1", **kwargs)
+        return OllamaModel(ollama_model_name="llama3.1", **kwargs)
     # Add other model options here
     else:
         raise ValueError(f"Unsupported model choice: {choice}")
@@ -155,7 +156,7 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
     model = get_model(model_choice)
 
     # Create the ModelRunnable instance
-    model_runnable = ModelRunnable(model=model).as_runnable()
+    model_runnable = model.as_runnable()
 
     # Create the retrieval chain
     retrieval = RunnableParallel(
