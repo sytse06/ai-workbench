@@ -8,7 +8,7 @@ from langchain_community.chat_models import ChatOllama
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_community.llms.ollama import _OllamaCommon
 from langchain_core.callbacks import CallbackManagerForLLMRun, AsyncCallbackManagerForLLMRun
-from langchain_core.outputs import ChatResult
+from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.messages import BaseMessage
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
@@ -29,8 +29,8 @@ class OllamaModelConfig(BaseModel):
     }
     
 class OllamaModel(BaseChatModel):
-    config: OllamaModelConfig
-    chat_model: ChatOllama
+    config: OllamaModelConfig = Field(...)
+    chat_model: ChatOllama = Field(default=None)
     
     def __init__(self, **kwargs):
         config = OllamaModelConfig(**kwargs)
@@ -39,7 +39,9 @@ class OllamaModel(BaseChatModel):
             base_url=config.base_url,
             verbose=True
         )
-        super().__init__(config=config, chat_model=chat_model)
+        super().__init__()
+        self.config = config
+        self.chat_model = chat_model
 
     def _generate(
         self,
@@ -48,27 +50,7 @@ class OllamaModel(BaseChatModel):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any
     ) -> ChatResult:
-        # Incorporate the logic from your __invoke__ method
-        print("Debug - Messages received in _generate:", messages)
-        
-        history_messages = []
-        if "history" in kwargs and kwargs["history"]:
-            for entry in kwargs["history"]:
-                if isinstance(entry, (list, tuple)) and len(entry) == 2:
-                    human, ai = entry
-                    history_messages.append(HumanMessage(content=human))
-                    history_messages.append(AIMessage(content=ai))
-                else:
-                    print("Unexpected history entry format:", entry)
-
-        all_messages = messages + history_messages
-        response = self.chat_model.generate([all_messages], stop=stop, run_manager=run_manager)
-        
-        # Convert the response to ChatResult format
-        return ChatResult(generations=[
-            ChatGeneration(message=gen.message, generation_info=gen.generation_info)
-            for gen in response.generations[0]
-        ])
+        raise NotImplementedError("OllamaModel only supports async generation")
 
     async def _agenerate(
         self,
@@ -77,7 +59,6 @@ class OllamaModel(BaseChatModel):
         run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
         **kwargs: Any
     ) -> ChatResult:
-        # Similar logic to _generate, but asynchronous
         print("Debug - Messages received in _agenerate:", messages)
         
         history_messages = []
@@ -91,12 +72,26 @@ class OllamaModel(BaseChatModel):
                     print("Unexpected history entry format:", entry)
 
         all_messages = messages + history_messages
-        response = await self.chat_model.agenerate([all_messages], stop=stop, run_manager=run_manager)
         
-        return ChatResult(generations=[
-            ChatGeneration(message=gen.message, generation_info=gen.generation_info)
-            for gen in response.generations[0]
-        ])
+        # Use the chat_model directly
+        response = await self.chat_model.agenerate([all_messages], stop=stop)
+        
+        # Debug print to see the structure of the response
+        print("Debug - Response from chat_model:", response)
+        
+    # Convert the response to ChatResult format
+        if isinstance(response, ChatResult):
+            return response
+        elif isinstance(response, List):
+            # Assuming the first item in the list is the relevant generation
+            if response and isinstance(response[0], ChatGeneration):
+                return ChatResult(generations=[response[0]])
+            else:
+                # If it's not a ChatGeneration, create one
+                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=str(response[0])))])
+        else:
+            # If it's neither a ChatResult nor a List, create a ChatResult with the string representation
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=str(response)))])
 
     @property
     def _llm_type(self) -> str:
@@ -220,7 +215,7 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
         return messages
 
     # Create the full chain
-    chain = retrieval | model | StrOutputParser()
+    chain = retrieval | format_chat_input | model | StrOutputParser()
     
     # Debugging: Inspect what the retrieval chain outputs
     inputs = message
