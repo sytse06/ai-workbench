@@ -206,12 +206,15 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
             "history": lambda _: history if history_flag else []
         }
     )
-    # Create a function to convert the retrieval output to the correct format
+   # Create a function to format the retrieval output
     def format_chat_input(retrieval_output):
         messages = retrieval_output["messages"]
         if history_flag:
             for human, ai in retrieval_output["history"]:
-                messages.extend([HumanMessage(content=human), AIMessage(content=ai)])
+                messages.extend([
+                    HumanMessage(content=f"Human: {human.strip()}"), 
+                    AIMessage(content=f"AI: {ai.strip()}")
+                ])
         return messages
 
     # Create the full chain
@@ -259,6 +262,7 @@ with gr.Blocks() as demo:
                     retry_btn="🔄 Retry",
                     undo_btn="↩️ Undo",
                     clear_btn="🗑️ Clear",
+                    show_progress=True,
                 )
                     
     language_choice.change(fn=update_prompt_list, inputs=[language_choice], outputs=[prompt_info])
