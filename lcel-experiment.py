@@ -18,88 +18,13 @@ from pydantic import Field, BaseModel, ConfigDict
 
 # Set up logging
 logger = logging.getLogger(__name__)
-
-class OllamaModelConfig(BaseModel):
-    base_url: str = Field(default="http://localhost:11434")
-    ollama_model_name: str = Field(...)
-    chat_model: ChatOllama = Field(default=None)
-
-    model_config = {
-        "arbitrary_types_allowed": True
-    }
-    
-class OllamaModel(BaseChatModel):
-    config: OllamaModelConfig = Field(...)
-    chat_model: ChatOllama = Field(default=None)
-    
-    def __init__(self, **kwargs):
-        config = OllamaModelConfig(**kwargs)
-        chat_model = ChatOllama(
-            model=config.ollama_model_name,
-            base_url=config.base_url,
-            verbose=True
-        )
-        super().__init__()
-        self.config = config
-        self.chat_model = chat_model
-
-    def _generate(
-        self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any
-    ) -> ChatResult:
-        raise NotImplementedError("OllamaModel only supports async generation")
-
-    async def _agenerate(
-        self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
-        **kwargs: Any
-    ) -> ChatResult:
-        print("Debug - Messages received in _agenerate:", messages)
-        
-        history_messages = []
-        if "history" in kwargs and kwargs["history"]:
-            for entry in kwargs["history"]:
-                if isinstance(entry, (list, tuple)) and len(entry) == 2:
-                    human, ai = entry
-                    history_messages.append(HumanMessage(content=human))
-                    history_messages.append(AIMessage(content=ai))
-                else:
-                    print("Unexpected history entry format:", entry)
-
-        all_messages = messages + history_messages
-        
-        # Use the chat_model directly
-        response = await self.chat_model.agenerate([all_messages], stop=stop)
-        
-        # Debug print to see the structure of the response
-        print("Debug - Response from chat_model:", response)
-        
-    # Convert the response to ChatResult format
-        if isinstance(response, ChatResult):
-            return response
-        elif isinstance(response, List):
-            # Assuming the first item in the list is the relevant generation
-            if response and isinstance(response[0], ChatGeneration):
-                return ChatResult(generations=[response[0]])
-            else:
-                # If it's not a ChatGeneration, create one
-                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=str(response[0])))])
-        else:
-            # If it's neither a ChatResult nor a List, create a ChatResult with the string representation
-            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=str(response)))])
-
-    @property
-    def _llm_type(self) -> str:
-        return "ollama-chat"
     
 def get_model(choice: str, **kwargs):
     if choice == "Ollama (LLama3.1)":
-        return OllamaModel(ollama_model_name="llama3.1", **kwargs)
+        return ChatOllama(
+            model="llama3.1",
+            base_url="http://localhost:11434",
+            verbose=True)
     # Add other model options here
     else:
         raise ValueError(f"Unsupported model choice: {choice}")
@@ -206,27 +131,33 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
             "history": lambda _: history if history_flag else []
         }
     )
-   # Create a function to format the retrieval output
+
+    # Create a function to format the retrieval output
     def format_chat_input(retrieval_output):
         messages = retrieval_output["messages"]
         if history_flag:
             for human, ai in retrieval_output["history"]:
                 messages.extend([
-                    HumanMessage(content=f"Human: {human.strip()}"), 
+                    HumanMessage(content=f"Human: {human.strip()}"),
                     AIMessage(content=f"AI: {ai.strip()}")
                 ])
         return messages
 
     # Create the full chain
     chain = retrieval | format_chat_input | model | StrOutputParser()
-    
-    # Debugging: Inspect what the retrieval chain outputs
-    inputs = message
-    print("Debug Input before invoking the chain:", inputs)
 
-    # Run the chain
-    result = await chain.ainvoke(inputs)
-    return result
+    # Run the chain and get the ChatResult
+    result = await chain.ainvoke(message)
+
+        # Extract and return the chatbot's response
+    if isinstance(result, ChatResult):
+        response = result.generations[0].message.content
+    elif isinstance(result, list) and result:
+        response = "\n".join(result)
+    else:
+        response = str(result)
+
+    return response
 
 def clear_chat():
     return None
