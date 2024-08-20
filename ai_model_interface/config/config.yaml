@@ -26,7 +26,13 @@ prompts:
       5. Propose a testing strategy to validate the improved code.
 
       Focus on [specific aspect or functionality] and consider [any limitations or requirements].
-    
+
+    Text Analysis Assistant: |      
+      Reply to the user message by concentrating on the following context only.
+      The provided text input is: {text_input} or,
+      The contents of the uploaded file are: {file_input}
+      Please provide a response based on this context information explicitly.    
+
     Transcribe Assistant: |
       Analyze the uploaded image (original filename: {input_file_name}) and provide the following information in Markdown format:
       
@@ -71,7 +77,7 @@ prompts:
       Analyseer [concept X] in deze tekst, en beschrijf hoe het resoneert met [specifieke doelgroep]. Denk stap voor stap.
       
     Constrained Content Generator: |
-      Schrijf 3 nieuwe versies van de inleiding, rekening houdend met [recente markttrend]. Volg deze constraints: [lijst].
+      Schrijf 3 nieuwe versies van de {text_input}, rekening houdend met [recente markttrend]. Volg deze constraints: [lijst].
       
     Step-by-Step Evaluator: |
       Evalueer deze opzet op conversiekracht voor [doelgroep]. Wat werkt goed en wat kan beter? Analyseer per onderdeel.

@@ -72,7 +72,7 @@ def get_prompt_template(prompt_info: str, config: dict) -> ChatPromptTemplate:
     
     return ChatPromptTemplate.from_messages([
         ("system", system_prompt),
-        ("human", "{prompt_info}\n\n{user_message}")
+        ("human", "{prompt_info}\n\n{user_message}\n\nText input: {text_input}\nImage input: {file_input}")
     ])
 
 def get_system_prompt(language_choice: str, config: dict) -> str:
@@ -114,7 +114,7 @@ async def prompt(formatted_prompt: str, history: List[tuple[str, str]], model_ch
         result = await model.agenerate([messages], history=history)
         return [result.generations[0][0].message.content]
 
-async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool):
+async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool, text_input: str = "", file_input: str = ""):
     config = load_config()
     prompt_template = get_prompt_template(prompt_info, config)
 
@@ -126,7 +126,9 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
         {
             "messages": lambda user_message: prompt_template.format_messages(
                 prompt_info=prompt_info,
-                user_message=user_message
+                user_message=user_message,
+                text_input=text_input,
+                file_input=file_input
             ),
             "history": lambda _: history if history_flag else []
         }
@@ -149,7 +151,7 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
     # Run the chain and get the ChatResult
     result = await chain.ainvoke(message)
 
-        # Extract and return the chatbot's response
+    # Extract and return the chatbot's response
     if isinstance(result, ChatResult):
         response = result.generations[0].message.content
     elif isinstance(result, list) and result:
@@ -180,7 +182,9 @@ with gr.Blocks() as demo:
                 )
                 prompt_info = gr.Dropdown(choices=get_prompt_list(language_choice.value), label="Prompt Template", interactive=True)
                 history_flag = gr.Checkbox(label="Include conversation history", value=True)
-
+                prompt_file = gr.File(label="Upload file", file_count="single", type="filepath")
+                prompt_text = gr.Textbox(lines=10, label="Prompt context")
+                
             with gr.Column(scale=4):
                 prompt_chat_bot = gr.Chatbot(height=600, show_copy_button=True)
                 prompt_text_box = gr.Textbox(label="Prompt input", placeholder="Type your question here...")
