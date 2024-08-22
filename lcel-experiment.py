@@ -144,7 +144,7 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
         return messages
 
     # Create the full chain
-    chain = retrieval | format_chat_input | model | StrOutputParser()
+    chain = (retrieval | format_chat_input | model | StrOutputParser())
 
     # Run the chain and get the ChatResult
     result = await chain.ainvoke(message)
