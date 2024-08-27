@@ -16,8 +16,9 @@ from langchain_community.chat_models import ChatOllama
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable
-from ai_model_interface.config.credentials import get_api_key
-from ai_model_interface import get_model, load_credentials, format_prompt, OllamaRunnable
+from ai_model_interface.config.credentials import get_api_key, load_credentials
+from ai_model_interface.config.settings import load_config, get_directory, get_prompt, get_prompt_list, update_prompt_list
+from ai_model_interface import get_model, format_prompt
 
 print(sys.path)
 
@@ -50,11 +51,18 @@ async def chat(message: str, history: List[tuple[str, str]], model_choice: str, 
     logger.info(f"Chat function called with message: {message}, history_flag: {history_flag}, model_choice: {model_choice}")
     model = get_model(model_choice)
     logger.info(f"Model instantiated: {model}")
+    
+    messages = []
+    if history_flag:
+        for human, ai in history:
+            messages.append(HumanMessage(content=human))
+            messages.append(AIMessage(content=ai))
+    messages.append(HumanMessage(content=message))
+    
     if stream:
-        result = [chunk async for chunk in model.chat(message, history if history_flag else [], stream=True)]
+        return model.stream(messages)
     else:
-        result = [chunk async for chunk in model.chat(message, history if history_flag else [], stream=False)]
-    return result
+        return await model.agenerate([messages])
 
 async def prompt(formatted_prompt: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, stream: bool = False):
     logger.info(f"Formatting prompt with system_prompt: {system_prompt}, user_message: {user_message}, prompt_info: {prompt_info}")
