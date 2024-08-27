@@ -7,11 +7,11 @@ from langchain.prompts import PromptTemplate
 
 def get_model(choice: str, **kwargs):
     if choice == "Ollama (LLama3.1)":
-        return ChatOllama(model_name="llama3.1", **kwargs)
+        return ChatOllama(base_url="http://localhost:11434", model_name="llama3.1", **kwargs)
     elif choice == "Ollama (LLaVA)":
-        return ChatOllama(model_name="llava", **kwargs)
+        return ChatOllama(base_url="http://localhost:11434", model_name="llava", **kwargs)
     elif choice == "Ollama (Deepseek-coder-v2)":
-        return ChatOllama(model_name="deepseek-coder-v2", **kwargs)
+        return ChatOllama(base_url="http://localhost:11434", model_name="deepseek-coder-v2", **kwargs)
     elif choice == "OpenAI GPT-4o-mini":
         api_key = get_api_key('openai')
         return ChatOpenAI(model_name="gpt-4o-mini", api_key=api_key, **kwargs)
