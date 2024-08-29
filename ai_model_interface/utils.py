@@ -1,14 +1,18 @@
 # ai_model_interface/utils.py
 from langchain.prompts import ChatPromptTemplate
 
-def format_prompt(system_prompt: str, user_message: str, prompt_info: str) -> ChatPromptTemplate:
+def get_prompt_template(prompt_info: str, config: dict) -> ChatPromptTemplate:
     """
-    Formats the prompt using Langchain's PromptTemplate.
+    Creates a ChatPromptTemplate using the prompt_info and config.
 
-    :param system_prompt: The system message
-    :param user_message: The user's message
-    :param prompt_info: Additional prompt information
-    :return: Formatted prompt string
+    :param prompt_info: The prompt info selected by the user
+    :param config: The loaded configuration
+    :return: ChatPromptTemplate
     """
-    prompt_template = ChatPromptTemplate.from_template("{system_prompt}\n\n{prompt_info}\n\n{user_message}")
-    return prompt_template
+    system_prompt = config.get("system_prompt", "You are a helpful AI assistant.")
+    prompt_text = config['prompts'].get(prompt_info, "")
+    
+    return ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", "{prompt_info}\n\n{user_message}")
+    ])

@@ -14,11 +14,13 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatOllama
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from langchain.prompts import ChatPromptTemplate
+from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import Runnable
+from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthrough
 from ai_model_interface.config.credentials import get_api_key, load_credentials
 from ai_model_interface.config.settings import load_config, get_prompt_list, update_prompt_list
-from ai_model_interface import get_model, format_prompt
+from ai_model_interface import get_model, get_prompt_template
 
 print(sys.path)
 
@@ -67,7 +69,7 @@ async def chat(message: str, history: List[tuple[str, str]], model_choice: str, 
 async def prompt(formatted_prompt: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, stream: bool = False):
     logger.info(f"Formatting prompt with prompt_info: {prompt_info}")
     model = get_model(model_choice)
-    system_prompt = get_prompt(prompt_info)
+    system_prompt = get_prompt_list(prompt_info)
     logger.info(f"Model instantiated: {model}, system_prompt: {system_prompt}")
     
     messages = [
@@ -106,7 +108,7 @@ def chat_wrapper(message, history, model_choice, history_flag):
 
 async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool):
     config = load_config()
-    prompt_template = get_prompt_template(prompt_info, config)
+    prompt_template = get_system_prompt(prompt_info, config)
 
     # Get the appropriate model using the get_model function
     model = get_model(model_choice)
