@@ -17,7 +17,7 @@ from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable
 from ai_model_interface.config.credentials import get_api_key, load_credentials
-from ai_model_interface.config.settings import load_config, get_directory, get_prompt, get_prompt_list, update_prompt_list
+from ai_model_interface.config.settings import load_config, get_prompt_list, update_prompt_list
 from ai_model_interface import get_model, format_prompt
 
 print(sys.path)
@@ -65,22 +65,24 @@ async def chat(message: str, history: List[tuple[str, str]], model_choice: str, 
         return await model.agenerate([messages])
 
 async def prompt(formatted_prompt: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, stream: bool = False):
-    logger.info(f"Formatting prompt with system_prompt: {system_prompt}, user_message: {user_message}, prompt_info: {prompt_info}")
+    logger.info(f"Formatting prompt with prompt_info: {prompt_info}")
     model = get_model(model_choice)
     system_prompt = get_prompt(prompt_info)
     logger.info(f"Model instantiated: {model}, system_prompt: {system_prompt}")
     
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=formatted_prompt)
+    ]
+    
     if stream:
         result = []
-        async for chunk in model.prompt(formatted_prompt, system_prompt, stream=True):
-            result.append(chunk)
+        async for chunk in model.astream(messages, history=history):
+            result.append(chunk.content)
         return result
     else:
-        result = await model.prompt(formatted_prompt, system_prompt, stream=False)
-        if isinstance(result, str):
-            return [result]
-        else:
-            return result
+        result = await model.agenerate([messages], history=history)
+        return [result.generations[0][0].message.content]
 
 async def process_image(image: Image.Image, question: str, model_choice: str, stream: bool = False):
     logger.info(f"Process image called with question: {question}, model_choice: {model_choice}")
@@ -102,16 +104,50 @@ def chat_wrapper(message, history, model_choice, history_flag):
         return ''.join(result)
     return asyncio.run(run())
 
-async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str):
+async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool):
     config = load_config()
-    system_prompt = get_system_prompt(language_choice, config)
-    prompt_template = format_prompt(system_prompt, message, prompt_info)
-    model = get_model(model_choice)
-    model_runnable = OllamaRunnable(model)
+    prompt_template = get_prompt_template(prompt_info, config)
 
-    chain = prompt_template | model_runnable
-    result = await chain.arun({"user_message": message, "system_prompt": system_prompt, "prompt_info": prompt_info})
-    return ''.join(result)
+    # Get the appropriate model using the get_model function
+    model = get_model(model_choice)
+
+    # Create the retrieval chain
+    retrieval = RunnableParallel(
+        {
+            "messages": lambda user_message: prompt_template.format_messages(
+                prompt_info=prompt_info,
+                user_message=user_message
+            ),
+            "history": lambda _: history if history_flag else []
+        }
+    )
+
+    # Create a function to format the retrieval output
+    def format_chat_input(retrieval_output):
+        messages = retrieval_output["messages"]
+        if history_flag:
+            for human, ai in retrieval_output["history"]:
+                messages.extend([
+                    HumanMessage(content=f"Human: {human.strip()}"),
+                    AIMessage(content=f"AI: {ai.strip()}")
+                ])
+        return messages
+
+    # Create the full chain
+    chain = (retrieval | format_chat_input | model | StrOutputParser())
+
+    # Run the chain and get the ChatResult
+    result = await chain.ainvoke(message)
+
+        # Extract and return the chatbot's response
+    if isinstance(result, ChatResult):
+        response = result.generations[0].message.content
+    elif isinstance(result, list) and result:
+        response = "\n".join(result)
+    else:
+        response = str(result)
+
+    return response
 
 def process_image_wrapper(message, history, image, model_choice, history_flag):
     if not image:
