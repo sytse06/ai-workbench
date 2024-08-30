@@ -100,11 +100,16 @@ async def process_image(image: Image.Image, question: str, model_choice: str, st
     return result
 
 # Wrapping async functions for Gradio
-def chat_wrapper(message, history, model_choice, history_flag):
+async def chat_wrapper(message, history, model_choice, history_flag):
     async def run():
-        result = await chat(message, history, model_choice, history_flag, stream=True)
-        return ''.join(result)
-    return asyncio.run(run())
+        try:
+            result = await chat(message, history, model_choice, history_flag, stream=True)
+            return ''.join([chunk.content async for chunk in result if hasattr(chunk, 'content')])
+        except Exception as e:
+            logger.error(f"Error in chat function: {str(e)}")
+            return f"An error occurred: {str(e)}"
+    
+    return await run()
 
 async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool):
     config = load_config()
