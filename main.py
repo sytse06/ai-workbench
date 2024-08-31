@@ -54,17 +54,14 @@ async def chat(message: str, history: List[tuple[str, str]], model_choice: str, 
     model = get_model(model_choice)
     logger.info(f"Model instantiated: {model}")
     
-    messages = []
-    if history_flag:
-        for human, ai in history:
-            messages.append(HumanMessage(content=human))
-            messages.append(AIMessage(content=ai))
+    messages = .self_format_history(history)
     messages.append(HumanMessage(content=message))
-    
-    if stream:
-        return model.stream(messages)
-    else:
-        return await model.agenerate([messages])
+        if stream:
+            async for chunk in self.model.astream(messages):
+                yield chunk.content
+        else:
+            response = await self.model.ainvoke(messages)
+            yield response.content
 
 async def prompt(formatted_prompt: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, stream: bool = False):
     logger.info(f"Formatting prompt with prompt_info: {prompt_info}")
