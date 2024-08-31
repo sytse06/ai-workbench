@@ -21,9 +21,10 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthrough
 from ai_model_interface.config.credentials import get_api_key, load_credentials
 from ai_model_interface.config.settings import load_config, get_prompt_list, update_prompt_list
-from ai_model_interface import get_model, get_prompt_template
+from ai_model_interface import get_model, get_prompt_template, get_system_prompt, format_history
+from ai_model_interface import VisionAssistant
 
-print(sys.path)
+#print(sys.path)
 
 # Set up logging to only show warnings and errors
 DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
@@ -42,13 +43,6 @@ def load_config() -> dict:
 
 load_credentials()
 config = load_config()
-
-def get_system_prompt(language_choice: str, config: dict) -> str:
-    try:
-        return config["system_prompt_settings"][language_choice]["system_prompt"]
-    except KeyError:
-        logger.error(f"System prompt not found for language: {language_choice}")
-        return "Default system prompt"
 
 async def chat(message: str, history: List[tuple[str, str]], model_choice: str, history_flag: bool, stream: bool = False):
     logger.info(f"Chat function called with message: {message}, history_flag: {history_flag}, model_choice: {model_choice}")

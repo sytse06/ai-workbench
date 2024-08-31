@@ -1,5 +1,14 @@
 # ai_model_interface/utils.py
 from langchain.prompts import ChatPromptTemplate
+from typing import List, Union, Any
+from langchain.schema import HumanMessage, AIMessage, SystemMessage
+
+def get_system_prompt(language_choice: str, config: dict) -> str:
+    try:
+        return config["system_prompt_settings"][language_choice]["system_prompt"]
+    except KeyError:
+        logger.error(f"System prompt not found for language: {language_choice}")
+        return "Default system prompt"
 
 def get_prompt_template(prompt_info: str, config: dict) -> ChatPromptTemplate:
     """
@@ -16,3 +25,10 @@ def get_prompt_template(prompt_info: str, config: dict) -> ChatPromptTemplate:
         ("system", system_prompt),
         ("human", "{prompt_info}\n\n{user_message}")
     ])
+
+def _format_history(self, history: List[tuple[str, str]]) -> List[Union[HumanMessage, AIMessage]]:
+    formatted_history = []
+    for user_msg, ai_msg in history:
+        formatted_history.append(HumanMessage(content=user_msg))
+        formatted_history.append(AIMessage(content=ai_msg))
+    return formatted_history

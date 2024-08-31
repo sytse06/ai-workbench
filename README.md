@@ -13,13 +13,14 @@ This project converts handwritten notes to digital text using LLaVA and Ollama.
 langchain working bench/
 ├── ai_model_interface/
 │   ├── __init__.py
-│   ├── base.py
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── ollama.py
-│   │   ├── openai.py
-│   │   └── anthropic.py
 │   ├── factory.py
+│   ├── utils.py
+│   ├── model_helpers/
+│   │   ├── __init__.py
+│   │   ├── chatbot.py
+│   │   ├── transcription_assistant.py
+│   │   ├── rag_assistant.py
+│   │   └── vision_assistant.py
 │   └── config/
 │       ├── __init__.py
 │       ├── credentials.py
@@ -33,8 +34,7 @@ langchain working bench/
 ### Component flow ai_model_interface
 Contents __init.py
 from .factory import get_model
-from .utils import format_prompt
-from .base import BaseAIModel
+from .utils import format_prompt, get_system_prompt, get_prompt_template, format_history
 from .config.credentials import load_credentials, get_api_key
 from .config.settings import load_config, get_directory, get_prompt, get_prompt_list, update_prompt_list
 ```
@@ -44,7 +44,7 @@ __init__.py
     ↓
 factory.py
     ↓
-ollama.py
+main.py
 ```
 
 ## Installation
