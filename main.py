@@ -14,6 +14,7 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatOllama
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import BaseMessage
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.output_parsers import StrOutputParser
@@ -54,14 +55,17 @@ async def chat(message: str, history: List[tuple[str, str]], model_choice: str, 
     model = get_model(model_choice)
     logger.info(f"Model instantiated: {model}")
     
-    messages = .self_format_history(history)
+    messages = []
+    if history_flag:
+        for human, ai in history:
+            messages.append(HumanMessage(content=human))
+            messages.append(AIMessage(content=ai))
     messages.append(HumanMessage(content=message))
-        if stream:
-            async for chunk in self.model.astream(messages):
-                yield chunk.content
-        else:
-            response = await self.model.ainvoke(messages)
-            yield response.content
+    
+    if stream:
+        return model.stream(messages)  # This returns a regular generator
+    else:
+        return await model.agenerate([messages])
 
 async def prompt(formatted_prompt: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, stream: bool = False):
     logger.info(f"Formatting prompt with prompt_info: {prompt_info}")
@@ -98,15 +102,21 @@ async def process_image(image: Image.Image, question: str, model_choice: str, st
 
 # Wrapping async functions for Gradio
 async def chat_wrapper(message, history, model_choice, history_flag):
-    async def run():
-        try:
-            result = await chat(message, history, model_choice, history_flag, stream=True)
-            return ''.join([chunk.content async for chunk in result if hasattr(chunk, 'content')])
-        except Exception as e:
-            logger.error(f"Error in chat function: {str(e)}")
-            return f"An error occurred: {str(e)}"
-    
-    return await run()
+    try:
+        result = await chat(message, history, model_choice, history_flag, stream=True)
+        
+        # Handle the regular generator in an asynchronous way
+        contents = []
+        for chunk in result:
+            if hasattr(chunk, 'content'):
+                contents.append(chunk.content)
+            # Yield control to allow other tasks to run
+            await asyncio.sleep(0)
+        
+        return ''.join(contents)
+    except Exception as e:
+        logger.error(f"Error in chat function: {str(e)}")
+        return f"An error occurred: {str(e)}"
 
 async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool):
     config = load_config()
@@ -167,7 +177,7 @@ def conversation_wrapper(user_input, model_choice, chat_history_flag):
     conversation_history = model_choice.get_conversation_history()
     
     if chat_history_flag.value:
-        formatted_history = model_choice._format_history(conversation_history)
+        formatted_history = model_choice._format_messages(conversation_history)
         
         copy_to_clipboard(formatted_history)
         
@@ -237,7 +247,7 @@ with gr.Blocks() as demo:
                         fn=prompt_wrapper,
                         chatbot=prompt_chat_bot,
                         textbox=prompt_text_box,
-                        additional_inputs=[model_choice, prompt_info, language_choice],
+                        additional_inputs=[model_choice, prompt_info, language_choice, history_flag],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",
                         undo_btn="↩️ Undo",
@@ -283,7 +293,7 @@ with gr.Blocks() as demo:
 
     copy_btn.click(
         fn=conversation_wrapper,
-        inputs=[model_choice],
+        inputs=[chat_text_box, model_choice, history_flag],
         outputs=[]
     )
 
