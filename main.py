@@ -84,12 +84,15 @@ async def process_image(image: Image.Image, question: str, model_choice: str, st
     if image is None:
         return "Please upload an image first."
     
-    model = get_model(model_choice)
-    logger.info(f"Model instantiated: {model}")
+    vision_assistant = VisionAssistant(model_choice)
+    logger.info(f"VisionAssistant instantiated with model_choice: {model_choice}")
+    
     if stream:
-        result = [chunk async for chunk in model.image_chat(image, question, stream=True)]
+        result = [chunk async for chunk in vision_assistant.image_chat(image, question, stream=True)]
     else:
-        result = [chunk async for chunk in model.image_chat(image, question, stream=False)]
+        result = await vision_assistant.image_chat(image, question, stream=False)
+        result = [result]  # Wrap single result in a list for consistency
+    
     return result
 
 # Wrapping async functions for Gradio
