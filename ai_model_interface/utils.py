@@ -2,6 +2,9 @@
 from langchain.prompts import ChatPromptTemplate
 from typing import List, Union, Any
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
+import logging
+
+logger = logging.getLogger(__name__)
 
 def get_system_prompt(language_choice: str, config: dict) -> str:
     try:

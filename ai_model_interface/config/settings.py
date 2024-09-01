@@ -48,4 +48,4 @@ def get_prompt_list(language: str) -> List[str]:
 # Function to update prompt list based on language choice
 def update_prompt_list(language: str):
     new_prompts = get_prompt_list(language)
-    return gr.Dropdown.update(choices=get_prompt_list(language))
+    return gr.Dropdown(choices=new_prompts)

@@ -20,7 +20,7 @@ from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthr
 from ai_model_interface.config.credentials import get_api_key, load_credentials
 from ai_model_interface.config.settings import load_config, get_prompt_list, update_prompt_list
 from ai_model_interface import get_model, get_prompt_template, get_system_prompt, _format_history
-from ai_model_interface import VisionAssistant
+from ai_model_interface import VisionAssistant, PromptAssistant
 
 #print(sys.path)
 
@@ -87,11 +87,9 @@ async def process_image(image: Image.Image, question: str, model_choice: str, st
     vision_assistant = VisionAssistant(model_choice)
     logger.info(f"VisionAssistant instantiated with model_choice: {model_choice}")
     
-    if stream:
-        result = [chunk async for chunk in vision_assistant.image_chat(image, question, stream=True)]
-    else:
-        result = await vision_assistant.image_chat(image, question, stream=False)
-        result = [result]  # Wrap single result in a list for consistency
+    result = []
+    async for chunk in vision_assistant.image_chat(image, question, stream=stream):
+        result.append(chunk)
     
     return result
 
