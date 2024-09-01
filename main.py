@@ -10,9 +10,7 @@ from PIL import Image
 import gradio as gr
 import asyncio
 from typing import List, Union, Any
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
-from langchain_community.chat_models import ChatOllama
+from langchain_community.chat_models import ChatAnthropic, ChatOllama, ChatOpenAI
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain_core.messages import BaseMessage
 from langchain.prompts import ChatPromptTemplate
@@ -21,7 +19,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthrough
 from ai_model_interface.config.credentials import get_api_key, load_credentials
 from ai_model_interface.config.settings import load_config, get_prompt_list, update_prompt_list
-from ai_model_interface import get_model, get_prompt_template, get_system_prompt, format_history
+from ai_model_interface import get_model, get_prompt_template, get_system_prompt, _format_history
 from ai_model_interface import VisionAssistant
 
 #print(sys.path)
