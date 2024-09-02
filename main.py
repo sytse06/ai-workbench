@@ -111,50 +111,35 @@ async def chat_wrapper(message, history, model_choice, history_flag):
         logger.error(f"Error in chat function: {str(e)}")
         return f"An error occurred: {str(e)}"
 
-async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool):
+async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool, stream: bool = False):
     config = load_config()
     prompt_template = get_prompt_template(prompt_info, config)
+    system_prompt = get_system_prompt(language_choice, config)
 
-    # Get the appropriate model using the get_model function
+    # Format the user message with the chosen prompt template
+    formatted_prompt = prompt_template.format(prompt_info=prompt_info, user_message=message)
+
+    # Handle the history if history_flag is enabled
+    messages = [SystemMessage(content=system_prompt)]
+    
+    if history_flag:
+        formatted_history = _format_history(history)
+        messages.extend(formatted_history)
+    
+    # Add the current formatted prompt
+    messages.append(HumanMessage(content=formatted_prompt))
+    
+    # Call the model with the full message history
     model = get_model(model_choice)
-
-    # Create the retrieval chain
-    retrieval = RunnableParallel(
-        {
-            "messages": lambda user_message: prompt_template.format_messages(
-                prompt_info=prompt_info,
-                user_message=user_message
-            ),
-            "history": lambda _: history if history_flag else []
-        }
-    )
-
-    # Create a function to format the retrieval output
-    def format_chat_input(retrieval_output):
-        messages = retrieval_output["messages"]
-        if history_flag:
-            for human, ai in retrieval_output["history"]:
-                messages.extend([
-                    HumanMessage(content=f"Human: {human.strip()}"),
-                    AIMessage(content=f"AI: {ai.strip()}")
-                ])
-        return messages
-
-    # Create the full chain
-    chain = (retrieval | format_chat_input | model | StrOutputParser())
-
-    # Run the chain and get the ChatResult
-    result = await chain.ainvoke(message)
-
-        # Extract and return the chatbot's response
-    if isinstance(result, ChatResult):
-        response = result.generations[0].message.content
-    elif isinstance(result, list) and result:
-        response = "\n".join(result)
+    
+    if stream:  # Add this check to handle streaming
+        result = []
+        async for chunk in model.astream(messages):
+            result.append(chunk.content)
+        return ''.join(result)  # Return the concatenated result
     else:
-        response = str(result)
-
-    return response
+        result = await model.agenerate([messages])
+        return result.generations[0][0].message.content
 
 def process_image_wrapper(message, history, image, model_choice, history_flag):
     if not image:

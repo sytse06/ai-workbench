@@ -29,7 +29,7 @@ def get_prompt_template(prompt_info: str, config: dict) -> ChatPromptTemplate:
         ("human", "{prompt_info}\n\n{user_message}")
     ])
 
-def _format_history(self, history: List[tuple[str, str]]) -> List[Union[HumanMessage, AIMessage]]:
+def _format_history(history: List[tuple[str, str]]) -> List[Union[HumanMessage, AIMessage]]:
     formatted_history = []
     for user_msg, ai_msg in history:
         formatted_history.append(HumanMessage(content=user_msg))
