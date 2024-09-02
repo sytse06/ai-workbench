@@ -1,7 +1,7 @@
 # ai_model_interface/utils.py
 from langchain.prompts import ChatPromptTemplate
 from typing import List, Union, Any
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
 import logging
 
 logger = logging.getLogger(__name__)
