@@ -113,7 +113,7 @@ async def chat_wrapper(message, history, model_choice, history_flag):
 
 async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool):
     config = load_config()
-    prompt_template = get_system_prompt(prompt_info, config)
+    prompt_template = get_prompt_template(prompt_info, config)
 
     # Get the appropriate model using the get_model function
     model = get_model(model_choice)
