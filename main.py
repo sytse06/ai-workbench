@@ -13,7 +13,7 @@ from typing import List, Union, Any
 from langchain_community.chat_models import ChatAnthropic, ChatOllama, ChatOpenAI
 from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
 from langchain_core.messages import BaseMessage
-from langchain.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthrough
@@ -59,26 +59,6 @@ async def chat(message: str, history: List[tuple[str, str]], model_choice: str, 
     else:
         return await model.agenerate([messages])
 
-async def prompt(formatted_prompt: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, stream: bool = False):
-    logger.info(f"Formatting prompt with prompt_info: {prompt_info}")
-    model = get_model(model_choice)
-    system_prompt = get_prompt_list(prompt_info)
-    logger.info(f"Model instantiated: {model}, system_prompt: {system_prompt}")
-    
-    messages = [
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=formatted_prompt)
-    ]
-    
-    if stream:
-        result = []
-        async for chunk in model.astream(messages, history=history):
-            result.append(chunk.content)
-        return result
-    else:
-        result = await model.agenerate([messages], history=history)
-        return [result.generations[0][0].message.content]
-
 async def process_image(image: Image.Image, question: str, model_choice: str, stream: bool = False):
     logger.info(f"Process image called with question: {question}, model_choice: {model_choice}")
     if image is None:
@@ -111,35 +91,18 @@ async def chat_wrapper(message, history, model_choice, history_flag):
         logger.error(f"Error in chat function: {str(e)}")
         return f"An error occurred: {str(e)}"
 
+# Initialize the PromptAssistant with a default model at the module level
+prompt_assistant = PromptAssistant("Ollama (LLama3.1)")
+
 async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool, stream: bool = False):
-    config = load_config()
-    prompt_template = get_prompt_template(prompt_info, config)
-    system_prompt = get_system_prompt(language_choice, config)
+    global prompt_assistant
+    
+    prompt_assistant.update_model(model_choice)
 
-    # Format the user message with the chosen prompt template
-    formatted_prompt = prompt_template.format(prompt_info=prompt_info, user_message=message)
-
-    # Handle the history if history_flag is enabled
-    messages = [SystemMessage(content=system_prompt)]
-    
-    if history_flag:
-        formatted_history = _format_history(history)
-        messages.extend(formatted_history)
-    
-    # Add the current formatted prompt
-    messages.append(HumanMessage(content=formatted_prompt))
-    
-    # Call the model with the full message history
-    model = get_model(model_choice)
-    
-    if stream:  # Add this check to handle streaming
-        result = []
-        async for chunk in model.astream(messages):
-            result.append(chunk.content)
-        return ''.join(result)  # Return the concatenated result
-    else:
-        result = await model.agenerate([messages])
-        return result.generations[0][0].message.content
+    result = []
+    async for chunk in prompt_assistant.prompt(message, history, prompt_info, language_choice, history_flag, stream):
+        result.append(chunk)
+        yield ''.join(result)
 
 def process_image_wrapper(message, history, image, model_choice, history_flag):
     if not image:

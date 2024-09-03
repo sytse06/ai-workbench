@@ -1,8 +1,9 @@
 # ai_model_interface/utils.py
-from langchain.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from typing import List, Union, Any
 from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
 import logging
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -35,3 +36,9 @@ def _format_history(history: List[tuple[str, str]]) -> List[Union[HumanMessage, 
         formatted_history.append(HumanMessage(content=user_msg))
         formatted_history.append(AIMessage(content=ai_msg))
     return formatted_history
+
+# Function to load config from a YAML file
+def load_config(file_path: str) -> dict:
+    with open(file_path, 'r') as file:
+        config = yaml.safe_load(file)
+    return config
