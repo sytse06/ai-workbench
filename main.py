@@ -206,7 +206,7 @@ with gr.Blocks() as demo:
             with gr.Row():
                 with gr.Column(scale=1):
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.1)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
+                        ["Ollama (LLama3.1)",  "Ollama (phi3.5)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
                         label="Choose Model",
                         value="Ollama (LLama3.1)"
                     )
@@ -237,7 +237,7 @@ with gr.Blocks() as demo:
                 with gr.Column(scale=1):
                     image_input = gr.Image(type="pil", label="Upload Image", image_mode="RGB")
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLaVA)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
+                        ["Ollama (LLaVA)", "OpenAI GPT-4o-mini"],
                         label="Choose Model",
                         value="Ollama (LLaVA)"
                     )
