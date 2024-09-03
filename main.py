@@ -20,7 +20,7 @@ from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthr
 from ai_model_interface.config.credentials import get_api_key, load_credentials
 from ai_model_interface.config.settings import load_config, get_prompt_list, update_prompt_list
 from ai_model_interface import get_model, get_prompt_template, get_system_prompt, _format_history
-from ai_model_interface import VisionAssistant, PromptAssistant 
+from ai_model_interface.model_helpers import ChatAssistant, PromptAssistant, VisionAssistant 
 
 #print(sys.path)
 
@@ -42,23 +42,6 @@ def load_config() -> dict:
 load_credentials()
 config = load_config()
 
-async def chat(message: str, history: List[tuple[str, str]], model_choice: str, history_flag: bool, stream: bool = False):
-    logger.info(f"Chat function called with message: {message}, history_flag: {history_flag}, model_choice: {model_choice}")
-    model = get_model(model_choice)
-    logger.info(f"Model instantiated: {model}")
-    
-    messages = []
-    if history_flag:
-        for human, ai in history:
-            messages.append(HumanMessage(content=human))
-            messages.append(AIMessage(content=ai))
-    messages.append(HumanMessage(content=message))
-    
-    if stream:
-        return model.stream(messages)  # This returns a regular generator
-    else:
-        return await model.agenerate([messages])
-
 async def process_image(image: Image.Image, question: str, model_choice: str, stream: bool = False):
     logger.info(f"Process image called with question: {question}, model_choice: {model_choice}")
     if image is None:
@@ -73,23 +56,23 @@ async def process_image(image: Image.Image, question: str, model_choice: str, st
     
     return result
 
-# Wrapping async functions for Gradio
+# Initialize the ChatAssistant with a default model at the module level
+chat_assistant = ChatAssistant("Ollama (LLama3.1)")
+
+# Replace the existing chat_wrapper function with this:
 async def chat_wrapper(message, history, model_choice, history_flag):
+    global chat_assistant
+    
+    chat_assistant.update_model(model_choice)
+
     try:
-        result = await chat(message, history, model_choice, history_flag, stream=True)
-        
-        # Handle the regular generator in an asynchronous way
-        contents = []
-        for chunk in result:
-            if hasattr(chunk, 'content'):
-                contents.append(chunk.content)
-            # Yield control to allow other tasks to run
-            await asyncio.sleep(0)
-        
-        return ''.join(contents)
+        result = []
+        async for chunk in chat_assistant.chat(message, history, history_flag, stream=True):
+            result.append(chunk)
+            yield ''.join(result)
     except Exception as e:
         logger.error(f"Error in chat function: {str(e)}")
-        return f"An error occurred: {str(e)}"
+        yield f"An error occurred: {str(e)}"
 
 # Initialize the PromptAssistant with a default model at the module level
 prompt_assistant = PromptAssistant("Ollama (LLama3.1)")
