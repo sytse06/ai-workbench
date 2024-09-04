@@ -2,10 +2,12 @@
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatOllama
-from ai_model_interface.config.credentials import get_api_key
+from ai_model_interface.config.credentials import get_api_key, load_credentials
 from langchain.prompts import PromptTemplate
 
 def get_model(choice: str, **kwargs):
+    load_credentials() 
+    
     if choice == "Ollama (LLama3.1)":
         return ChatOllama(
             model="llama3.1",

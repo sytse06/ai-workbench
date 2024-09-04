@@ -69,21 +69,28 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
     async for chunk in prompt_assistant.prompt(message, history, prompt_info, language_choice, history_flag, stream):
         result.append(chunk)
         yield ''.join(result)
-        
-# Initialize the ChatAssistant with a default model at the module level
-vision_assistant = VisionAssistant("Ollama (LLama3.1)")
 
-def process_image_wrapper(image, message: str, history: List[tuple[str, str]], model_choice: str,  history_flag: bool, stream: bool = False):
+# Initialize the VisionAssistant with a default model at the module level
+vision_assistant = VisionAssistant("Ollama (LLaVA)")
+
+async def process_image_wrapper(image: Union[str, Image.Image, bytes], message: str, history: List[tuple[str, str]], model_choice: str, history_flag: bool, stream: bool = False):
+    global vision_assistant 
+      
     if image is None:
-        return "Please upload an image first."
+        yield "Please upload an image first."
+        return
 
     vision_assistant.update_model(model_choice)
     
     result = []
-    async def run():
-        result = await process_image(image, message, model_choice, stream=True)
-        return ''.join(result)
-    return asyncio.run(run())
+    try:
+        async for chunk in vision_assistant.process_image(image, message, model_choice, stream=True):
+            result.append(chunk)
+            yield ''.join(result)
+    except Exception as e:
+        yield f"An error occurred: {str(e)}"
+        import traceback
+        print(traceback.format_exc())
 
 def conversation_wrapper(user_input, model_choice, chat_history_flag):
     # Get the conversation history and formatted history from your model instance
