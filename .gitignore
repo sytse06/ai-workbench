@@ -7,14 +7,13 @@
 !config.yaml
 !config-schema.json
 !README.md
-!notetaking_conversion/prompts.json
-!notetaking_conversion/
+!poetry.lock
 
 # Include all .py files
 !**/*.py
 
 # Include specific directories and their contents
-!ai_model_interface/
+!ai_model_core/
 !model_helpers/
 !config/
 !tests/
