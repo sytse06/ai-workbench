@@ -1,6 +1,6 @@
 # Langchain working bench project
 
-This project converts handwritten notes to digital text using LLaVA and Ollama.
+This Langchain based AI workbench enables users to interact with various language models (LLMs) through a user-friendly interface. Users can engage in real-time conversations, select from multiple models, and reuse prompts for efficient task completion, making it a versatile tool for both casual and professional use.
 
 ## Setup
 
@@ -11,15 +11,15 @@ This project converts handwritten notes to digital text using LLaVA and Ollama.
 ### Project structure:
 ```
 langchain working bench/
-├── ai_model_interface/
+├── ai_model_core/
 │   ├── __init__.py
 │   ├── factory.py
 │   ├── utils.py
 │   ├── model_helpers/
 │   │   ├── __init__.py
-│   │   ├── chatbot.py
-│   │   ├── transcription_assistant.py
-│   │   ├── rag_assistant.py
+│   │   ├── chat_assistant_.py
+│   │   ├── prompt_assistant.py
+│   │   ├── RAG_assistant.py
 │   │   └── vision_assistant.py
 │   └── config/
 │       ├── __init__.py
@@ -34,8 +34,8 @@ langchain working bench/
 ### Component flow ai_model_interface
 Contents __init.py
 from .factory import get_model
-from .utils import format_prompt, get_system_prompt, get_prompt_template, format_history
 from .config.credentials import load_credentials, get_api_key
+from .utils import format_prompt, get_system_prompt, get_prompt_template, format_history
 from .config.settings import load_config, get_directory, get_prompt, get_prompt_list, update_prompt_list
 ```
 utils.py
@@ -56,6 +56,6 @@ main.py
 
 - Activate the virtual environment: `poetry shell`
 - Copy/add the image files with the notes to the input directory.
-- Run the script: `python note_converter.py`
+- Run the script: `python main.py`
 
-The script will process all images in the input directory and save the results as markdown files in the output directory.
+The script will spin up a browser tab where the Gradio UI serves the available model assistants of the AI workbench.
