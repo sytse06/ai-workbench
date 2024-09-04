@@ -1,10 +1,10 @@
 system:
   directories:
-    input_directory: "/Users/sytsevanderschaaf/documents/dev/projects/notes_recognition/input"
-    output_directory: "/Users/sytsevanderschaaf/documents/dev/projects/notes_recognition/output"
-    test_directory: "/Users/sytsevanderschaaf/documents/dev/projects/notes_recognition/tests"
-    model_settings_directory: "/Users/sytsevanderschaaf/documents/projects/notes_recognition/ai_model_interface"
-    config_directory: "/Users/sytsevanderschaaf/documents/dev/projects/notes_recognition/ai_model_interface/config"
+    input_directory: "/Users/sytsevanderschaaf/documents/dev/projects/ai_workbench/input"
+    output_directory: "/Users/sytsevanderschaaf/documents/dev/projects/ai_workbench/output"
+    test_directory: "/Users/sytsevanderschaaf/documents/dev/projects/ai_workbench/tests"
+    model_settings_directory: "/Users/sytsevanderschaaf/documents/projects/ai_workbench/ai_model_core"
+    config_directory: "/Users/sytsevanderschaaf/documents/dev/projects/ai_workbench/ai_model_core/config"
 
 system_prompt_settings:
   english:

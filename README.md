@@ -1,6 +1,6 @@
 # AI workbench 
 
-This Langchain based AI workbench enables users to interact with various language models (LLMs) through a browser based interface. Users can engage in real-time conversations, select from multiple models, and reuse prompts for efficient task completion, making it a versatile tool for both casual and professional use.
+This Langchain based AI workbench enables users to interact with various language models (LLMs) through a browser based interface. Users can engage in real-time conversations, select from multiple models, and reuse prompts for efficient task completion, making it a versatile tool to streamline complex tasks and fosters rapid expirementation.
 
 ## Setup
 
@@ -10,7 +10,7 @@ This Langchain based AI workbench enables users to interact with various languag
 
 ### Project structure:
 ```
-langchain working bench/
+ai_workbench/
 ├── ai_model_core/
 │   ├── __init__.py
 │   ├── factory.py
@@ -55,7 +55,7 @@ main.py
 ## Usage
 
 - Activate the virtual environment: `poetry shell`
-- Copy/add the image files with the notes to the input directory.
+- Save your api_keys for paid model use in a credentials.json file and specify its location in CREDENTIALS_PATH variable in credentials.py.
 - Run the script: `python main.py`
 
 The script will spin up a browser tab where the Gradio UI serves the available model assistants of the AI workbench.
