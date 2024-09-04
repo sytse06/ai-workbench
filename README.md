@@ -1,4 +1,4 @@
-# Langchain working bench project
+# AI workbench 
 
 This Langchain based AI workbench enables users to interact with various language models (LLMs) through a user-friendly interface. Users can engage in real-time conversations, select from multiple models, and reuse prompts for efficient task completion, making it a versatile tool for both casual and professional use.
 
