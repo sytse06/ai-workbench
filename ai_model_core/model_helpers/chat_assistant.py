@@ -1,5 +1,4 @@
 # model_helpers/chat_assistant.py
-
 import logging
 from typing import List, Generator
 from langchain.schema import HumanMessage, AIMessage

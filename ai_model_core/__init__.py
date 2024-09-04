@@ -1,4 +1,4 @@
-# ai_model_interface/__init__.py
+# ai_model_core/__init__.py
 from .factory import get_model
 from .utils import get_system_prompt, get_prompt_template, _format_history
 from .config.credentials import load_credentials, get_api_key

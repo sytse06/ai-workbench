@@ -1,3 +1,4 @@
+# model_helpers/vision_assistant.py
 from langchain_community.chat_models import ChatOpenAI, ChatOllama, ChatAnthropic
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from ai_model_interface.factory import get_model
