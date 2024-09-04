@@ -17,10 +17,10 @@ from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthrough
-from ai_model_interface.config.credentials import get_api_key, load_credentials
-from ai_model_interface.config.settings import load_config, get_prompt_list, update_prompt_list
-from ai_model_interface import get_model, get_prompt_template, get_system_prompt, _format_history
-from ai_model_interface.model_helpers import ChatAssistant, PromptAssistant, VisionAssistant 
+from ai_model_core.config.credentials import get_api_key, load_credentials
+from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
+from ai_model_core import get_model, get_prompt_template, get_system_prompt, _format_history
+from ai_model_core.model_helpers import ChatAssistant, PromptAssistant, VisionAssistant 
 
 #print(sys.path)
 

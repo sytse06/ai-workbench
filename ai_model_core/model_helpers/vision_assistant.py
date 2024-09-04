@@ -1,9 +1,9 @@
 # model_helpers/vision_assistant.py
 from langchain_community.chat_models import ChatOpenAI, ChatOllama, ChatAnthropic
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
-from ai_model_interface.factory import get_model
-from ai_model_interface.config.settings import load_config
-from ai_model_interface.config.credentials import get_api_key, load_credentials
+from ai_model_core.factory import get_model
+from ai_model_core.config.settings import load_config
+from ai_model_core.config.credentials import get_api_key, load_credentials
 from typing import List, AsyncGenerator, Union
 from PIL import Image
 import base64

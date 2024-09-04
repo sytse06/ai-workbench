@@ -1,4 +1,4 @@
-# ai_model_interface/config/settings.py
+# ai_model_core/config/settings.py
 import os
 import yaml
 import logging

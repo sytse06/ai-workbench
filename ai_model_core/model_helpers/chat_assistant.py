@@ -2,7 +2,7 @@
 import logging
 from typing import List, Generator
 from langchain.schema import HumanMessage, AIMessage
-from ai_model_interface import get_model
+from ai_model_core import get_model
 
 logger = logging.getLogger(__name__)
 

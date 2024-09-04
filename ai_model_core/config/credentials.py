@@ -1,4 +1,4 @@
-# ai_model_interface/config/credentials.py
+# ai_model_core/config/credentials.py
 import os
 import json
 import logging

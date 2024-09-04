@@ -1,9 +1,9 @@
 [tool.poetry]
-name = "notetaking-conversion"
+name = "AI workbench"
 version = "0.1.0"
-description = "A project to convert handwritten notes to digital text using LLaVA and Ollama"
+description = "By offering a range of models and features like prompt reusability and flexible experimentation, this AI workbench streamlines complex tasks and fosters rapid innovation."
 authors = ["Sytse van der Schaaf <sytse@svdschaaf.nl>"]
-packages = [{include = "notetaking_conversion"}]
+packages = [{include = "ai_model_core"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"
