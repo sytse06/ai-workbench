@@ -1,5 +1,7 @@
 from langchain.chat_models import ChatOpenAI, ChatOllama, ChatAnthropic
-from langchain.schema import HumanMessage
+from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from ai_model_interface.factory import get_model
+from typing import List, Dict, Any
 from PIL import Image
 import base64
 from io import BytesIO
@@ -9,9 +11,20 @@ logger = logging.getLogger(__name__)
 
 class VisionAssistant:
     def __init__(self, model_choice: str, **kwargs):
-        from ai_model_interface.factory import get_model
         self.model = get_model(model_choice, **kwargs)
         self.model_choice = model_choice
+    
+    def update_model(self, model_choice: str, **kwargs):
+        if self.model_choice != model_choice:
+            self.model = get_model(model_choice, **kwargs)
+            self.model_choice = model_choice
+    
+    def _format_history(self, history: List[tuple[str, str]]) -> List[HumanMessage | AIMessage]:
+        formatted_history = []
+        for user_msg, ai_msg in history:
+            formatted_history.append(HumanMessage(content=user_msg))
+            formatted_history.append(AIMessage(content=ai_msg))
+        return formatted_history
 
     def _convert_to_base64(self, image: Image.Image, format: str = "PNG") -> str:
         buffered = BytesIO()

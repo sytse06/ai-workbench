@@ -39,23 +39,6 @@ def load_config() -> dict:
         config = yaml.safe_load(file)
     return config
 
-load_credentials()
-config = load_config()
-
-async def process_image(image: Image.Image, question: str, model_choice: str, stream: bool = False):
-    logger.info(f"Process image called with question: {question}, model_choice: {model_choice}")
-    if image is None:
-        return "Please upload an image first."
-    
-    vision_assistant = VisionAssistant(model_choice)
-    logger.info(f"VisionAssistant instantiated with model_choice: {model_choice}")
-    
-    result = []
-    async for chunk in vision_assistant.image_chat(image, question, stream=stream):
-        result.append(chunk)
-    
-    return result
-
 # Initialize the ChatAssistant with a default model at the module level
 chat_assistant = ChatAssistant("Ollama (LLama3.1)")
 
@@ -86,11 +69,17 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
     async for chunk in prompt_assistant.prompt(message, history, prompt_info, language_choice, history_flag, stream):
         result.append(chunk)
         yield ''.join(result)
+        
+# Initialize the ChatAssistant with a default model at the module level
+vision_assistant = VisionAssistant("Ollama (LLama3.1)")
 
-def process_image_wrapper(message, history, image, model_choice, history_flag):
-    if not image:
+def process_image_wrapper(image, message: str, history: List[tuple[str, str]], model_choice: str,  history_flag: bool, stream: bool = False):
+    if image is None:
         return "Please upload an image first."
+
+    vision_assistant.update_model(model_choice)
     
+    result = []
     async def run():
         result = await process_image(image, message, model_choice, stream=True)
         return ''.join(result)
