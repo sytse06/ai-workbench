@@ -73,12 +73,16 @@ async def process_image_wrapper(message: str, history: List[tuple[str, str]], im
     vision_assistant.update_model(model_choice)
 
     try:
-        result = await vision_assistant.process_image(image, message, stream)
-        
-        if isinstance(result, list):
-            result_text = ''.join(result)
-        else:
-            result_text = result
+        async for chunk in vision_assistant.process_image(image, message, model_choice, stream=True):
+            result.append(chunk)
+            yield ''.join(result)
+    except Exception as e:
+        error_message = f"An error occurred: {str(e)}\n"
+        error_message += f"Model type: {type(vision_assistant.model)}\n"
+        error_message += f"Model class: {vision_assistant.model.__class__.__name__}\n"
+        yield error_message
+        import traceback
+        print(traceback.format_exc())
 
         if history_flag:
             history.append((message, result_text))
