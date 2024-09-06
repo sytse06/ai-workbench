@@ -1,5 +1,6 @@
 # model_helpers/vision_assistant.py
 from langchain_community.chat_models import ChatOpenAI, ChatOllama, ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from ai_model_core.factory import get_model
 from ai_model_core.config.settings import load_config
@@ -18,6 +19,7 @@ class VisionAssistant:
         self.model = get_model(model_choice, **kwargs)
         self.model_choice = model_choice
         self.config = load_config()
+        print(f"Initialized model: {type(self.model)}")
 
     def update_model(self, model_choice: str, **kwargs):
         if self.model_choice != model_choice:
@@ -56,14 +58,17 @@ class VisionAssistant:
         image_b64 = self._convert_to_base64(image)
         image_content = self._format_image_content(image_b64, "PNG")
 
+        print(f"Model type: {type(self.model)}")  # Debug print
+        print(f"Model class: {self.model.__class__.__name__}")  # Debug print
+
         if isinstance(self.model, ChatOpenAI):
             messages = [
                 HumanMessage(content=[
                     {"type": "text", "text": question},
-                    {"type": "image_url", "image_url": image_content}
+                    {"type": "image_url", "image_url": image_content["image_url"]["url"]}
                 ])
             ]
-        elif isinstance(self.model, (ChatOllama, ChatAnthropic)):
+        elif any(chat_type in str(type(self.model)) for chat_type in ["ChatOllama", "ChatAnthropic"]):
             messages = [
                 HumanMessage(content=f"{question}\n\n[IMAGE]{image_content}[/IMAGE]")
             ]
@@ -79,3 +84,5 @@ class VisionAssistant:
                 yield response.content
         except Exception as e:
             yield f"An error occurred: {str(e)}"
+            import traceback
+            print(traceback.format_exc())  # Print full traceback

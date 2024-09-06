@@ -1,7 +1,8 @@
 # ai_model_interface/factory.py
+import openai
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
-from langchain_community.chat_models import ChatOllama
+from langchain_community.chat_models import ChatOllama, ChatAnthropic, ChatOpenAI
 from ai_model_core.config.credentials import get_api_key, load_credentials
 from langchain.prompts import PromptTemplate
 
