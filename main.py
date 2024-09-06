@@ -66,26 +66,39 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
 
 vision_assistant = VisionAssistant("Ollama (LLaVA)")
 
-async def process_image_wrapper(message: str, history: List[tuple[str, str]], image: Union[Image.Image, str, None], model_choice: str, history_flag: bool, stream: bool = False):
-    if image is None or not isinstance(image, Image.Image):
-        return "Please upload a valid image first."
+async def process_image_wrapper(image: Image.Image, message: str, history: List[tuple[str, str]], model_choice: str, history_flag: bool, stream: bool = False):
+    global vision_assistant 
 
+    if image is None:
+        yield "Please upload an image first."
+        return
+
+    # Update the model if the model_choice has changed
     vision_assistant.update_model(model_choice)
 
     try:
-        async for chunk in vision_assistant.process_image(image, message, model_choice, stream=True):
+        # Process the image and stream the response
+        async for chunk in vision_assistant.image_chat(image, message, stream=stream):
             result.append(chunk)
             yield ''.join(result)
+
+        # Update history if history_flag is True
+        if history_flag:
+            history.append((message, ''.join(result)))
+
     except Exception as e:
         error_message = f"An error occurred: {str(e)}\n"
         error_message += f"Model type: {type(vision_assistant.model)}\n"
         error_message += f"Model class: {vision_assistant.model.__class__.__name__}\n"
         yield error_message
-        import traceback
-        print(traceback.format_exc())
-
-        if history_flag:
-            history.append((message, result_text))
+        logger.error("Error during process_image_wrapper execution", exc_info=True)
+        
+def conversation_wrapper(user_input, model_choice, chat_history_flag):
+    # Get the conversation history and formatted history from your model instance
+    conversation_history = model_choice.get_conversation_history()
+    
+    if chat_history_flag.value:
+        formatted_history = model_choice._format_messages(conversation_history)
         
         return result_text
     except Exception as e:
