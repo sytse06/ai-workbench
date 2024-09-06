@@ -88,7 +88,10 @@ async def process_image_wrapper(image: Union[str, Image.Image, bytes], message: 
             result.append(chunk)
             yield ''.join(result)
     except Exception as e:
-        yield f"An error occurred: {str(e)}"
+        error_message = f"An error occurred: {str(e)}\n"
+        error_message += f"Model type: {type(vision_assistant.model)}\n"
+        error_message += f"Model class: {vision_assistant.model.__class__.__name__}\n"
+        yield error_message
         import traceback
         print(traceback.format_exc())
 
