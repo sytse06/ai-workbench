@@ -1,4 +1,4 @@
-from langchain_community.chat_models import ChatOpenAI, ChatOllama, ChatAnthropic
+from langchain_community.chat_models import ChatOllama, ChatAnthropic
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from ai_model_core.factory import get_model
@@ -41,6 +41,22 @@ class VisionAssistant:
         except Exception as e:
             logger.error(f"Error converting image to base64: {e}")
             return ""
+    
+    async def process_image(self, image: Image.Image, question: str, stream: bool = False):
+        logger.info(f"Processing image with question: {question}, model: {self.model_choice}")
+        if image is None:
+            return "Please upload an image first."
+        
+        try:
+            if stream:
+                result = [chunk async for chunk in self.image_chat(image, question, stream=True)]
+            else:
+                result = [chunk async for chunk in self.image_chat(image, question, stream=False)]
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error processing image: {e}")
+            return f"An error occurred while processing the image: {str(e)}"
 
     async def image_chat(self, image: Image.Image, question: str, stream: bool = False, image_format: str = "PNG") -> AsyncGenerator[str, None]:
         """
@@ -53,12 +69,7 @@ class VisionAssistant:
         :return: An async generator yielding responses from the model.
         """
         image_b64 = self._convert_to_base64(image, format=image_format)
-        #image_content = self._format_image_content(image_b64, image_format)
-
-        logger.info(f"Sending image with format: {format}")
-
-        # Handling different model types within the image_chat function
-        if isinstance(self.model, ChatOpenAI):
+        if isinstance(self.model, (ChatOpenAI, ChatOllama, ChatAnthropic)):
             messages = [
                 {
                     "role": "user",
@@ -76,57 +87,17 @@ class VisionAssistant:
                     ]
                 }
             ]
-        elif isinstance(self.model, ChatOllama) or isinstance(self.model, ChatAnthropic):
-            messages = [
-                HumanMessage(
-                    content=[
-                        {"type": "text", "text": question},
-                        {"type": "image_url", "image_url": f"data:image/{image_format.lower()};base64,{image_b64}"}
-                    ]
-                )
-            ]
-    
         else:
-                raise ValueError(f"Unsupported model type: {type(self.model)}")
+            raise ValueError(f"Unsupported model type: {type(self.model)}")
 
         try:
             if stream:
                 async for chunk in self.model.astream(messages):
-                    yield chunk.content
+                    yield chunk.content if isinstance(chunk.content, str) else chunk.content[0].text
             else:
                 response = await self.model.ainvoke(messages)
-                yield response.content
+                yield response.content if isinstance(response.content, str) else response.content[0].text
         except Exception as e:
             yield f"An error occurred: {str(e)}"
             logger.error(f"Error during image chat invocation: {e}")
             logger.error("Full traceback:", exc_info=True)
-
-
-async def process_image(image: Image.Image, question: str, model_choice: str, stream: bool = False):
-    """
-	Handles the process of sending an image and a question to the specified model.
-
-	:param image: The image to process.
-	:param question: The question to ask.
-	:param model_choice: The model to be used.
-	:param stream: Whether to stream the response.
-	:return: A list of results from the model.
-	"""
-
-    logger.info(f"Process image called with question: {question}, model_choice: {model_choice}")
-
-    if image is None:
-	        return "Please upload an image first."
-
-	# Initialize the VisionAssistant with the chosen model
-    assistant = VisionAssistant(model_choice=model_choice)
-     
-    logger.info(f"VisionAssistant instantiated with model_choice: {model_choice}")
-
-	# Handle streaming or non-streaming mode using image_chat method
-    if stream:
-	    result = [chunk async for chunk in assistant.image_chat(image, question, stream=True)]
-    else:
-	    result = [chunk async for chunk in assistant.image_chat(image, question, stream=False)]
-	    
-    return result
