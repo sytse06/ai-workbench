@@ -26,9 +26,6 @@ class VisionAssistant:
             self.model = get_model(model_choice, **kwargs)
             self.model_choice = model_choice
     
-    def format_conversation_history(self, history):
-        return "\n".join([f"Human: {h[0]}\nAssistant: {h[1]}" for h in history])
-    
     def _format_history(self, history: List[tuple[str, str]]) -> List[HumanMessage | AIMessage]:
         formatted_history = []
         for user_msg, ai_msg in history:
