@@ -1,47 +1,43 @@
 import logging
 import os
-import json
+#import json
 import yaml
-from functools import partial
+#from functools import partial
 from io import BytesIO
 import base64
-import sys
+#import sys
 from PIL import Image
 import gradio as gr
 import asyncio
 from typing import List, Union, Any
 from langchain_community.chat_models import ChatAnthropic, ChatOllama
 from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
+from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain_core.messages import BaseMessage
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
-from langchain_core.outputs import ChatGeneration, ChatResult
+#from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthrough
 from ai_model_core.config.credentials import get_api_key, load_credentials
 from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
 from ai_model_core import get_model, get_prompt_template, get_system_prompt, _format_history
-from ai_model_core.model_helpers import ChatAssistant, PromptAssistant, VisionAssistant 
+from ai_model_core.model_helpers import ChatAssistant, PromptAssistant, VisionAssistant
 
-#print(sys.path)
+# Load config at startup
+config = load_config()
 
-# Set up logging to only show warnings and errors
-DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
-
-if DEBUG_MODE:
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-else:
-    logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
+# Set up logging
+DEBUG_MODE = config.get('debug_mode', False)
+logging.basicConfig(
+    level=logging.DEBUG if DEBUG_MODE else logging.WARNING,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Load credentials and config for directory and prompt settings
-def load_config() -> dict:
-    with open("config.yaml", "r") as file:
-        config = yaml.safe_load(file)
-    return config
-
-# Initialize the ChatAssistant with a default model at the module level
+# Initialize assistants with default models
 chat_assistant = ChatAssistant("Ollama (LLama3.1)")
+prompt_assistant = PromptAssistant("Ollama (LLama3.1)")
+vision_assistant = VisionAssistant("Ollama (LLaVA)")
 
 # Replace the existing chat_wrapper function with this:
 async def chat_wrapper(message, history, model_choice, history_flag):
@@ -57,9 +53,6 @@ async def chat_wrapper(message, history, model_choice, history_flag):
     except Exception as e:
         logger.error(f"Error in chat function: {str(e)}")
         yield f"An error occurred: {str(e)}"
-
-# Initialize the PromptAssistant with a default model at the module level
-prompt_assistant = PromptAssistant("Ollama (LLama3.1)")
 
 async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool, stream: bool = False):
     global prompt_assistant
@@ -96,52 +89,6 @@ async def process_image_wrapper(message: str, history: List[tuple[str, str]], im
         logger.error(f"Error in process_image_wrapper: {e}")
         logger.error("Full traceback:", exc_info=True)
         return error_message
-
-#Copy entire conversation to clipboard        
-def conversation_wrapper(assistant_type, model_choice, chat_history):
-    formatted_history = ""
-    if assistant_type == "chat":
-        formatted_history = chat_assistant.format_conversation_history(chat_history)
-    elif assistant_type == "prompt":
-        formatted_history = prompt_assistant.format_conversation_history(chat_history)
-    elif assistant_type == "vision":
-        formatted_history = vision_assistant.format_conversation_history(chat_history)
-    
-    return ""
-        
-def copy_conversation_js():
-    return """
-    <script>
-    function copyToClipboard(text) {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-        console.log('Copying to clipboard was successful!');
-    }
-
-    function setupCopyButton(buttonId, wrapperName) {
-        document.getElementById(buttonId).addEventListener('click', function() {
-            const wrapper = gradio(wrapperName);
-            wrapper.then(function(result) {
-                if (result && result.data) {
-                    copyToClipboard(result.data[0]);
-                } else {
-                    console.error('No data received from the wrapper function');
-                }
-            }).catch(function(err) {
-                console.error('Error calling the wrapper function:', err);
-            });
-        });
-    }
-
-    setupCopyButton("chat-copy-btn", "conversation_wrapper");
-    setupCopyButton("prompt-copy-btn", "conversation_wrapper");
-    setupCopyButton("vision-copy-btn", "conversation_wrapper");
-    </script>
-    """
            
 def clear_chat():
     return None
@@ -164,7 +111,7 @@ with gr.Blocks() as demo:
                     )
                     history_flag = gr.Checkbox(label="Include conversation history", value=True)
                 with gr.Column(scale=4):
-                    chat_bot = gr.Chatbot(height=600, show_copy_button=True)
+                    chat_bot = gr.Chatbot(height=600, show_copy_button=True, show_copy_all_button=True)
                     chat_text_box = gr.Textbox(label="Chat input", placeholder="Type your message here...")
                     gr.ChatInterface(
                         fn=chat_wrapper,
@@ -176,7 +123,6 @@ with gr.Blocks() as demo:
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear",
                     )
-                    chat_copy_btn = gr.Button("Copy Chat Conversation", elem_id="chat-copy-btn")
 
         with gr.Tab("Prompting"):
             with gr.Row():
@@ -195,7 +141,7 @@ with gr.Blocks() as demo:
                     history_flag_prompt = gr.Checkbox(label="Include conversation history", value=True)
 
                 with gr.Column(scale=4):
-                    prompt_chat_bot = gr.Chatbot(height=600, show_copy_button=True)
+                    prompt_chat_bot = gr.Chatbot(height=600, show_copy_button=True, show_copy_all_button=True)
                     prompt_text_box = gr.Textbox(label="Prompt input", placeholder="Type your prompt here...")
                     gr.ChatInterface(
                         fn=prompt_wrapper,
@@ -207,7 +153,6 @@ with gr.Blocks() as demo:
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear",
                     )
-                    prompt_copy_btn = gr.Button("Copy Prompt Conversation", elem_id="prompt-copy-btn")
 
         with gr.Tab("Vision Assistant"):
             with gr.Row():
@@ -221,7 +166,7 @@ with gr.Blocks() as demo:
                     history_flag = gr.Checkbox(label="Include conversation history", value=True)
 
                 with gr.Column(scale=4):
-                    vision_chatbot = gr.Chatbot(height=600, show_copy_button=True)
+                    vision_chatbot = gr.Chatbot(height=600, show_copy_button=True, show_copy_all_button=True)
                     vision_question_input = gr.Textbox(label="Ask about the image", placeholder="Type your question about the image here...")
                     gr.ChatInterface(
                         fn=process_image_wrapper,
@@ -233,7 +178,6 @@ with gr.Blocks() as demo:
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear"
                         )
-                    vision_copy_btn = gr.Button("Copy Vision Conversation", elem_id="vision-copy-btn")
 
             vision_clear_btn = gr.Button("Clear All")
             vision_clear_btn.click(
@@ -244,26 +188,6 @@ with gr.Blocks() as demo:
 
     language_choice.change(fn=update_prompt_list, inputs=[language_choice], outputs=[prompt_info])
 
-    gr.HTML(copy_conversation_js())
-
-    chat_copy_btn.click(
-        fn=conversation_wrapper,
-        inputs=[gr.Textbox(value="chat", visible=False), model_choice, chat_bot],
-        outputs=gr.Textbox(visible=False)
-    )
-
-    prompt_copy_btn.click(
-        fn=conversation_wrapper,
-        inputs=[gr.Textbox(value="prompt", visible=False), model_choice, prompt_chat_bot],
-        outputs=gr.Textbox(visible=False)
-    )
-
-    vision_copy_btn.click(
-        fn=conversation_wrapper,
-        inputs=[gr.Textbox(value="vision", visible=False), model_choice, vision_chatbot],
-        outputs=gr.Textbox(visible=False)
-    )
-
 if __name__ == "__main__":
     logger.info("Starting the Gradio interface")
-    demo.launch(debug=True)
+    demo.launch(debug=DEBUG_MODE)
