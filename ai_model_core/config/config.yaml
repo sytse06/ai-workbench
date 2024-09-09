@@ -1,10 +1,11 @@
 system:
+  base_directory: "/Users/sytsevanderschaaf/documents/dev/projects/ai_workbench"
   directories:
-    input_directory: "/Users/sytsevanderschaaf/documents/dev/projects/ai_workbench/input"
-    output_directory: "/Users/sytsevanderschaaf/documents/dev/projects/ai_workbench/output"
-    test_directory: "/Users/sytsevanderschaaf/documents/dev/projects/ai_workbench/tests"
-    model_settings_directory: "/Users/sytsevanderschaaf/documents/projects/ai_workbench/ai_model_core"
-    config_directory: "/Users/sytsevanderschaaf/documents/dev/projects/ai_workbench/ai_model_core/config"
+    input_directory: "{base_directory}/input"
+    output_directory: "{base_directory}/output"
+    test_directory: "{base_directory}/tests"
+    model_settings_directory: "{base_directory}/ai_model_core"
+    config_directory: "{base_directory}/ai_model_core/config"
 
 system_prompt_settings:
   english:

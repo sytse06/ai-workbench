@@ -2,10 +2,18 @@
 import os
 import yaml
 import logging
+import platform
 from typing import List
 import gradio as gr
 
 logger = logging.getLogger(__name__)
+
+# Function to determine the base directory based on the OS
+def get_base_directory():
+    if platform.system() == 'Windows':
+        return "C:\\Users\\YourUsername\\Documents\\projects\\ai_workbench"
+    else:
+        return "/Users/sytsevanderschaaf/documents/dev/projects/ai_workbench"
 
 def load_config():
     config_path = os.path.join(os.path.dirname(__file__), 'config.yaml')
@@ -22,6 +30,11 @@ def load_config():
         
         if 'prompts' not in config:
             raise KeyError("Config file is missing 'prompts' section")
+        
+        # Dynamically update the directories based on the OS
+        base_directory = get_base_directory()
+        for key in config['system']['directories']:
+            config['system']['directories'][key] = os.path.join(base_directory, config['system']['directories'][key].split('/')[-1])
         
         logger.info("Config loaded successfully")
         return config
