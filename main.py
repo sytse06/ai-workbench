@@ -12,7 +12,7 @@ import asyncio
 from typing import List, Union, Any
 from langchain_community.chat_models import ChatAnthropic, ChatOllama
 from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
+from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain_core.messages import BaseMessage
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 #from langchain_core.outputs import ChatGeneration, ChatResult
@@ -89,25 +89,6 @@ async def process_image_wrapper(message: str, history: List[tuple[str, str]], im
         logger.error(f"Error in process_image_wrapper: {e}")
         logger.error("Full traceback:", exc_info=True)
         return error_message
-
-#Copy entire conversation to clipboard        
-def conversation_wrapper(assistant_type, model_choice, chat_history):
-    formatted_history = ""
-    if assistant_type == "chat":
-        formatted_history = chat_assistant.format_conversation_history(chat_history)
-    elif assistant_type == "prompt":
-        formatted_history = prompt_assistant.format_conversation_history(chat_history)
-    elif assistant_type == "vision":
-        formatted_history = vision_assistant.format_conversation_history(chat_history)
-    
-    return ""
-        
-        return result_text
-    except Exception as e:
-        error_message = f"An error occurred: {str(e)}"
-        logger.error(f"Error in process_image_wrapper: {e}")
-        logger.error("Full traceback:", exc_info=True)
-        return error_message
            
 def clear_chat():
     return None
@@ -142,7 +123,6 @@ with gr.Blocks() as demo:
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear",
                     )
-                    chat_copy_btn = gr.Button("Copy Chat Conversation", elem_id="chat-copy-btn")
 
         with gr.Tab("Prompting"):
             with gr.Row():
@@ -173,7 +153,6 @@ with gr.Blocks() as demo:
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear",
                     )
-                    prompt_copy_btn = gr.Button("Copy Prompt Conversation", elem_id="prompt-copy-btn")
 
         with gr.Tab("Vision Assistant"):
             with gr.Row():
@@ -199,7 +178,6 @@ with gr.Blocks() as demo:
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear"
                         )
-                    vision_copy_btn = gr.Button("Copy Vision Conversation", elem_id="vision-copy-btn")
 
             vision_clear_btn = gr.Button("Clear All")
             vision_clear_btn.click(
