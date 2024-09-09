@@ -88,13 +88,19 @@ async def process_image_wrapper(message: str, history: List[tuple[str, str]], im
         error_message = f"An error occurred: {str(e)}"
         logger.error(f"Error in process_image_wrapper: {e}")
         logger.error("Full traceback:", exc_info=True)
-        return error_message        
-def conversation_wrapper(user_input, model_choice, chat_history_flag):
-    # Get the conversation history and formatted history from your model instance
-    conversation_history = model_choice.get_conversation_history()
+        return error_message
+
+#Copy entire conversation to clipboard        
+def conversation_wrapper(assistant_type, model_choice, chat_history):
+    formatted_history = ""
+    if assistant_type == "chat":
+        formatted_history = chat_assistant.format_conversation_history(chat_history)
+    elif assistant_type == "prompt":
+        formatted_history = prompt_assistant.format_conversation_history(chat_history)
+    elif assistant_type == "vision":
+        formatted_history = vision_assistant.format_conversation_history(chat_history)
     
-    if chat_history_flag.value:
-        formatted_history = model_choice._format_messages(conversation_history)
+    return ""
         
         return result_text
     except Exception as e:
@@ -136,6 +142,7 @@ with gr.Blocks() as demo:
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear",
                     )
+                    chat_copy_btn = gr.Button("Copy Chat Conversation", elem_id="chat-copy-btn")
 
         with gr.Tab("Prompting"):
             with gr.Row():
@@ -166,6 +173,7 @@ with gr.Blocks() as demo:
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear",
                     )
+                    prompt_copy_btn = gr.Button("Copy Prompt Conversation", elem_id="prompt-copy-btn")
 
         with gr.Tab("Vision Assistant"):
             with gr.Row():
@@ -191,6 +199,7 @@ with gr.Blocks() as demo:
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear"
                         )
+                    vision_copy_btn = gr.Button("Copy Vision Conversation", elem_id="vision-copy-btn")
 
             vision_clear_btn = gr.Button("Clear All")
             vision_clear_btn.click(
