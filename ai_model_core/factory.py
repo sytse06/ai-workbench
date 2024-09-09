@@ -25,9 +25,19 @@ def get_model(choice: str, **kwargs):
             model="llava",
             base_url="http://localhost:11434",
             **kwargs)
+    elif choice == "Ollama (llava:7b-v1.6)":
+        return ChatOllama(
+            model="llava:7b-v1.6",
+            base_url="http://localhost:11434",
+            **kwargs)
     elif choice == "Ollama (Deepseek-coder-v2)":
         return ChatOllama( 
             model="deepseek-coder-v2",
+            base_url="http://localhost:11434",
+            **kwargs)
+    elif choice == "Ollama (YI-coder)":
+        return ChatOllama( 
+            model="yi-coder",
             base_url="http://localhost:11434",
             **kwargs)
     elif choice == "OpenAI GPT-4o-mini":

@@ -95,22 +95,51 @@ async def process_image_wrapper(message: str, history: List[tuple[str, str]], im
         error_message = f"An error occurred: {str(e)}"
         logger.error(f"Error in process_image_wrapper: {e}")
         logger.error("Full traceback:", exc_info=True)
-        return error_message        
-def conversation_wrapper(user_input, model_choice, chat_history_flag):
-    # Get the conversation history and formatted history from your model instance
-    conversation_history = model_choice.get_conversation_history()
+        return error_message
+
+#Copy entire conversation to clipboard        
+def conversation_wrapper(assistant_type, model_choice, chat_history):
+    formatted_history = ""
+    if assistant_type == "chat":
+        formatted_history = chat_assistant.format_conversation_history(chat_history)
+    elif assistant_type == "prompt":
+        formatted_history = prompt_assistant.format_conversation_history(chat_history)
+    elif assistant_type == "vision":
+        formatted_history = vision_assistant.format_conversation_history(chat_history)
     
-    if chat_history_flag.value:
-        formatted_history = model_choice._format_messages(conversation_history)
-        
-        copy_to_clipboard(formatted_history)
+    return ""
         
 def copy_conversation_js():
     return """
     <script>
-      document.getElementById("copy-btn").addEventListener('click', function() {
-        conversation_wrapper();
-      });
+    function copyToClipboard(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        console.log('Copying to clipboard was successful!');
+    }
+
+    function setupCopyButton(buttonId, wrapperName) {
+        document.getElementById(buttonId).addEventListener('click', function() {
+            const wrapper = gradio(wrapperName);
+            wrapper.then(function(result) {
+                if (result && result.data) {
+                    copyToClipboard(result.data[0]);
+                } else {
+                    console.error('No data received from the wrapper function');
+                }
+            }).catch(function(err) {
+                console.error('Error calling the wrapper function:', err);
+            });
+        });
+    }
+
+    setupCopyButton("chat-copy-btn", "conversation_wrapper");
+    setupCopyButton("prompt-copy-btn", "conversation_wrapper");
+    setupCopyButton("vision-copy-btn", "conversation_wrapper");
     </script>
     """
            
@@ -121,7 +150,7 @@ def clear_vision_chat():
     return None, None, gr.update(value=None)
     
 with gr.Blocks() as demo:
-    gr.Markdown("# Langchain Working Bench")
+    gr.Markdown("# AI Working Bench")
     gr.Markdown("### Chat with LLM's of choice and reuse prompts to get work done.")
 
     with gr.Tabs():
@@ -129,7 +158,7 @@ with gr.Blocks() as demo:
             with gr.Row():
                 with gr.Column(scale=1):
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.1)", "Ollama (Deepseek-coder-v2)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
+                        ["Ollama (LLama3.1)", "Ollama (Deepseek-coder-v2)", "Ollama (YI-coder)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
                         label="Choose Model",
                         value="Ollama (LLama3.1)"
                     )
@@ -147,6 +176,7 @@ with gr.Blocks() as demo:
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear",
                     )
+                    chat_copy_btn = gr.Button("Copy Chat Conversation", elem_id="chat-copy-btn")
 
         with gr.Tab("Prompting"):
             with gr.Row():
@@ -177,13 +207,14 @@ with gr.Blocks() as demo:
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear",
                     )
+                    prompt_copy_btn = gr.Button("Copy Prompt Conversation", elem_id="prompt-copy-btn")
 
         with gr.Tab("Vision Assistant"):
             with gr.Row():
                 with gr.Column(scale=1):
                     image_input = gr.Image(type="pil", label="Upload Image", image_mode="RGB")
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLaVA)", "OpenAI GPT-4o-mini"],
+                        ["Ollama (LLaVA)", "OpenAI GPT-4o-mini", "Ollama (llava:7b-v1.6)"],
                         label="Choose Model",
                         value="Ollama (LLaVA)"
                     )
@@ -202,6 +233,7 @@ with gr.Blocks() as demo:
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear"
                         )
+                    vision_copy_btn = gr.Button("Copy Vision Conversation", elem_id="vision-copy-btn")
 
             vision_clear_btn = gr.Button("Clear All")
             vision_clear_btn.click(
@@ -211,14 +243,25 @@ with gr.Blocks() as demo:
             )
 
     language_choice.change(fn=update_prompt_list, inputs=[language_choice], outputs=[prompt_info])
-    copy_btn = gr.Button("Copy Conversation", elem_id="copy-btn")
 
     gr.HTML(copy_conversation_js())
 
-    copy_btn.click(
+    chat_copy_btn.click(
         fn=conversation_wrapper,
-        inputs=[chat_text_box, model_choice, history_flag],
-        outputs=[]
+        inputs=[gr.Textbox(value="chat", visible=False), model_choice, chat_bot],
+        outputs=gr.Textbox(visible=False)
+    )
+
+    prompt_copy_btn.click(
+        fn=conversation_wrapper,
+        inputs=[gr.Textbox(value="prompt", visible=False), model_choice, prompt_chat_bot],
+        outputs=gr.Textbox(visible=False)
+    )
+
+    vision_copy_btn.click(
+        fn=conversation_wrapper,
+        inputs=[gr.Textbox(value="vision", visible=False), model_choice, vision_chatbot],
+        outputs=gr.Textbox(visible=False)
     )
 
 if __name__ == "__main__":
