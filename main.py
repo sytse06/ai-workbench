@@ -97,7 +97,7 @@ def clear_vision_chat():
     return None, None, gr.update(value=None)
     
 with gr.Blocks() as demo:
-    gr.Markdown("# AI Working Bench")
+    gr.Markdown("# AI WorkBench")
     gr.Markdown("### Chat with LLM's of choice and reuse prompts to get work done.")
 
     with gr.Tabs():

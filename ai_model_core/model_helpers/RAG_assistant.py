@@ -1,8 +1,9 @@
 # model_helpers/RAG_assistant.py
-from langchain_community.document_loaders import WebBaseLoader, PyPDFLoader
+from langchain_community.document_loaders import WebBaseLoader, TextLoader, PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.chat_models import ChatOllama
+from langchain.chains import RetrievalQA
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -22,11 +23,28 @@ class RAGAssistant:
         for source in sources:
             if source.startswith("http"):
                 loader = WebBaseLoader(source)
+             elif source.endswith(".txt"):
+                loader = TextLoader(source)    
             elif source.endswith(".pdf"):
                 loader = PyPDFLoader(source)
             else:
                 raise ValueError(f"Unsupported source type: {source}")
             docs.extend(loader.load())
+            
+    #Other example https://github.com/fanqingsong/rag-ollama-langchain/blob/main/src/gradio_demo.py       
+    def process_input(urls, question):
+        model_local = ChatOllama(
+            base_url="http://ollama:11434",
+            model='qwen:0.5b'
+        )
+        
+        # Convert string of URLs to list
+        urls_list = urls.split("\n")
+        docs = [WebBaseLoader(url).load() for url in urls_list]
+        docs_list = [item for sublist in docs for item in sublist]
+        
+        text_splitter = CharacterTextSplitter.from_tiktoken_encoder(chunk_size=7500, chunk_overlap=100)
+        doc_splits = text_splitter.split_documents(docs_list)
 
         # 2. Split documents
         text_splitter = CharacterTextSplitter.from_tiktoken_encoder(chunk_size=7500, chunk_overlap=100)
@@ -59,25 +77,3 @@ class RAGAssistant:
         if not self.rag_chain:
             raise ValueError("RAG chain not set up. Call setup_rag_chain() first.")
         return self.rag_chain.invoke(question)
-
-# Usage example
-if __name__ == "__main__":
-    assistant = RAGAssistant()
-    
-    # Load and process documents
-    sources = [
-        "https://ollama.com/",
-        "https://ollama.com/blog/windows-preview",
-        "https://ollama.com/blog/openai-compatibility",
-        # Add more sources as needed
-    ]
-    assistant.load_and_process_documents(sources)
-    
-    # Set up the RAG chain
-    assistant.setup_rag_chain()
-    
-    # Example query
-    question = "What is Ollama?"
-    answer = assistant.query(question)
-    print(f"Question: {question}")
-    print(f"Answer: {answer}")
