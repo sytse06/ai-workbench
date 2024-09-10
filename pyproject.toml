@@ -17,6 +17,7 @@ langchain = "^0.2.11"
 langchain-community = "^0.2.10"
 langchain-openai = "^0.1.17"
 langchain-anthropic = "^0.1.21"
+langgraph = "^0.2.19"
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.3.1"

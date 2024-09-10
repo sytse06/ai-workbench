@@ -54,3 +54,41 @@ def get_model(choice: str, **kwargs):
             **kwargs)
     else:
         raise ValueError(f"Invalid model choice: {choice}")
+    
+def get_embedding_model(choice: str, **kwargs):
+    load_credentials()
+    
+    if choice == "nomic-embed-text":
+        return OllamaEmbeddings(
+            model="nomic-embed-text",
+            base_url="http://localhost:11434",
+            **kwargs
+        )
+    elif choice == "all-MiniLM-L6-v2":
+        return HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            **kwargs
+        )
+    elif choice == "text-embedding-ada-002":
+        api_key = get_api_key('openai')
+        return OpenAIEmbeddings(
+            model="text-embedding-ada-002",
+            api_key=api_key,
+            **kwargs
+        )
+    elif choice == "text-embedding-3-small":
+        api_key = get_api_key('openai')
+        return OpenAIEmbeddings(
+            model="text-embedding-3-small",
+            api_key=api_key,
+            **kwargs
+        )
+    elif choice == "text-embedding-3-large":
+        api_key = get_api_key('openai')
+        return OpenAIEmbeddings(
+            model="text-embedding-3-large",
+            api_key=api_key,
+            **kwargs
+        )
+    else:
+        raise ValueError(f"Invalid embedding model choice: {choice}")
