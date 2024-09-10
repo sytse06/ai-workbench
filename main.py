@@ -21,7 +21,7 @@ from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthr
 from ai_model_core.config.credentials import get_api_key, load_credentials
 from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
 from ai_model_core import get_model, get_prompt_template, get_system_prompt, _format_history
-from ai_model_core.model_helpers import ChatAssistant, PromptAssistant, VisionAssistant
+from ai_model_core.model_helpers import ChatAssistant, PromptAssistant, VisionAssistant, RAGAssistant
 
 # Load config at startup
 config = load_config()
@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 chat_assistant = ChatAssistant("Ollama (LLama3.1)")
 prompt_assistant = PromptAssistant("Ollama (LLama3.1)")
 vision_assistant = VisionAssistant("Ollama (LLaVA)")
+rag_assistant = RAGAssistant("Ollama (LLama3.1)")
 
 # Replace the existing chat_wrapper function with this:
 async def chat_wrapper(message, history, model_choice, history_flag):
@@ -64,8 +65,6 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
         result.append(chunk)
         yield ''.join(result)
 
-vision_assistant = VisionAssistant("Ollama (LLaVA)")
-
 async def process_image_wrapper(message: str, history: List[tuple[str, str]], image: Union[Image.Image, str, None], model_choice: str, history_flag: bool, stream: bool = False):
     if image is None or not isinstance(image, Image.Image):
         return "Please upload a valid image first."
@@ -89,6 +88,21 @@ async def process_image_wrapper(message: str, history: List[tuple[str, str]], im
         logger.error(f"Error in process_image_wrapper: {e}")
         logger.error("Full traceback:", exc_info=True)
         return error_message
+    
+async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_size, chunk_overlap, temperature, num_similar_docs):
+    rag_assistant.model_local = get_model(model_choice)
+    rag_assistant.embedding_model = embedding_choice
+    rag_assistant.chunk_size = chunk_size
+    rag_assistant.chunk_overlap = chunk_overlap
+    rag_assistant.temperature = temperature
+    rag_assistant.num_similar_docs = num_similar_docs
+
+    try:
+        result = await rag_assistant.query(message)
+        return result
+    except Exception as e:
+        logger.error(f"Error in RAG function: {str(e)}")
+        return f"An error occurred: {str(e)}"
            
 def clear_chat():
     return None
@@ -184,6 +198,64 @@ with gr.Blocks() as demo:
                 fn=clear_vision_chat,
                 inputs=[],
                 outputs=[vision_chatbot, vision_question_input, image_input]
+            )
+            
+        with gr.Tab("RAG Assistant"):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    model_choice = gr.Dropdown(
+                        ["Ollama (LLama3.1)", "Ollama (phi3.5)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
+                        label="Choose Model",
+                        value="Ollama (LLama3.1)"
+                    )
+                    embedding_choice = gr.Dropdown(
+                        ["nomic-embed-text", "all-MiniLM-L6-v2", "text-embedding-ada-002"],
+                        label="Choose Embedding Model",
+                        value="nomic-embed-text"
+                    )
+                    chunk_size = gr.Slider(minimum=100, maximum=2500, value=1000, step=100, label="Chunk Size")
+                    chunk_overlap = gr.Slider(minimum=0, maximum=250, value=50, step=10, label="Chunk Overlap")
+                    temperature = gr.Slider(minimum=0, maximum=1, value=0.1, step=0.1, label="Temperature")
+                    num_similar_docs = gr.Slider(minimum=1, maximum=10, value=3, step=1, label="Number of Similar Documents")
+
+                    url_input = gr.Textbox(
+                        label="URLs to load (one per line)",
+                        placeholder="Enter URLs here, one per line",
+                        lines=3
+                    )
+                    file_input = gr.File(
+                        label="Upload Text Documents",
+                        file_types=[".txt", ".pdf", ".docx"],
+                        multiple=True
+                    )
+                    load_button = gr.Button("Load URLs")
+                    load_output = gr.Textbox(label="Load Status", interactive=False)
+                    
+                    language_choice = gr.Dropdown(
+                        ["english", "dutch"],
+                        label="Choose Language",
+                        value="english"
+                    )
+                    prompt_info = gr.Dropdown(choices=get_prompt_list(language_choice.value), label="Prompt Selection", interactive=True)
+                    history_flag = gr.Checkbox(label="Include conversation history", value=True)
+                    
+                with gr.Column(scale=4):
+                    rag_chat_bot = gr.Chatbot(height=600, show_copy_button=True, show_copy_all_button=True)
+                    rag_text_box = gr.Textbox(label="RAG input", placeholder="Type your message here...")
+                    gr.ChatInterface(
+                        fn=rag_wrapper,
+                        chatbot=rag_chat_bot,
+                        textbox=rag_text_box,
+                        additional_inputs=[model_choice, embedding_choice, chunk_size, chunk_overlap, temperature, num_similar_docs, prompt_info, language_choice, history_flag],
+                        submit_btn="Submit",
+                        retry_btn="🔄 Retry",
+                        undo_btn="↩️ Undo",
+                        clear_btn="🗑️ Clear",
+                    )
+    load_button.click(
+        fn=load_content,
+        inputs=[url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap],
+        outputs=load_output
             )
 
     language_choice.change(fn=update_prompt_list, inputs=[language_choice], outputs=[prompt_info])
