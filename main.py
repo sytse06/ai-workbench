@@ -17,7 +17,7 @@ from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthr
 from langchain_community.vectorstores import FAISS
 from ai_model_core.config.credentials import get_api_key, load_credentials
 from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
-from ai_model_core import get_model, get_prompt_template, get_system_prompt, _format_history
+from ai_model_core import get_model, get_embedding_model, get_prompt_template, get_system_prompt, _format_history
 from ai_model_core.model_helpers import ChatAssistant, PromptAssistant, VisionAssistant, RAGAssistant
 
 # Load config at startup
@@ -87,27 +87,57 @@ async def process_image_wrapper(message: str, history: List[tuple[str, str]], im
         logger.error("Full traceback:", exc_info=True)
         return error_message
     
-async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_size, chunk_overlap, temperature, num_similar_docs):
-    rag_assistant.model_local = get_model(model_choice)
-    rag_assistant.embedding_model = embedding_choice
-    rag_assistant.chunk_size = chunk_size
-    rag_assistant.chunk_overlap = chunk_overlap
-    rag_assistant.temperature = temperature
-    rag_assistant.num_similar_docs = num_similar_docs
-
+async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_size, chunk_overlap, temperature, num_similar_docs, urls, files, language, prompt_info, history_flag):
+    rag_assistant = RAGAssistant(
+        model_name=model_choice,
+        embedding_model=embedding_choice,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        temperature=temperature,
+        num_similar_docs=num_similar_docs,
+        language=language
+    )
+    
+    rag_assistant.setup_vectorstore(urls, files)
+    rag_assistant.prompt_template = prompt_info
+    rag_assistant.use_history = history_flag
+    
     try:
-        result = await rag_assistant.query(message)
+        result = await rag_assistant.query(message, history if history_flag else None)
         return result
     except Exception as e:
         logger.error(f"Error in RAG function: {str(e)}")
         return f"An error occurred: {str(e)}"
-           
+
+def load_content(url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap):
+    try:
+        # Create a new RAGAssistant instance or use an existing one
+        global rag_assistant  # Assuming you have a global rag_assistant instance
+        if not hasattr(globals(), 'rag_assistant') or rag_assistant is None:
+            rag_assistant = RAGAssistant(
+                model_name=model_choice,
+                embedding_model=embedding_choice,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap
+            )
+        
+        # Call the setup_vectorstore method
+        rag_assistant.setup_vectorstore(url_input, file_input)
+        
+        return "Content loaded successfully into the vectorstore."
+    except Exception as e:
+        return f"Error loading content: {str(e)}"
+
+# Add this function definition before your Gradio interface code
+               
 def clear_chat():
     return None
 
 def clear_vision_chat():
     return None, None, gr.update(value=None)
-    
+
+flagging_callback=gr.CSVLogger()
+   
 with gr.Blocks() as demo:
     gr.Markdown("# AI WorkBench")
     gr.Markdown("### Chat with LLM's of choice and reuse prompts to get work done.")
@@ -224,7 +254,7 @@ with gr.Blocks() as demo:
                     file_input = gr.File(
                         label="Upload Text Documents",
                         file_types=[".txt", ".pdf", ".docx"],
-                        multiple=True
+                        file_count="multiple"
                     )
                     load_button = gr.Button("Load URLs")
                     load_output = gr.Textbox(label="Load Status", interactive=False)
@@ -240,25 +270,46 @@ with gr.Blocks() as demo:
                 with gr.Column(scale=4):
                     rag_chat_bot = gr.Chatbot(height=600, show_copy_button=True, show_copy_all_button=True)
                     rag_text_box = gr.Textbox(label="RAG input", placeholder="Type your message here...")
-                    gr.ChatInterface(
+                    chat_interface=gr.ChatInterface(
                         fn=rag_wrapper,
                         chatbot=rag_chat_bot,
                         textbox=rag_text_box,
-                        additional_inputs=[model_choice, embedding_choice, chunk_size, chunk_overlap, temperature, num_similar_docs, prompt_info, language_choice, history_flag],
+                        additional_inputs=[
+                            model_choice, 
+                            embedding_choice, 
+                            chunk_size, 
+                            chunk_overlap, 
+                            temperature, 
+                            num_similar_docs, 
+                            url_input,
+                            file_input,
+                            language_choice, 
+                            prompt_info,
+                            history_flag
+                        ],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear",
-                    )
+                            )
+                # Add flagging elements after the ChatInterface
+                with gr.Row():
+                    flag_btn = gr.Button("Flag")
+                    flag_options = gr.Dropdown(
+                        ["High quality", "Correct", "Incorrect", "Ambiguous", "Inappropriate"],
+                        label="Flagging Options"
+                    )                    
+                    
+    # Set up the flagging callback
+    flagging_callback.setup([rag_text_box, rag_chat_bot] + chat_interface.additional_inputs, "flagged_rag_data")
 
-                 # Add flagging to the chat interface
-                    chat_interface.flagging_callback = gr.FlaggingCallback(
-                        ingredients=["message", "response", "embedding_choice", "chunk_size", "chunk_overlap", "temperature", "num_similar_docs"],
-                        title="Flag this response",
-                        description="Flag this response if it's inappropriate or incorrect.",
-                        flagging_options=["Incorrect Answer", "Too small a context", "Irrelevant Retrieval", "Other Issue"]
-                )                   
-                                        
+    # Connect the flagging button to the callback
+    flag_btn.click(
+        lambda *args: flagging_callback.flag(args[:-1] + (args[-1],)),
+        [rag_text_box, rag_chat_bot] + chat_interface.additional_inputs + [flag_options],
+        None,
+        preprocess=False
+    )                                   
     load_button.click(
         fn=load_content,
         inputs=[url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap],

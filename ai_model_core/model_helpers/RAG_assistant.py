@@ -19,9 +19,8 @@ class State(TypedDict):
     question: str
     answer: str
     all_actions: Annotated[List[str], add]
-
 class RAGAssistant:
-    def __init__(self, model_name="Ollama (LLama3.1)", embedding_model="nomic-embed-text", chunk_size=7500, chunk_overlap=100, temperature=0.7, num_similar_docs=3):
+    def __init__(self, model_name="Ollama (LLama3.1)", embedding_model="nomic-embed-text", chunk_size=7500, chunk_overlap=100, temperature=0.7, num_similar_docs=3, language="english"):
         self.model_local = get_model(model_name)
         self.embedding_model_name = embedding_model
         self.chunk_size = chunk_size
@@ -31,9 +30,28 @@ class RAGAssistant:
         self.vectorstore = None
         self.retriever = None
         self.graph = StateGraph(State)
+        self.language = language
         self.prompt_template = None
-        self.language = "english"
         self.use_history = True
+    
+    def load_content(url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap):
+        try:
+            # Create a new RAGAssistant instance or use an existing one
+            global rag_assistant  # Assuming you have a global rag_assistant instance
+            if not hasattr(globals(), 'rag_assistant') or rag_assistant is None:
+                rag_assistant = RAGAssistant(
+                    model_name=model_choice,
+                    embedding_model=embedding_choice,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap
+                )
+            
+            # Call the setup_vectorstore method
+            rag_assistant.setup_vectorstore(url_input, file_input)
+            
+            return "Content loaded successfully into the vectorstore."
+        except Exception as e:
+            return f"Error loading content: {str(e)}"
         
     def setup_vectorstore(self, urls, files):
         docs = []
