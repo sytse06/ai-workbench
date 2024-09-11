@@ -1,11 +1,8 @@
 import logging
 import os
-#import json
 import yaml
-#from functools import partial
 from io import BytesIO
 import base64
-#import sys
 from PIL import Image
 import gradio as gr
 import asyncio
@@ -15,9 +12,9 @@ from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain_core.messages import BaseMessage
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
-#from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthrough
+from langchain_community.vectorstores import FAISS
 from ai_model_core.config.credentials import get_api_key, load_credentials
 from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
 from ai_model_core import get_model, get_prompt_template, get_system_prompt, _format_history
@@ -25,6 +22,7 @@ from ai_model_core.model_helpers import ChatAssistant, PromptAssistant, VisionAs
 
 # Load config at startup
 config = load_config()
+os.environ['USER_AGENT'] = 'my-RAG-agent'
 
 # Set up logging
 DEBUG_MODE = config.get('debug_mode', False)
@@ -208,8 +206,8 @@ with gr.Blocks() as demo:
                         label="Choose Model",
                         value="Ollama (LLama3.1)"
                     )
-                with gr.Accordion("Advanced Options", open=False):
-                    embedding_choice = gr.Dropdown(
+                    with gr.Accordion("Advanced Options", open=False):
+                        embedding_choice = gr.Dropdown(
                         ["nomic-embed-text", "all-MiniLM-L6-v2", "text-embedding-ada-002"],
                         label="Choose Embedding Model",
                         value="nomic-embed-text"
