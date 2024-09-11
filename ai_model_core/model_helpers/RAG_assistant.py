@@ -4,7 +4,7 @@ from typing import TypedDict, List, Annotated
 from operator import add
 import os
 from langchain_community.document_loaders import WebBaseLoader, TextLoader, PyPDFLoader
-from langchain_community.vectorstores import MemoryVectorStore
+from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.chat_models import ChatOllama
 from langchain.chains import RetrievalQA
@@ -12,7 +12,7 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from ai_model_core import get_model
+from ai_model_core import get_model, get_embedding_model
 class State(TypedDict):
     input: str
     context: List[str]
@@ -60,7 +60,7 @@ class RAGAssistant:
 
         embedding_model = get_embedding_model(self.embedding_model_name)
 
-        self.vectorstore = MemoryVectorStore.from_documents(
+        self.vectorstore = FAISS.from_documents(
             documents=doc_splits,
             embedding=embedding_model,
         )
