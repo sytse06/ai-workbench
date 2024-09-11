@@ -1,6 +1,6 @@
 # AI workbench 
 
-This Langchain based AI workbench enables users to interact with various language models (LLMs) through a browser based interface. Users can engage in real-time conversations, select from multiple models, and reuse prompts for efficient task completion, making it a versatile tool to streamline complex tasks and fosters rapid experimentation.
+This Langchain based AI workbench enables users to interact with various language models (LLMs) through a browser based interface. Users can engage in real-time conversations, select from multiple models, and reuse prompts for efficient task completion, making it a versatile tool to streamline complex tasks and foster rapid experimentation.
 
 ## Setup
 
@@ -29,11 +29,12 @@ ai_workbench/
 ├── input/
 ├── output/
 ├── tests/
+├── .env
 └── main.py
 ```
 ### Component flow ai_model_interface
 Contents __init.py
-from .factory import get_model
+from .factory import get_model, get_embedding_model
 from .config.credentials import load_credentials, get_api_key
 from .utils import format_prompt, get_system_prompt, get_prompt_template, format_history
 from .config.settings import load_config, get_directory, get_prompt, get_prompt_list, update_prompt_list
