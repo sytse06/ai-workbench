@@ -208,16 +208,16 @@ with gr.Blocks() as demo:
                         label="Choose Model",
                         value="Ollama (LLama3.1)"
                     )
+                with gr.Accordion("Advanced Options", open=False):
                     embedding_choice = gr.Dropdown(
                         ["nomic-embed-text", "all-MiniLM-L6-v2", "text-embedding-ada-002"],
                         label="Choose Embedding Model",
                         value="nomic-embed-text"
                     )
-                    chunk_size = gr.Slider(minimum=100, maximum=2500, value=1000, step=100, label="Chunk Size")
-                    chunk_overlap = gr.Slider(minimum=0, maximum=250, value=50, step=10, label="Chunk Overlap")
-                    temperature = gr.Slider(minimum=0, maximum=1, value=0.1, step=0.1, label="Temperature")
-                    num_similar_docs = gr.Slider(minimum=1, maximum=10, value=3, step=1, label="Number of Similar Documents")
-
+                        chunk_size = gr.Slider(minimum=100, maximum=2500, value=1000, step=100, label="Chunk Size")
+                        chunk_overlap = gr.Slider(minimum=0, maximum=250, value=50, step=10, label="Chunk Overlap")
+                        temperature = gr.Slider(minimum=0, maximum=1, value=0.1, step=0.1, label="Temperature")
+                        num_similar_docs = gr.Slider(minimum=1, maximum=10, value=3, step=1, label="Number of Similar Documents")
                     url_input = gr.Textbox(
                         label="URLs to load (one per line)",
                         placeholder="Enter URLs here, one per line",
@@ -252,6 +252,15 @@ with gr.Blocks() as demo:
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear",
                     )
+
+                 # Add flagging to the chat interface
+                    chat_interface.flagging_callback = gr.FlaggingCallback(
+                        ingredients=["message", "response", "embedding_choice", "chunk_size", "chunk_overlap", "temperature", "num_similar_docs"],
+                        title="Flag this response",
+                        description="Flag this response if it's inappropriate or incorrect.",
+                        flagging_options=["Incorrect Answer", "Too small a context", "Irrelevant Retrieval", "Other Issue"]
+                )                   
+                                        
     load_button.click(
         fn=load_content,
         inputs=[url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap],
