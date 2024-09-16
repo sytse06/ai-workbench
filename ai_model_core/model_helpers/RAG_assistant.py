@@ -139,28 +139,47 @@ class RAGAssistant:
 
         self.graph_runnable = self.graph.compile()
 
-    async def query(self, question, history=None):
-        if not self.vectorstore or not self.retriever:
-            raise ValueError("Vector store or retriever not set up. Call setup_vectorstore() first.")
+async def query(self, question, history=None, prompt_template=None):
+    if not self.vectorstore or not self.retriever:
+        raise ValueError("Vector store or retriever not set up. Call setup_vectorstore() first.")
+    
+    # Retrieve relevant documents
+    relevant_docs = self.retriever.get_relevant_documents(question)
+    context = "\n\n".join(doc.page_content for doc in relevant_docs)
+    
+    # Base RAG prompt
+    base_rag_template = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer.
+
+        Context:
+        {context}
+
+        Question: {question}
+
+        Answer:"""
         
-        if not self.prompt_template:
-            raise ValueError("Prompt template not set. Set the prompt_template attribute first.")
-        
-        prompt_template = get_prompt_template(self.prompt_template, self.config)
-        
+    base_rag_prompt = ChatPromptTemplate.from_template(base_rag_template)
+    
+    # Construct the chain
+    if prompt_template:
+        # If a custom prompt template is set, use it to format the question
+        custom_prompt = get_prompt_template(prompt_template, self.config)
         rag_chain = (
-            {
-                "context": self.retriever,
-                "question": RunnablePassthrough()
-            }
-            | prompt_template
+            {"context": lambda _: context, "question": custom_prompt}
+            | base_rag_prompt
             | self.model_local
             | StrOutputParser()
         )
-        
-        input_dict = {"question": question}
-        if self.use_history and history:
-            input_dict["history"] = _format_history(history)
-        
-        response = await rag_chain.ainvoke(input_dict)
-        return response
+    else:
+        # If no custom prompt template, use the base RAG prompt directly
+        rag_chain = (
+            base_rag_prompt
+            | self.model_local
+            | StrOutputParser()
+        )
+    
+    input_dict = {"question": question, "context": context}
+    if self.use_history and history:
+        input_dict["history"] = _format_history(history)
+    
+    response = await rag_chain.ainvoke(input_dict)
+    return response
