@@ -2,17 +2,24 @@
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, List, Annotated
 from operator import add
+#import BeautifulSoup4
 import os
+import pypdf
 from langchain_community.document_loaders import WebBaseLoader, TextLoader, PyPDFLoader
 from langchain_community.vectorstores import FAISS
+from langchain_community import embeddings
 from langchain_community.embeddings import OllamaEmbeddings
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.chat_models import ChatOllama
 from langchain.chains import RetrievalQA
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from ai_model_core import get_model, get_embedding_model
+from ai_model_core import get_model, get_embedding_model, get_prompt_template, get_system_prompt, _format_history
+from ai_model_core.config.credentials import get_api_key, load_credentials
+from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
 class State(TypedDict):
     input: str
     context: List[str]
@@ -33,21 +40,18 @@ class RAGAssistant:
         self.language = language
         self.prompt_template = None
         self.use_history = True
+        self.config = load_config()
     
-    def load_content(url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap):
+    def load_content(self, url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap):
         try:
-            # Create a new RAGAssistant instance or use an existing one
-            global rag_assistant  # Assuming you have a global rag_assistant instance
-            if not hasattr(globals(), 'rag_assistant') or rag_assistant is None:
-                rag_assistant = RAGAssistant(
-                    model_name=model_choice,
-                    embedding_model=embedding_choice,
-                    chunk_size=chunk_size,
-                    chunk_overlap=chunk_overlap
-                )
+            # Update the current instance instead of creating a new one
+            self.model_local = get_model(model_choice)
+            self.embedding_model_name = embedding_choice
+            self.chunk_size = chunk_size
+            self.chunk_overlap = chunk_overlap
             
             # Call the setup_vectorstore method
-            rag_assistant.setup_vectorstore(url_input, file_input)
+            self.setup_vectorstore(url_input, file_input)
             
             return "Content loaded successfully into the vectorstore."
         except Exception as e:
@@ -57,11 +61,14 @@ class RAGAssistant:
         docs = []
         
         # Process URLs
-        urls_list = urls.split("\n")
         for url in urls_list:
             url = url.strip()
             if url:
-                docs.extend(WebBaseLoader(url).load())
+                loaded_docs = WebBaseLoader(url).load()
+                if loaded_docs is not None:
+                    docs.extend(loaded_docs)
+                else:
+                    print(f"Failed to load content from: {url}")
         
         # Process uploaded files
         for file in files:
@@ -118,28 +125,27 @@ class RAGAssistant:
         self.graph_runnable = self.graph.compile()
 
     async def query(self, question, history=None):
-        if not self.vectorstore:
-            raise ValueError("Vector store not set up. Call setup_vectorstore() first.")
+        if not self.vectorstore or not self.retriever:
+            raise ValueError("Vector store or retriever not set up. Call setup_vectorstore() first.")
         
-        context = self.retriever.get_relevant_documents(question)
-        context_text = "\n".join([doc.page_content for doc in context])
+        if not self.prompt_template:
+            raise ValueError("Prompt template not set. Set the prompt_template attribute first.")
         
-        prompt_template = get_prompt_template(self.prompt_template, self.language)
-        rag_prompt = ChatPromptTemplate.from_template(prompt_template)
+        prompt_template = get_prompt_template(self.prompt_template, self.config)
         
-        input_dict = {
-            "context": context_text,
-            "question": question
-        }
-        
-        if self.use_history and history:
-            input_dict["history"] = history
-        
-        chain = (
-            rag_prompt 
-            | self.model_local.bind(temperature=self.temperature)
+        rag_chain = (
+            {
+                "context": self.retriever,
+                "question": RunnablePassthrough()
+            }
+            | prompt_template
+            | self.model_local
             | StrOutputParser()
         )
         
-        answer = await chain.ainvoke(input_dict)
-        return answer
+        input_dict = {"question": question}
+        if self.use_history and history:
+            input_dict["history"] = _format_history(history)
+        
+        response = await rag_chain.ainvoke(input_dict)
+        return response

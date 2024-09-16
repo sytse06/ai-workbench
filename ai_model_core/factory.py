@@ -3,6 +3,10 @@ import openai
 from langchain_openai import ChatOpenAI
 from langchain_community.chat_models import ChatOllama, ChatAnthropic
 from langchain_openai import ChatOpenAI
+from langchain_community import embeddings
+from langchain_community.embeddings import OllamaEmbeddings
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from ai_model_core.config.credentials import get_api_key, load_credentials
 from langchain.prompts import PromptTemplate
 
