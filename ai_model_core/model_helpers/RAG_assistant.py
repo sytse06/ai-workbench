@@ -5,7 +5,7 @@ from operator import add
 #import BeautifulSoup4
 import os
 import pypdf
-from langchain_community.document_loaders import WebBaseLoader, TextLoader, PyPDFLoader
+from langchain_community.document_loaders import WebBaseLoader, TextLoader, PyPDFLoader, Docx2txtLoader
 from langchain_community.vectorstores import FAISS
 from langchain_community import embeddings
 from langchain_community.embeddings import OllamaEmbeddings
@@ -59,29 +59,44 @@ class RAGAssistant:
         
     def setup_vectorstore(self, urls, files):
         docs = []
-        
-        # Process URLs
-        for url in urls_list:
-            url = url.strip()
-            if url:
-                loaded_docs = WebBaseLoader(url).load()
-                if loaded_docs is not None:
-                    docs.extend(loaded_docs)
-                else:
-                    print(f"Failed to load content from: {url}")
-        
+        # Check and process URLs if they are provided
+        if urls and isinstance(urls, str):
+            print(f"URLs: {urls}")
+            urls_list = urls.split("\n")
+            for url in urls_list:
+                url = url.strip()
+                if url:
+                    print(f"Loading URL: {url}")
+                    try:
+                        loaded_docs = WebBaseLoader(url).load()
+                        if loaded_docs:
+                            docs.extend(loaded_docs)
+                        else:
+                            print(f"Warning: URL {url} returned no content.")
+                    except Exception as e:
+                        print(f"Error loading URL {url}: {str(e)}")
+        else:
+            print("No valid URLs provided.")
+            
         # Process uploaded files
-        for file in files:
-            file_extension = os.path.splitext(file.name)[1].lower()
-            if file_extension == '.txt':
-                docs.extend(TextLoader(file.name).load())
-            elif file_extension == '.pdf':
-                docs.extend(PyPDFLoader(file.name).load())
-            elif file_extension == '.docx':
-                docs.extend(UnstructuredWordDocumentLoader(file.name).load())
-        
-        text_splitter = CharacterTextSplitter.from_tiktoken_encoder(chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
-        doc_splits = text_splitter.split_documents(docs)
+        if files:
+            print(f"Files: {files}")
+            for file in files:
+                file_extension = os.path.splitext(file.name)[1].lower()
+                if file_extension == '.txt':
+                    docs.extend(TextLoader(file.name).load())
+                elif file_extension == '.pdf':
+                    docs.extend(PyPDFLoader(file.name).load())
+                elif file_extension == '.docx':
+                    docs.extend(Docx2txtLoader(file.name).load())
+        else:
+            print("No files provided.")
+                
+        if docs:
+            text_splitter = CharacterTextSplitter.from_tiktoken_encoder(chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
+            doc_splits = text_splitter.split_documents(docs)
+        else:
+            raise ValueError("No documents were loaded.")
 
         embedding_model = get_embedding_model(self.embedding_model_name)
 
