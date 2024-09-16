@@ -241,9 +241,6 @@ with gr.Blocks() as demo:
                         file_types=[".txt", ".pdf", ".docx"],
                         file_count="multiple"
                     )
-                    load_button = gr.Button("Process content for RAG")
-                    load_output = gr.Textbox(label="Load Status", interactive=False)
-
                     with gr.Accordion("Advanced RAG Options", open=False):
                         model_choice = gr.Dropdown(
                         ["Ollama (LLama3.1)", "Ollama (phi3.5)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
@@ -259,11 +256,15 @@ with gr.Blocks() as demo:
                         chunk_overlap = gr.Slider(minimum=0, maximum=250, value=50, step=10, label="Chunk Overlap")
                         temperature = gr.Slider(minimum=0, maximum=1, value=0.1, step=0.1, label="Temperature")
                         num_similar_docs = gr.Slider(minimum=1, maximum=10, value=3, step=1, label="Number of Similar Documents")                    
+
+                    load_button = gr.Button("Process content for RAG")
+                    load_output = gr.Textbox(label="Load Status", interactive=False)
+
                     language_choice = gr.Dropdown(
                         ["english", "dutch"],
                         label="Choose Prompt Family",
                         value="english"
-                    )
+                    )                    
                     prompt_info = gr.Dropdown(choices=get_prompt_list(language_choice.value), label="Prompt Template", interactive=True)
                     history_flag = gr.Checkbox(label="Include conversation history", value=True)
                     
