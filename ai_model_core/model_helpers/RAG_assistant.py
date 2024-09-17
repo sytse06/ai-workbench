@@ -3,6 +3,7 @@ from langgraph.graph import StateGraph, END
 from typing import TypedDict, List, Annotated
 from operator import add
 #import BeautifulSoup4
+import asyncio
 import os
 import pypdf
 from langchain_community.document_loaders import WebBaseLoader, TextLoader, PyPDFLoader, Docx2txtLoader
@@ -10,8 +11,11 @@ from langchain_community.vectorstores import FAISS
 from langchain_community import embeddings
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
+#from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.chat_models import ChatOllama
+from langchain.schema import Document
 from langchain.chains import RetrievalQA
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_core.runnables import RunnablePassthrough
@@ -106,10 +110,11 @@ class RAGAssistant:
         )
         self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": self.num_similar_docs})
 
-    def retrieve_context(self, state):
-        question = state['question']
-        context = self.retriever.ainvoke(question)
-        return {"context": [doc.page_content for doc in context]}
+    async def retrieve_context(self, query: str) -> List[Document]:
+        # Use run_in_executor to run the synchronous invoke method in a separate thread
+        loop = asyncio.get_event_loop()
+        docs = await loop.run_in_executor(None, self.retriever.invoke, query)
+        return docs
 
     def generate_answer(self, state):
         context = state['context']
@@ -144,7 +149,7 @@ class RAGAssistant:
             raise ValueError("Vector store or retriever not set up. Call setup_vectorstore() first.")
         
         # Retrieve relevant documents
-        relevant_docs = self.retriever.ainvoke(question)
+        relevant_docs = await self.retrieve_context(question)
         context = "\n\n".join(doc.page_content for doc in relevant_docs)
         
         # Base RAG prompt
@@ -164,7 +169,7 @@ class RAGAssistant:
             # If a custom prompt template is set, use it to format the question
             custom_prompt = get_prompt_template(prompt_template, self.config)
             rag_chain = (
-                {"context": lambda _: context, "question": custom_prompt}
+                {"context": RunnablePassthrough(), "question": custom_prompt}
                 | base_rag_prompt
                 | self.model_local
                 | StrOutputParser()
