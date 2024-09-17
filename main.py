@@ -241,7 +241,7 @@ with gr.Blocks() as demo:
                         file_types=[".txt", ".pdf", ".docx"],
                         file_count="multiple"
                     )
-                    with gr.Accordion("Advanced RAG Options", open=False):
+                    with gr.Accordion("RAG Options", open=False):
                         model_choice = gr.Dropdown(
                         ["Ollama (LLama3.1)", "Ollama (phi3.5)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
                         label="Choose Model",
