@@ -98,11 +98,11 @@ async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_si
         language=language
     )
     
-    rag_assistant.setup_vectorstore(urls, files)
-    rag_assistant.prompt_template = prompt_info
-    rag_assistant.use_history = history_flag
-    
     try:
+        rag_assistant.setup_vectorstore(urls, files)
+        rag_assistant.prompt_template = prompt_info
+        rag_assistant.use_history = history_flag
+        
         result = await rag_assistant.query(message, history if history_flag else None)
         return result
     except Exception as e:
