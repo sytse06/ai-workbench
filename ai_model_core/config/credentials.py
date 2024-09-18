@@ -12,7 +12,9 @@ def load_credentials():
         with open(cred_path, 'r', encoding='utf-8') as f:
             credentials = json.load(f)
         os.environ['OPENAI_API_KEY'] = credentials['openai_api_key']
+        os.environ['OPENROUTER_API_KEY'] = credentials['openrouter_api_key']
         os.environ['ANTHROPIC_API_KEY'] = credentials['anthropic_api_key']
+        os.environ['HUGGINGFACE_API_KEY'] = credentials['hf_api_key']
         logger.info("Credentials loaded successfully")
     except FileNotFoundError:
         logger.error(f"Credentials file not found at {cred_path}")
@@ -29,9 +31,18 @@ def get_api_key(provider: str) -> str:
         key = os.getenv('OPENAI_API_KEY')
         logger.debug("Accessed OpenAI API key.")  # Avoid logging the actual key
         return key
+    elif provider.lower() == 'openrouter':
+        key = os.getenv('OPENROUTER_API_KEY')
+        logger.debug("Accessed OpenRouter API key.")
+        return key
     elif provider.lower() == 'anthropic':
         key = os.getenv('ANTHROPIC_API_KEY')
-        logger.debug("Accessed Anthropic API key.")  # Avoid logging the actual key
+        logger.debug("Accessed Anthropic via API key OpenRouter.")  # Avoid logging the actual key
         return key
+    elif provider.lower() == 'huggingface':
+        key = os.getenv('HUGGINGFACE_API_KEY')
+        logger.debug("Accessed HuggingFace API key.")  # Avoid logging the actual key
+        return key
+
     else:
         raise ValueError(f"Unknown provider: {provider}")
