@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import yaml
 from io import BytesIO
 import base64
@@ -26,11 +27,32 @@ os.environ['USER_AGENT'] = 'my-RAG-agent'
 
 # Set up logging
 DEBUG_MODE = config.get('debug_mode', False)
-logging.basicConfig(
-    level=logging.DEBUG if DEBUG_MODE else logging.WARNING,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+
+# Create a custom logger
 logger = logging.getLogger(__name__)
+
+# Set the logging level based on DEBUG_MODE
+logger.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
+
+# Create handlers
+c_handler = logging.StreamHandler(sys.stdout)
+f_handler = logging.FileHandler('app.log')
+
+# Set the logging level for handlers
+c_handler.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
+f_handler.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
+
+# Create formatters and add them to handlers
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+c_handler.setFormatter(formatter)
+f_handler.setFormatter(formatter)
+
+# Add handlers to the logger
+logger.addHandler(c_handler)
+logger.addHandler(f_handler)
+
+# Disable propagation to avoid duplicate logs
+logger.propagate = False
 
 # Initialize assistants with default models
 chat_assistant = ChatAssistant("Ollama (LLama3.1)")
@@ -100,12 +122,26 @@ async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_si
         num_similar_docs=num_similar_docs,
         language=language
     )
+    logger.debug(f"Received message: {message}")
+    logger.debug(f"Model choice: {model_choice}")
+    logger.debug(f"Embedding choice: {embedding_choice}")
+    logger.debug(f"Chunk size: {chunk_size}")
+    logger.debug(f"Chunk overlap: {chunk_overlap}")
+    logger.debug(f"Temperature: {temperature}")
+    logger.debug(f"Number of similar docs: {num_similar_docs}")
+    logger.debug(f"URLs: {urls}")
+    logger.debug(f"Files: {[f.name for f in files] if files else None}")
+    logger.debug(f"Language: {language}")
+    logger.debug(f"Prompt info: {prompt_info}")
+    logger.debug(f"Use history: {history_flag}")
     
     try:
+        logger.info("Setting up vectorstore")
         rag_assistant.setup_vectorstore(urls, files)
         rag_assistant.prompt_template = prompt_info
         rag_assistant.use_history = history_flag
         
+        logger.info("Querying RAG assistant")
         result = await rag_assistant.query(message, history if history_flag else None)
         return result
     except Exception as e:
@@ -150,7 +186,7 @@ with gr.Blocks() as demo:
             with gr.Row():
                 with gr.Column(scale=1):
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.1)", "Anthropic Claude", "Ollama (Deepseek-coder-v2)", "Ollama (YI-coder)", "OpenAI GPT-4o-mini"],
+                        ["Ollama (LLama3.1)", "Claude Sonnet", "Ollama (Deepseek-coder-v2)", "Ollama (YI-coder)", "OpenAI GPT-4o-mini"],
                         label="Choose Model",
                         value="Ollama (LLama3.1)"
                     )
@@ -173,7 +209,7 @@ with gr.Blocks() as demo:
             with gr.Row():
                 with gr.Column(scale=1):
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.1)",  "Ollama (phi3.5)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
+                        ["Ollama (LLama3.1)",  "Ollama (phi3.5)", "OpenAI GPT-4o-mini", "Claude Sonnet"],
                         label="Choose Model",
                         value="Ollama (LLama3.1)"
                     )
@@ -204,7 +240,7 @@ with gr.Blocks() as demo:
                 with gr.Column(scale=1):
                     image_input = gr.Image(type="pil", label="Upload Image", image_mode="RGB")
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLaVA)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
+                        ["Ollama (LLaVA)", "OpenAI GPT-4o-mini", "Claude Sonnet"],
                         label="Choose Model",
                         value="Ollama (LLaVA)"
                     )
@@ -246,7 +282,7 @@ with gr.Blocks() as demo:
                     )
                     with gr.Accordion("RAG Options", open=False):
                         model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.1)", "Ollama (phi3.5)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
+                        ["Ollama (LLama3.1)", "Claude Sonnet", "Ollama (phi3.5)", "OpenAI GPT-4o-mini"],
                         label="Choose Model",
                         value="Ollama (LLama3.1)"
                     )
@@ -322,4 +358,4 @@ with gr.Blocks() as demo:
 
 if __name__ == "__main__":
     logger.info("Starting the Gradio interface")
-    demo.launch(debug=DEBUG_MODE)
+    demo.launch(debug=True)

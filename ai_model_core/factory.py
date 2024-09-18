@@ -18,7 +18,7 @@ def get_model(choice: str, **kwargs):
             model="llama3.1",
             base_url="http://localhost:11434",
             verbose=True)
-    elif choice == "Anthropic Claude":
+    elif choice == "Claude Sonnet":
         api_key = get_api_key('openrouter')
         model_kwargs = {}
         if 'http_referer' in kwargs:
@@ -26,7 +26,7 @@ def get_model(choice: str, **kwargs):
             model_kwargs["headers"]["HTTP-Referer"] = kwargs.pop('http_referer')
         if 'x_title' in kwargs:
             model_kwargs["headers"] = model_kwargs.get("headers", {})
-            model_kwargs["headers"]["X-Title"] = kwargs.pop('x_title')
+            model_kwargs["headers"]["X-Title"] = kwargs.pop('ai-workbench')
         
         return ChatOpenAI(
             model="anthropic/claude-3.5-sonnet",
