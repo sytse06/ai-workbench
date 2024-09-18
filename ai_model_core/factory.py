@@ -18,7 +18,24 @@ def get_model(choice: str, **kwargs):
             model="llama3.1",
             base_url="http://localhost:11434",
             verbose=True)
-    elif  choice == "Ollama (phi3.5)":
+    elif choice == "Anthropic Claude":
+        api_key = get_api_key('openrouter')
+        model_kwargs = {}
+        if 'http_referer' in kwargs:
+            model_kwargs["headers"] = model_kwargs.get("headers", {})
+            model_kwargs["headers"]["HTTP-Referer"] = kwargs.pop('http_referer')
+        if 'x_title' in kwargs:
+            model_kwargs["headers"] = model_kwargs.get("headers", {})
+            model_kwargs["headers"]["X-Title"] = kwargs.pop('x_title')
+        
+        return ChatOpenAI(
+            model="anthropic/claude-3.5-sonnet",
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+            model_kwargs=model_kwargs,
+            **kwargs
+        )
+    elif choice == "Ollama (phi3.5)":
         return ChatOllama(
             model="phi3.5",
             base_url="http://localhost:11434",
@@ -47,12 +64,6 @@ def get_model(choice: str, **kwargs):
         api_key = get_api_key('openai')
         return ChatOpenAI(
             model="gpt-4o-mini", 
-            api_key=api_key, 
-            **kwargs)
-    elif choice == "Anthropic Claude":
-        api_key = get_api_key('anthropic')
-        return ChatAnthropic(
-            model="claude-3-sonnet-20240229", 
             api_key=api_key, 
             **kwargs)
     else:

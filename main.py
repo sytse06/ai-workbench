@@ -38,7 +38,7 @@ prompt_assistant = PromptAssistant("Ollama (LLama3.1)")
 vision_assistant = VisionAssistant("Ollama (LLaVA)")
 rag_assistant = RAGAssistant("Ollama (LLama3.1)")
 
-# Replace the existing chat_wrapper function with this:
+# Wrapper function for Gradio interface chat_assistant:
 async def chat_wrapper(message, history, model_choice, history_flag):
     global chat_assistant
     
@@ -53,6 +53,7 @@ async def chat_wrapper(message, history, model_choice, history_flag):
         logger.error(f"Error in chat function: {str(e)}")
         yield f"An error occurred: {str(e)}"
 
+# Wrapper function for Gradio interface prompt_assistant:
 async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_choice: str, prompt_info: str, language_choice: str, history_flag: bool, stream: bool = False):
     global prompt_assistant
     
@@ -63,6 +64,7 @@ async def prompt_wrapper(message: str, history: List[tuple[str, str]], model_cho
         result.append(chunk)
         yield ''.join(result)
 
+# Wrapper function for Gradio interface vision_assistant:
 async def process_image_wrapper(message: str, history: List[tuple[str, str]], image: Union[Image.Image, str, None], model_choice: str, history_flag: bool, stream: bool = False):
     if image is None or not isinstance(image, Image.Image):
         return "Please upload a valid image first."
@@ -86,7 +88,8 @@ async def process_image_wrapper(message: str, history: List[tuple[str, str]], im
         logger.error(f"Error in process_image_wrapper: {e}")
         logger.error("Full traceback:", exc_info=True)
         return error_message
-    
+
+# Wrapper function for Gradio interface RAG_assistant:    
 async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_size, chunk_overlap, temperature, num_similar_docs, urls, files, language, prompt_info, history_flag):
     rag_assistant = RAGAssistant(
         model_name=model_choice,
@@ -108,7 +111,8 @@ async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_si
     except Exception as e:
         logger.error(f"Error in RAG function: {str(e)}")
         return f"An error occurred: {str(e)}"
-
+    
+# Helper function to process content as RAG context
 def load_content(url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap):
     try:
         # Create a new RAGAssistant instance or use an existing one
@@ -128,8 +132,7 @@ def load_content(url_input, file_input, model_choice, embedding_choice, chunk_si
     except Exception as e:
         return f"Error loading content: {str(e)}"
 
-# Add this function definition before your Gradio interface code
-               
+# Helper functions for Gradio interface
 def clear_chat():
     return None
 
@@ -147,7 +150,7 @@ with gr.Blocks() as demo:
             with gr.Row():
                 with gr.Column(scale=1):
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.1)", "Ollama (Deepseek-coder-v2)", "Ollama (YI-coder)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
+                        ["Ollama (LLama3.1)", "Anthropic Claude", "Ollama (Deepseek-coder-v2)", "Ollama (YI-coder)", "OpenAI GPT-4o-mini"],
                         label="Choose Model",
                         value="Ollama (LLama3.1)"
                     )
@@ -201,7 +204,7 @@ with gr.Blocks() as demo:
                 with gr.Column(scale=1):
                     image_input = gr.Image(type="pil", label="Upload Image", image_mode="RGB")
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLaVA)", "OpenAI GPT-4o-mini", "Ollama (llava:7b-v1.6)"],
+                        ["Ollama (LLaVA)", "OpenAI GPT-4o-mini", "Anthropic Claude"],
                         label="Choose Model",
                         value="Ollama (LLaVA)"
                     )
