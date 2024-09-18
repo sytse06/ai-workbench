@@ -24,14 +24,16 @@ from langchain_core.prompts import ChatPromptTemplate
 from ai_model_core import get_model, get_embedding_model, get_prompt_template, get_system_prompt, _format_history
 from ai_model_core.config.credentials import get_api_key, load_credentials
 from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
+
 class State(TypedDict):
     input: str
     context: List[str]
     question: str
     answer: str
     all_actions: Annotated[List[str], add]
+
 class RAGAssistant:
-    def __init__(self, model_name="Ollama (LLama3.1)", embedding_model="nomic-embed-text", chunk_size=7500, chunk_overlap=100, temperature=0.7, num_similar_docs=3, language="english"):
+    def __init__(self, model_name="Ollama (LLama3.1)", embedding_model="nomic-embed-text", chunk_size=7500, chunk_overlap=100, temperature=0.7, num_similar_docs=3, language="english", min_tokens=None, max_tokens=None):
         self.model_local = get_model(model_name)
         self.embedding_model_name = embedding_model
         self.chunk_size = chunk_size
@@ -45,14 +47,18 @@ class RAGAssistant:
         self.prompt_template = None
         self.use_history = True
         self.config = load_config()
+        self.min_tokens = min_tokens
+        self.max_tokens = max_tokens
     
-    def load_content(self, url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap):
+    def load_content(self, url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap, min_tokens, max_tokens):
         try:
             # Update the current instance instead of creating a new one
             self.model_local = get_model(model_choice)
             self.embedding_model_name = embedding_choice
             self.chunk_size = chunk_size
             self.chunk_overlap = chunk_overlap
+            self.min_tokens = min_tokens
+            self.max_tokens = max_tokens
             
             # Call the setup_vectorstore method
             self.setup_vectorstore(url_input, file_input)
@@ -128,7 +134,7 @@ class RAGAssistant:
         
         chain = (
             rag_prompt 
-            | self.model_local.bind(temperature=self.temperature)
+            | self.model_local.bind(temperature=self.temperature, min_tokens=self.min_tokens, max_tokens=self.max_tokens)
             | StrOutputParser()
         )
         
@@ -171,14 +177,14 @@ class RAGAssistant:
             rag_chain = (
                 {"context": RunnablePassthrough(), "question": custom_prompt}
                 | base_rag_prompt
-                | self.model_local
+                | self.model_local.bind(temperature=self.temperature, min_tokens=self.min_tokens, max_tokens=self.max_tokens)
                 | StrOutputParser()
             )
         else:
             # If no custom prompt template, use the base RAG prompt directly
             rag_chain = (
                 base_rag_prompt
-                | self.model_local
+                | self.model_local.bind(temperature=self.temperature, min_tokens=self.min_tokens, max_tokens=self.max_tokens)
                 | StrOutputParser()
             )
         
