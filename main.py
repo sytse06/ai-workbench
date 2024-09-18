@@ -61,10 +61,13 @@ vision_assistant = VisionAssistant("Ollama (LLaVA)")
 rag_assistant = RAGAssistant("Ollama (LLama3.1)")
 
 # Wrapper function for Gradio interface chat_assistant:
-async def chat_wrapper(message, history, model_choice, history_flag):
+async def chat_wrapper(message, history, model_choice, history_flag, temperature, min_tokens, max_tokens):
     global chat_assistant
     
     chat_assistant.update_model(model_choice)
+    chat_assistant.temperature = temperature
+    chat_assistant.min_tokens = min_tokens
+    chat_assistant.max_tokens = max_tokens
 
     try:
         result = []
@@ -112,7 +115,7 @@ async def process_image_wrapper(message: str, history: List[tuple[str, str]], im
         return error_message
 
 # Wrapper function for Gradio interface RAG_assistant:    
-async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_size, chunk_overlap, temperature, num_similar_docs, urls, files, language, prompt_info, history_flag):
+async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_size, chunk_overlap, temperature, num_similar_docs, min_tokens, max_tokens, urls, files, language, prompt_info, history_flag):
     rag_assistant = RAGAssistant(
         model_name=model_choice,
         embedding_model=embedding_choice,
@@ -120,7 +123,9 @@ async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_si
         chunk_overlap=chunk_overlap,
         temperature=temperature,
         num_similar_docs=num_similar_docs,
-        language=language
+        language=language,
+        min_tokens=min_tokens,
+        max_tokens=max_tokens
     )
     logger.debug(f"Received message: {message}")
     logger.debug(f"Model choice: {model_choice}")
@@ -129,6 +134,8 @@ async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_si
     logger.debug(f"Chunk overlap: {chunk_overlap}")
     logger.debug(f"Temperature: {temperature}")
     logger.debug(f"Number of similar docs: {num_similar_docs}")
+    logger.debug(f"Min tokens: {min_tokens}")
+    logger.debug(f"Max tokens: {max_tokens}")
     logger.debug(f"URLs: {urls}")
     logger.debug(f"Files: {[f.name for f in files] if files else None}")
     logger.debug(f"Language: {language}")
@@ -149,7 +156,7 @@ async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_si
         return f"An error occurred: {str(e)}"
     
 # Helper function to process content as RAG context
-def load_content(url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap):
+def load_content(url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap, min_tokens, max_tokens):
     try:
         # Create a new RAGAssistant instance or use an existing one
         global rag_assistant  # Assuming you have a global rag_assistant instance
@@ -158,7 +165,9 @@ def load_content(url_input, file_input, model_choice, embedding_choice, chunk_si
                 model_name=model_choice,
                 embedding_model=embedding_choice,
                 chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap
+                chunk_overlap=chunk_overlap,
+                min_tokens=min_tokens,
+                max_tokens=max_tokens
             )
         
         # Call the setup_vectorstore method
@@ -191,6 +200,10 @@ with gr.Blocks() as demo:
                         value="Ollama (LLama3.1)"
                     )
                     history_flag = gr.Checkbox(label="Include conversation history", value=True)
+                    with gr.Accordion("Model parameters", open=False):
+                        temperature = gr.Slider(minimum=0, maximum=1, value=0.7, step=0.1, label="Temperature")
+                        min_tokens = gr.Slider(minimum=10, maximum=250, value=50, step=50, label="Min Tokens")
+                        max_tokens = gr.Slider(minimum=150, maximum=4000, value=500, step=50, label="Max Tokens")
                 with gr.Column(scale=4):
                     chat_bot = gr.Chatbot(height=600, show_copy_button=True, show_copy_all_button=True)
                     chat_text_box = gr.Textbox(label="Chat input", placeholder="Type your message here...")
@@ -198,7 +211,7 @@ with gr.Blocks() as demo:
                         fn=chat_wrapper,
                         chatbot=chat_bot,
                         textbox=chat_text_box,
-                        additional_inputs=[model_choice, history_flag],
+                        additional_inputs=[model_choice, history_flag, temperature, min_tokens, max_tokens],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",
                         undo_btn="↩️ Undo",
@@ -294,7 +307,9 @@ with gr.Blocks() as demo:
                         chunk_size = gr.Slider(minimum=100, maximum=2500, value=1000, step=100, label="Chunk Size")
                         chunk_overlap = gr.Slider(minimum=0, maximum=250, value=50, step=10, label="Chunk Overlap")
                         temperature = gr.Slider(minimum=0, maximum=1, value=0.1, step=0.1, label="Temperature")
-                        num_similar_docs = gr.Slider(minimum=1, maximum=10, value=3, step=1, label="Number of Similar Documents")                    
+                        num_similar_docs = gr.Slider(minimum=1, maximum=10, value=3, step=1, label="Number of Similar Documents")
+                        min_tokens = gr.Slider(minimum=1, maximum=4000, value=50, step=1, label="Min Tokens")
+                        max_tokens = gr.Slider(minimum=50, maximum=4000, value=1000, step=50, label="Max Tokens")
 
                     load_button = gr.Button("Process content for RAG")
                     load_output = gr.Textbox(label="Load Status", interactive=False)
@@ -320,7 +335,9 @@ with gr.Blocks() as demo:
                             chunk_size, 
                             chunk_overlap, 
                             temperature, 
-                            num_similar_docs, 
+                            num_similar_docs,
+                            min_tokens,
+                            max_tokens,
                             url_input,
                             file_input,
                             language_choice, 
@@ -350,7 +367,7 @@ with gr.Blocks() as demo:
     )                                   
     load_button.click(
         fn=load_content,
-        inputs=[url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap],
+        inputs=[url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap, min_tokens, max_tokens],
         outputs=load_output
             )
 
