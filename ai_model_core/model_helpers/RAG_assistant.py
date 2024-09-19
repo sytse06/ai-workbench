@@ -33,7 +33,7 @@ class State(TypedDict):
     all_actions: Annotated[List[str], add]
 
 class RAGAssistant:
-    def __init__(self, model_name="Ollama (LLama3.1)", embedding_model="nomic-embed-text", chunk_size=7500, chunk_overlap=100, temperature=0.7, num_similar_docs=3, language="english", min_tokens=None, max_tokens=None):
+    def __init__(self, model_name="Ollama (LLama3.1)", embedding_model="nomic-embed-text", chunk_size=7500, chunk_overlap=100, temperature=0.7, num_similar_docs=3, language="english", max_tokens=None):
         self.model_local = get_model(model_name)
         self.embedding_model_name = embedding_model
         self.chunk_size = chunk_size
@@ -47,23 +47,21 @@ class RAGAssistant:
         self.prompt_template = None
         self.use_history = True
         self.config = load_config()
-        self.min_tokens = min_tokens
         self.max_tokens = max_tokens
     
-    def load_content(self, url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap, min_tokens, max_tokens):
+    def load_content(self, url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap, max_tokens):
         try:
             # Update the current instance instead of creating a new one
             self.model_local = get_model(model_choice)
             self.embedding_model_name = embedding_choice
             self.chunk_size = chunk_size
             self.chunk_overlap = chunk_overlap
-            self.min_tokens = min_tokens
             self.max_tokens = max_tokens
             
             # Call the setup_vectorstore method
             self.setup_vectorstore(url_input, file_input)
             
-            return "Content loaded successfully into the vectorstore."
+            return "Content loaded successfully into memory."
         except Exception as e:
             return f"Error loading content: {str(e)}"
         
@@ -134,7 +132,7 @@ class RAGAssistant:
         
         chain = (
             rag_prompt 
-            | self.model_local.bind(temperature=self.temperature, min_tokens=self.min_tokens, max_tokens=self.max_tokens)
+            | self.model_local.bind(temperature=self.temperature, max_tokens=self.max_tokens)
             | StrOutputParser()
         )
         
@@ -177,14 +175,14 @@ class RAGAssistant:
             rag_chain = (
                 {"context": RunnablePassthrough(), "question": custom_prompt}
                 | base_rag_prompt
-                | self.model_local.bind(temperature=self.temperature, min_tokens=self.min_tokens, max_tokens=self.max_tokens)
+                | self.model_local.bind(temperature=self.temperature, max_tokens=self.max_tokens)
                 | StrOutputParser()
             )
         else:
             # If no custom prompt template, use the base RAG prompt directly
             rag_chain = (
                 base_rag_prompt
-                | self.model_local.bind(temperature=self.temperature, min_tokens=self.min_tokens, max_tokens=self.max_tokens)
+                | self.model_local.bind(temperature=self.temperature, max_tokens=self.max_tokens)
                 | StrOutputParser()
             )
         
@@ -193,4 +191,9 @@ class RAGAssistant:
             input_dict["history"] = _format_history(history)
         
         response = await rag_chain.ainvoke(input_dict)
+        
+        # Check if response is None and handle it
+        if response is None:
+            return "I apologize, but I couldn't generate a response. Please try rephrasing your question or providing more context."
+        
         return response
