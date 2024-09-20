@@ -1,5 +1,7 @@
 # model_helpers/RAG_assistant.py
 from langgraph.graph import StateGraph, END
+import torch
+from transformers import AutoTokenizer, AutoModel
 from typing import TypedDict, List, Annotated
 from operator import add
 #import BeautifulSoup4
@@ -32,10 +34,34 @@ class State(TypedDict):
     answer: str
     all_actions: Annotated[List[str], add]
 
+class CustomHuggingFaceEmbeddings:
+    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, clean_up_tokenization_spaces=True)
+        self.model = AutoModel.from_pretrained(model_name)
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.model.to(self.device)
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        encoded_input = self.tokenizer(texts, padding=True, truncation=True, return_tensors='pt')
+        encoded_input = {k: v.to(self.device) for k, v in encoded_input.items()}
+        with torch.no_grad():
+            model_output = self.model(**encoded_input)
+        attention_mask = encoded_input['attention_mask']
+        token_embeddings = model_output.last_hidden_state
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+        sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+        sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+        embeddings = (sum_embeddings / sum_mask).cpu().numpy()
+        return embeddings.tolist()
+
+    def embed_query(self, text: str) -> List[float]:
+        return self.embed_documents([text])[0]
+
 class RAGAssistant:
-    def __init__(self, model_name="Ollama (LLama3.1)", embedding_model="nomic-embed-text", chunk_size=7500, chunk_overlap=100, temperature=0.7, num_similar_docs=3, language="english", max_tokens=None):
+    def __init__(self, model_name="Ollama (LLama3.1)", embedding_model="nomic-embed-text", chunk_size=500, chunk_overlap=50, temperature=0.4, num_similar_docs=3, language="english", max_tokens=None):
         self.model_local = get_model(model_name)
         self.embedding_model_name = embedding_model
+        self.embedding_model = get_embedding_model(embedding_model)  # Initialize the embedding model
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.temperature = temperature
@@ -54,6 +80,7 @@ class RAGAssistant:
             # Update the current instance instead of creating a new one
             self.model_local = get_model(model_choice)
             self.embedding_model_name = embedding_choice
+            self.embedding_model = get_embedding_model(embedding_choice)  # Update the embedding model
             self.chunk_size = chunk_size
             self.chunk_overlap = chunk_overlap
             self.max_tokens = max_tokens
@@ -125,24 +152,22 @@ class RAGAssistant:
         else:
             raise ValueError("No documents were loaded.")
 
-        embedding_function = get_embedding_model(self.embedding_model_name)
-
         # If using the custom embedding function for all-MiniLM-L6-v2
-        if self.embedding_model_name == "all-MiniLM-L6-v2":
+        if isinstance(self.embedding_model, CustomHuggingFaceEmbeddings):
             texts = [doc.page_content for doc in doc_splits]
-            embeddings = embedding_function(texts)
+            embeddings = self.embedding_model.embed_documents(texts)
             self.vectorstore = FAISS.from_embeddings(
                 text_embeddings=list(zip(texts, embeddings)),
-                embedding=embedding_function,
+                embedding=self.embedding_model,
             )
         else:
             self.vectorstore = FAISS.from_documents(
                 documents=doc_splits,
-                embedding=embedding_function,
+                embedding=self.embedding_model,
             )
-        
-        self.retriever = self.select_retriever(retrieval_method)
 
+        self.retriever = self.select_retriever(retrieval_method)
+    
     async def retrieve_context(self, query: str) -> List[Document]:
         # Use run_in_executor to run the synchronous invoke method in a separate thread
         loop = asyncio.get_event_loop()
@@ -226,12 +251,3 @@ class RAGAssistant:
             return "I apologize, but I couldn't generate a response. Please try rephrasing your question or providing more context."
         
         return response
-
-# UI Integration Note:
-# To implement the dropdown for selecting retriever methods in the UI:
-# 1. Add a dropdown component to the UI with options: "similarity", "mmr", and "similarity_score_threshold"
-# 2. When loading content or setting up the vectorstore, pass the selected retrieval method to the `load_content` method
-# 3. Update the UI to call `load_content` with the selected retrieval method when loading new content or changing the retriever
-# Example:
-# retrieval_method = ui.dropdown(["similarity", "mmr", "similarity_score_threshold"], label="Select Retriever Method")
-# rag_assistant.load_content(..., retrieval_method=retrieval_method)

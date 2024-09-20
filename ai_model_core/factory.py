@@ -81,17 +81,9 @@ def get_embedding_model(choice: str, **kwargs):
             **kwargs
         )
     elif choice == "all-MiniLM-L6-v2":
-        tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L6-v2', clean_up_tokenization_spaces=True)
-        model = AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L6-v2')
-        
-        def get_embeddings(texts):
-            inputs = tokenizer(texts, padding=True, truncation=True, return_tensors="pt")
-            with torch.no_grad():
-                outputs = model(**inputs)
-            embeddings = outputs.last_hidden_state.mean(dim=1)
-            return embeddings.numpy()
-        
-        return get_embeddings
+        return CustomHuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
     elif choice == "text-embedding-ada-002":
         api_key = get_api_key('openai')
         return OpenAIEmbeddings(
