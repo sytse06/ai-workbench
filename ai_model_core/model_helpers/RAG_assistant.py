@@ -2,6 +2,11 @@
 from langgraph.graph import StateGraph, END
 import torch
 from transformers import AutoTokenizer, AutoModel
+import fitz  # PyMuPDF
+import pytesseract
+from PIL import Image
+import io
+from langchain.schema import Document
 from typing import TypedDict, List, Annotated
 from operator import add
 #import BeautifulSoup4
@@ -34,6 +39,33 @@ class State(TypedDict):
     answer: str
     all_actions: Annotated[List[str], add]
 
+import fitz  # PyMuPDF
+from langchain.schema import Document
+
+class PyMuPDFLoader:
+    def __init__(self, file_path):
+        self.file_path = file_path
+    
+    def load(self):
+        docs = []
+        doc = fitz.open(self.file_path)
+        
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            text = page.get_text("text")  # Extract text
+            
+            if text.strip():
+                docs.append(Document(
+                    page_content=text,
+                    metadata={
+                        "page": page_num + 1,
+                        "source": self.file_path  # Add file path as metadata
+                    }
+                ))
+            else:
+                print(f"Warning: No text extracted from page {page_num + 1}")
+        
+        return docs
 class CustomHuggingFaceEmbeddings:
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, clean_up_tokenization_spaces=True)
@@ -140,7 +172,7 @@ class RAGAssistant:
                 if file_extension == '.txt':
                     docs.extend(TextLoader(file.name).load())
                 elif file_extension == '.pdf':
-                    docs.extend(PyPDFLoader(file.name).load())
+                    docs.extend(PyMuPDFLoader(file.name).load())
                 elif file_extension == '.docx':
                     docs.extend(Docx2txtLoader(file.name).load())
         else:
