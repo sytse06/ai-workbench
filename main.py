@@ -299,11 +299,12 @@ with gr.Blocks() as demo:
                         label="Choose Embedding Model",
                         value="nomic-embed-text"
                     )
+                        max_tokens = gr.Slider(minimum=50, maximum=4000, value=1000, step=50, label="Max token generation")
                         chunk_size = gr.Slider(minimum=100, maximum=2500, value=500, step=100, label="Fragment Size")
                         chunk_overlap = gr.Slider(minimum=0, maximum=250, value=50, step=10, label="Fragment Overlap")
                         temperature = gr.Slider(minimum=0, maximum=1, value=0.1, step=0.1, label="Temp text generation")
+                        retrieval_method = gr.Dropdown(choices=["similarity", "mmr", "similarity_score_threshold"], label="Select Retriever Method", value="similarity")
                         num_similar_docs = gr.Slider(minimum=2, maximum=10, value=3, step=1, label="Search Number of Fragments")
-                        max_tokens = gr.Slider(minimum=50, maximum=4000, value=1000, step=50, label="Max token generation")
 
                     load_button = gr.Button("Process content for analysis")
                     load_output = gr.Textbox(label="Load Status", interactive=False)

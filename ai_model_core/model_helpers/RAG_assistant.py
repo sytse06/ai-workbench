@@ -49,7 +49,7 @@ class RAGAssistant:
         self.config = load_config()
         self.max_tokens = max_tokens
     
-    def load_content(self, url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap, max_tokens):
+    def load_content(self, url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap, max_tokens, retrieval_method="similarity"):
         try:
             # Update the current instance instead of creating a new one
             self.model_local = get_model(model_choice)
@@ -58,14 +58,33 @@ class RAGAssistant:
             self.chunk_overlap = chunk_overlap
             self.max_tokens = max_tokens
             
-            # Call the setup_vectorstore method
-            self.setup_vectorstore(url_input, file_input)
+            # Call the setup_vectorstore method with the retrieval_method
+            self.setup_vectorstore(url_input, file_input, retrieval_method)
             
             return "Content loaded successfully into memory."
         except Exception as e:
             return f"Error loading content: {str(e)}"
+    
+    def select_retriever(self, method):
+        if method == "similarity":
+            return self.vectorstore.as_retriever(
+                search_type="similarity",
+                search_kwargs={"k": self.num_similar_docs}
+            )
+        elif method == "mmr":
+            return self.vectorstore.as_retriever(
+                search_type="mmr",
+                search_kwargs={"k": self.num_similar_docs, "fetch_k": 20}
+            )
+        elif method == "similarity_score_threshold":
+            return self.vectorstore.as_retriever(
+                search_type="similarity_score_threshold",
+                search_kwargs={"score_threshold": 0.8, "k": self.num_similar_docs}
+            )
+        else:
+            raise ValueError(f"Unknown retrieval method: {method}")
         
-    def setup_vectorstore(self, urls, files):
+    def setup_vectorstore(self, urls, files, retrieval_method="similarity"):
         docs = []
         # Check and process URLs if they are provided
         if urls and isinstance(urls, str):
@@ -106,13 +125,23 @@ class RAGAssistant:
         else:
             raise ValueError("No documents were loaded.")
 
-        embedding_model = get_embedding_model(self.embedding_model_name)
+        embedding_function = get_embedding_model(self.embedding_model_name)
 
-        self.vectorstore = FAISS.from_documents(
-            documents=doc_splits,
-            embedding=embedding_model,
-        )
-        self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": self.num_similar_docs})
+        # If using the custom embedding function for all-MiniLM-L6-v2
+        if self.embedding_model_name == "all-MiniLM-L6-v2":
+            texts = [doc.page_content for doc in doc_splits]
+            embeddings = embedding_function(texts)
+            self.vectorstore = FAISS.from_embeddings(
+                text_embeddings=list(zip(texts, embeddings)),
+                embedding=embedding_function,
+            )
+        else:
+            self.vectorstore = FAISS.from_documents(
+                documents=doc_splits,
+                embedding=embedding_function,
+            )
+        
+        self.retriever = self.select_retriever(retrieval_method)
 
     async def retrieve_context(self, query: str) -> List[Document]:
         # Use run_in_executor to run the synchronous invoke method in a separate thread
@@ -197,3 +226,12 @@ class RAGAssistant:
             return "I apologize, but I couldn't generate a response. Please try rephrasing your question or providing more context."
         
         return response
+
+# UI Integration Note:
+# To implement the dropdown for selecting retriever methods in the UI:
+# 1. Add a dropdown component to the UI with options: "similarity", "mmr", and "similarity_score_threshold"
+# 2. When loading content or setting up the vectorstore, pass the selected retrieval method to the `load_content` method
+# 3. Update the UI to call `load_content` with the selected retrieval method when loading new content or changing the retriever
+# Example:
+# retrieval_method = ui.dropdown(["similarity", "mmr", "similarity_score_threshold"], label="Select Retriever Method")
+# rag_assistant.load_content(..., retrieval_method=retrieval_method)
