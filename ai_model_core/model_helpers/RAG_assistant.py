@@ -41,7 +41,6 @@ class State(TypedDict):
 
 import fitz  # PyMuPDF
 from langchain.schema import Document
-
 class PyMuPDFLoader:
     def __init__(self, file_path):
         self.file_path = file_path
@@ -52,14 +51,19 @@ class PyMuPDFLoader:
         
         for page_num in range(len(doc)):
             page = doc.load_page(page_num)
-            text = page.get_text("text")  # Extract text
+            text = page.get_text("text")  # Try to extract text directly
+            
+            if not text.strip():  # If no text was extracted, try OCR
+                pix = page.get_pixmap()
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                text = pytesseract.image_to_string(img)
             
             if text.strip():
                 docs.append(Document(
                     page_content=text,
                     metadata={
                         "page": page_num + 1,
-                        "source": self.file_path  # Add file path as metadata
+                        "source": self.file_path
                     }
                 ))
             else:
@@ -90,7 +94,7 @@ class CustomHuggingFaceEmbeddings:
         return self.embed_documents([text])[0]
 
 class RAGAssistant:
-    def __init__(self, model_name="Ollama (LLama3.1)", embedding_model="nomic-embed-text", chunk_size=500, chunk_overlap=50, temperature=0.4, num_similar_docs=3, language="english", max_tokens=None):
+    def __init__(self, model_name="Ollama (LLama3.1)", embedding_model="nomic-embed-text", retrieval_method="similarity", chunk_size=500, chunk_overlap=50, temperature=0.4, num_similar_docs=3, language="english", max_tokens=None):
         self.model_local = get_model(model_name)
         self.embedding_model_name = embedding_model
         self.embedding_model = get_embedding_model(embedding_model)  # Initialize the embedding model

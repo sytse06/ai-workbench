@@ -118,7 +118,7 @@ async def process_image_wrapper(message: str, history: List[tuple[str, str]], im
         return error_message
 
 # Wrapper function for Gradio interface RAG_assistant:    
-async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_size, chunk_overlap, temperature, num_similar_docs, max_tokens, urls, files, language, prompt_info, history_flag):
+async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_size, chunk_overlap, temperature, num_similar_docs, max_tokens, urls, files, language, prompt_info, history_flag, retrieval_method):
     # Create the embedding model based on the choice
     if embedding_choice == "all-MiniLM-L6-v2":
         embedding_model = CustomHuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -151,7 +151,7 @@ async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_si
     
     try:
         logger.info("Setting up vectorstore")
-        rag_assistant.setup_vectorstore(urls, files)
+        rag_assistant.setup_vectorstore(urls, files, retrieval_method)
         rag_assistant.prompt_template = prompt_info
         rag_assistant.use_history = history_flag
         
@@ -161,27 +161,6 @@ async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_si
     except Exception as e:
         logger.error(f"Error in RAG function: {str(e)}")
         return f"An error occurred: {str(e)}"
-    
-# Helper function to process content as RAG context
-def load_content(url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap, max_tokens):
-    try:
-        # Create a new RAGAssistant instance or use an existing one
-        global rag_assistant  # Assuming you have a global rag_assistant instance
-        if not hasattr(globals(), 'rag_assistant') or rag_assistant is None:
-            rag_assistant = RAGAssistant(
-                model_name=model_choice,
-                embedding_model=embedding_choice,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                max_tokens=max_tokens
-            )
-        
-        # Call the setup_vectorstore method
-        rag_assistant.setup_vectorstore(url_input, file_input)
-        
-        return "Content loaded successfully into memory."
-    except Exception as e:
-        return f"Error loading content: {str(e)}"
 
 # Helper functions for Gradio interface
 def clear_chat():
@@ -346,7 +325,8 @@ with gr.Blocks() as demo:
                             file_input,
                             language_choice, 
                             prompt_info,
-                            history_flag
+                            history_flag,
+                            retrieval_method
                         ],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",

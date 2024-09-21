@@ -10,6 +10,7 @@ from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from ai_model_core.config.credentials import get_api_key, load_credentials
+from ai_model_core.model_helpers.RAG_assistant import CustomHuggingFaceEmbeddings
 from langchain.prompts import PromptTemplate
 
 def get_model(choice: str, **kwargs):
