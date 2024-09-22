@@ -1,5 +1,7 @@
 # ai_model_interface/factory.py
 import openai
+import torch
+from transformers import AutoTokenizer, AutoModel
 from langchain_openai import ChatOpenAI
 from langchain_community.chat_models import ChatOllama, ChatAnthropic
 from langchain_openai import ChatOpenAI
@@ -8,6 +10,7 @@ from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from ai_model_core.config.credentials import get_api_key, load_credentials
+#from ai_model_core.model_helpers.RAG_assistant import CustomHuggingFaceEmbeddings
 from langchain.prompts import PromptTemplate
 
 def get_model(choice: str, **kwargs):
@@ -79,9 +82,8 @@ def get_embedding_model(choice: str, **kwargs):
             **kwargs
         )
     elif choice == "all-MiniLM-L6-v2":
-        return HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            **kwargs
+        return CustomHuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
     elif choice == "text-embedding-ada-002":
         api_key = get_api_key('openai')

@@ -1,5 +1,8 @@
-import logging
 import os
+# Set the environment variable to allow duplicate OpenMP libraries
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
+import logging
 import sys
 import yaml
 from io import BytesIO
@@ -20,6 +23,7 @@ from ai_model_core.config.credentials import get_api_key, load_credentials
 from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
 from ai_model_core import get_model, get_embedding_model, get_prompt_template, get_system_prompt, _format_history
 from ai_model_core.model_helpers import ChatAssistant, PromptAssistant, VisionAssistant, RAGAssistant
+from ai_model_core.model_helpers.RAG_assistant import CustomHuggingFaceEmbeddings
 
 # Load config at startup
 config = load_config()
@@ -113,8 +117,35 @@ async def process_image_wrapper(message: str, history: List[tuple[str, str]], im
         logger.error("Full traceback:", exc_info=True)
         return error_message
 
+# Helper function to process content as RAG context
+def load_content(url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap, max_tokens):
+    try:
+        # Create a new RAGAssistant instance or use an existing one
+        global rag_assistant  # Assuming you have a global rag_assistant instance
+        if not hasattr(globals(), 'rag_assistant') or rag_assistant is None:
+            rag_assistant = RAGAssistant(
+                model_name=model_choice,
+                embedding_model=embedding_choice,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                max_tokens=max_tokens
+            )
+        
+        # Call the setup_vectorstore method
+        rag_assistant.setup_vectorstore(url_input, file_input)
+        
+        return "Content loaded successfully into memory."
+    except Exception as e:
+        return f"Error loading content: {str(e)}"
+
 # Wrapper function for Gradio interface RAG_assistant:    
-async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_size, chunk_overlap, temperature, num_similar_docs, max_tokens, urls, files, language, prompt_info, history_flag):
+async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_size, chunk_overlap, temperature, num_similar_docs, max_tokens, urls, files, language, prompt_info, history_flag, retrieval_method):
+    # Create the embedding model based on the choice
+    if embedding_choice == "all-MiniLM-L6-v2":
+        embedding_model = CustomHuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    else:
+        embedding_model = get_embedding_model(embedding_choice)
+        
     rag_assistant = RAGAssistant(
         model_name=model_choice,
         embedding_model=embedding_choice,
@@ -141,7 +172,7 @@ async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_si
     
     try:
         logger.info("Setting up vectorstore")
-        rag_assistant.setup_vectorstore(urls, files)
+        rag_assistant.setup_vectorstore(urls, files, retrieval_method)
         rag_assistant.prompt_template = prompt_info
         rag_assistant.use_history = history_flag
         
@@ -151,27 +182,6 @@ async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_si
     except Exception as e:
         logger.error(f"Error in RAG function: {str(e)}")
         return f"An error occurred: {str(e)}"
-    
-# Helper function to process content as RAG context
-def load_content(url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap, max_tokens):
-    try:
-        # Create a new RAGAssistant instance or use an existing one
-        global rag_assistant  # Assuming you have a global rag_assistant instance
-        if not hasattr(globals(), 'rag_assistant') or rag_assistant is None:
-            rag_assistant = RAGAssistant(
-                model_name=model_choice,
-                embedding_model=embedding_choice,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                max_tokens=max_tokens
-            )
-        
-        # Call the setup_vectorstore method
-        rag_assistant.setup_vectorstore(url_input, file_input)
-        
-        return "Content loaded successfully into memory."
-    except Exception as e:
-        return f"Error loading content: {str(e)}"
 
 # Helper functions for Gradio interface
 def clear_chat():
@@ -299,11 +309,12 @@ with gr.Blocks() as demo:
                         label="Choose Embedding Model",
                         value="nomic-embed-text"
                     )
+                        max_tokens = gr.Slider(minimum=50, maximum=4000, value=1000, step=50, label="Max token generation")
                         chunk_size = gr.Slider(minimum=100, maximum=2500, value=500, step=100, label="Fragment Size")
                         chunk_overlap = gr.Slider(minimum=0, maximum=250, value=50, step=10, label="Fragment Overlap")
                         temperature = gr.Slider(minimum=0, maximum=1, value=0.1, step=0.1, label="Temp text generation")
+                        retrieval_method = gr.Dropdown(choices=["similarity", "mmr", "similarity_threshold"], label="Select Retriever Method", value="similarity")
                         num_similar_docs = gr.Slider(minimum=2, maximum=10, value=3, step=1, label="Search Number of Fragments")
-                        max_tokens = gr.Slider(minimum=50, maximum=4000, value=1000, step=50, label="Max token generation")
 
                     load_button = gr.Button("Process content for analysis")
                     load_output = gr.Textbox(label="Load Status", interactive=False)
@@ -335,7 +346,8 @@ with gr.Blocks() as demo:
                             file_input,
                             language_choice, 
                             prompt_info,
-                            history_flag
+                            history_flag,
+                            retrieval_method
                         ],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",
