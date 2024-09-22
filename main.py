@@ -219,78 +219,26 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
     except Exception as e:
         logger.error(f"Error in RAG function: {str(e)}")
         return f"An error occurred: {str(e)}"
-
-# Wrapper function for Gradio interface summarize_assistant:
-async def summarize_wrapper(
-    loaded_docs: Union[List[Document], List[str], None],
-    model_choice: str,
-    method: str,
-    chunk_size: int,
-    chunk_overlap: int,
-    max_tokens: int,
-    temperature: float,
-    prompt_info: str,
-    language: str,
-    verbose: bool
-) -> str:
-    """
-    Wrapper function for document summarization using the SummarizationAssistant.
     
-    Args:
-        loaded_docs: List of Document objects or strings to summarize
-        model_choice: Name of the language model to use
-        method: Summarization method (handled by Gradio dropdown)
-        chunk_size: Size of text chunks for processing (handled by Gradio slider)
-        chunk_overlap: Overlap between consecutive chunks (handled by Gradio slider)
-        max_tokens: Maximum tokens in the final summary (handled by Gradio slider)
-        temperature: Temperature parameter for text generation (handled by Gradio slider)
-        prompt_info: Type of summary prompt to use
-        language: Language for summarization (handled by Gradio dropdown)
-        verbose: Enable verbose logging (handled by Gradio checkbox)
-    """
-    # Only check for loaded documents as this isn't handled by Gradio UI constraints
-    if loaded_docs is None or len(loaded_docs) == 0:
-        return "Error: No documents loaded. Please load documents before summarizing."
-
+async def summarize_wrapper(file_input, model_choice, chain_type, chunk_size, chunk_overlap, temperature, max_tokens):
+    summarizer = SummarizationAssistant(
+        model_name=model_choice,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        chain_type=chain_type
+    )
+    
+    if not file_input:
+        return "Please upload a file to summarize."
+    
     try:
-        if verbose:
-            logger.info(f"Starting summarization with method: {method}")
-            logger.info(f"Processing {len(loaded_docs)} documents")
-        
-        # Initialize summarizer
-        summarizer = SummarizationAssistant(
-            model_name=model_choice,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            method=method,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            prompt_info=prompt_info,
-            language_choice=language,
-            verbose=verbose
-        )
-
-        # Perform summarization
-        result = await summarizer.summarize(
-            chunks=loaded_docs, 
-            method=method,
-            prompt_info=prompt_info,
-            language=language
-        )
-        
-        if not result or 'final_summary' not in result:
-            return "Error: No summary generated. Please check your inputs and try again."
-        
-        if verbose:
-            logger.info(f"Successfully generated summary of length {len(result['final_summary'])}")
-        
-        return result['final_summary']
-
+        summary = await summarizer.summarize(file_input.name)
+        return summary
     except Exception as e:
-        error_trace = traceback.format_exc()
-        logger.error(f"Summarization error: {str(e)}\n{error_trace}")
         return f"An error occurred during summarization: {str(e)}"
-    
+
 # Helper functions for Gradio interface
 def clear_chat():
     return None
@@ -720,279 +668,40 @@ with gr.Blocks() as demo:
                          "Inappropriate"],
                         label="Flagging Options"
                     )
-
-            # Connect the load_button to the load_documents_wrapper function
-            loaded_docs = gr.State()
-            load_button.click(
-                fn=load_documents_wrapper,
-                inputs=[url_input, file_input, chunk_size, chunk_overlap],
-                outputs=[load_output, loaded_docs]
-            )
-
-        # Summarization Assistant Tab
+                    
         with gr.Tab("Summarization Assistant"):
             with gr.Row():
                 with gr.Column(scale=1):
-                    url_input = gr.Textbox(
-                        label="Webpage to load",
-                        placeholder="Enter URLs here",
-                        lines=1
-                    )
                     file_input = gr.File(
                         label="Upload Document",
-                        file_types=[".txt", ".pdf", ".md", ".docx"],
-                        file_count="single"
+                        file_types=[".txt", ".pdf", ".docx"],
                     )
-                    chunk_size = gr.Slider(
-                        minimum=100, maximum=5000,
-                        value=2000, step=100,
-                        label="Chunk Size"
-                        )
-                    chunk_overlap = gr.Slider(
-                        minimum=0, maximum=500,
-                        value=200, step=10,
-                        label="Chunk Overlap"
-                        )
-                    load_button = gr.Button("Load content")
-                    load_output = gr.Textbox(
-                        label="Load Status", interactive=False
+                    model_choice = gr.Dropdown(
+                        ["Ollama (LLama3.1)", "Claude Sonnet", "Ollama (phi3.5)", "OpenAI GPT-4o-mini"],
+                        label="Choose Model",
+                        value="Ollama (LLama3.1)"
+                    )
+                    chain_type = gr.Dropdown(
+                        ["stuff", "map_reduce", "refine"],
+                        label="Summarization Strategy",
+                        value="stuff"
                     )
                     with gr.Accordion("Summarization Options", open=False):
-                        model_choice = gr.Dropdown(
-                            ["Ollama (LLama3.2)", "Claude Sonnet",
-                             "Claude Sonnet beta", "Deepseek v3",
-                             "Mistral (large)", "Mistral (small)",
-                             "Ollama (phi3.5)", "OpenAI GPT-4o-mini"],
-                            label="Choose Model",
-                            value="Ollama (LLama3.2)"
-                        )
-                        language_choice = gr.Dropdown(
-                            ["english", "dutch"],
-                            label="Choose language",
-                            value="english"
-                        )
-                        method = gr.Dropdown(
-                                ["stuff", "map_reduce", "refine"],
-                                label="Summarization Strategy",
-                                value="stuff"
-                            )
-                        max_tokens = gr.Slider(
-                            minimum=50, maximum=4000,
-                            value=3000, step=50,
-                            label="Max Tokens"
-                            )
-                        temperature = gr.Slider(
-                            minimum=0, maximum=1,
-                            value=0.4, step=0.1,
-                            label="Temperature"
-                            )
-                        verbose = gr.Checkbox(
-                            label="Verbose Mode",
-                            value=False
-                            )
+                        chunk_size = gr.Slider(minimum=100, maximum=5000, value=2000, step=100, label="Chunk Size")
+                        chunk_overlap = gr.Slider(minimum=0, maximum=500, value=200, step=10, label="Chunk Overlap")
+                        temperature = gr.Slider(minimum=0, maximum=1, value=0.4, step=0.1, label="Temperature")
+                        max_tokens = gr.Slider(minimum=50, maximum=4000, value=1000, step=50, label="Max Tokens")
 
                 with gr.Column(scale=4):
-                    summary_output = gr.Textbox(
-                        label="Summary Output",
-                        lines=25,
-                        show_copy_button=True
-                    )
+                    summary_output = gr.Textbox(label="Summary Output", lines=10)
                     summarize_button = gr.Button("Summarize Document")
-
-            # Connect the load_button to the load_documents_wrapper function
-            loaded_docs = gr.State()
-            load_button.click(
-                fn=load_documents_wrapper,
-                inputs=[url_input, file_input, chunk_size, chunk_overlap],
-                outputs=[load_output, loaded_docs]
-            )
 
             summarize_button.click(
                 fn=summarize_wrapper,
-                inputs=[
-                    loaded_docs, model_choice, method, chunk_size,
-                    chunk_overlap, max_tokens, temperature, 
-                    language_choice, prompt_info, verbose
-                ],
+                inputs=[file_input, model_choice, chain_type, chunk_size, chunk_overlap, temperature, max_tokens],
                 outputs=summary_output
-            )
-            
-        with gr.Tab("Transcription Assistant"):
-            with gr.Row():
-                # Left Column - Input Controls
-                with gr.Column(scale=1):
-                    media_input = gr.File(
-                        label="Upload Media File",
-                        file_types=["audio", "video"],
-                        file_count="single",
-                        type="filepath"
-                    )
-                    url_input = gr.Textbox(
-                        label="Video URL",
-                        placeholder="Enter video URL here"
-                    )
-                    
-                    with gr.Row():
-                        language = gr.Dropdown(
-                            choices=["Auto", "en", "nl", "de", "fr", "bg"],
-                            value="Auto",
-                            label="Source Language",
-                            info="Specification improves speed"
-                        )
-                    
-                    with gr.Accordion("Options", open=False):
-                        model_choice = gr.Dropdown(
-                            choices=WHISPER_MODELS,
-                            value="Whisper large",
-                            label="Model Size",
-                            info="Larger models are more accurate but slower"
-                        )
-                        task_type = gr.Radio(
-                            choices=["transcribe", "translate"],
-                            value="transcribe",
-                            label="Task Type",
-                            info=(
-                                "'Transcribe' keeps original language, "
-                                "'Translate' converts to English"
-                            )
-                        )
-                        output_format = gr.Dropdown(
-                            choices=OUTPUT_FORMATS,
-                            value="none",
-                            label="Output Format",
-                            info="Select output file format or 'none' for no file output"
-                        )
-                        temperature = gr.Slider(
-                            minimum=0.0,
-                            maximum=1.0,
-                            value=0.0,
-                            step=0.1,
-                            label="Temperature",
-                            info="Higher values = more random output"
-                        )
-                        device_input = gr.Radio(
-                            choices=["CPU", "GPU"],
-                            value="CPU",
-                            label="Device",
-                            info="GPU support requires additional setup"
-                        )
-                        verbose = gr.Checkbox(
-                            value=True,
-                            label="Verbose Output",
-                            info="Show detailed progress"
-                        )
-
-                # Right Column - Output and Progress
-                with gr.Column(scale=2):
-                    with gr.Accordion("Transcription Context Hints", open=False):
-                        speakers_input = gr.Textbox(
-                            label="Speakers",
-                            placeholder="Geoffrey Hinton, Andrej Karpathy",
-                            info="Add speaker names for correct spelling, separated by commas"
-                        )
-                        context_input = gr.Textbox(
-                            label="Additional Context",
-                            placeholder="Meeting about customer implementation",
-                            lines=2,
-                            info="Add brief context to help with domain-specific transcription"
-                        )
-                        terms_input = gr.Textbox(
-                            label="Specialized terms",
-                            placeholder="LLM:Large Language Model, RAG:Retrieval Augmented Generation",
-                            info="Add technical terms as term:description, separated by commas"
-                        )
-                    # Always visible component
-                    subtitle_preview = gr.TextArea(
-                        label="Transcription Preview",
-                        interactive=False,
-                        show_copy_button=True
-                    )
-                    
-                    # Progress info in collapsible accordion
-                    with gr.Accordion("Processing Details", open=False):
-                        progress_bar = gr.Progress()
-                        status_text = gr.Textbox(
-                            label="Status",
-                            interactive=False
-                        )
-                        time_info = gr.Textbox(
-                            label="Processing Time",
-                            interactive=False
-                        )
-                    
-                    # Hidden video/audio outputs
-                    video_output = gr.Video(
-                        label="Transcribed Video",
-                        visible=False
-                    )
-                    audio_output = gr.Audio(
-                        label="Transcribed Audio",
-                        visible=False
-                    )
-                    
-                    # Downloads in separate accordion
-                    with gr.Accordion("Downloads", open=False):
-                        txt_download = gr.File(
-                            label="TXT Download",
-                            visible=lambda: output_format not in ["none"]
-                        )
-                        srt_download = gr.File(
-                            label="SRT Download",
-                            visible=lambda: output_format not in ["none"]
-                        )
-                        vtt_download = gr.File(
-                            label="VTT Download",
-                            visible=lambda: output_format not in ["none"]
-                        )
-                        tsv_download = gr.File(
-                            label="TSV Download",
-                            visible=lambda: output_format not in ["none"]
-                        )
-                        json_download = gr.File(
-                            label="JSON Download",
-                            visible=lambda: output_format not in ["none"]
-                        )
-
-            # Process button under both columns
-            transcribe_button = gr.Button(
-                "Start Transcription",
-                variant="primary",
-                elem_classes=["primary-btn"]
-            )
-            
-            # Add interactive elements for button state
-            transcribing = gr.Textbox(value="", visible=False)
-
-            # Connect the transcribe button to the wrapper function
-            transcribe_button.click(
-                fn=start_transcription,
-                outputs=[transcribe_button, transcribing]
-            ).then(
-                fn=transcription_wrapper_streaming,
-                inputs=[
-                    media_input, url_input, model_choice, language,
-                    task_type, device_input, output_format, 
-                    speakers_input, terms_input, context_input,
-                    temperature, verbose
-                ],
-                outputs=[
-                    subtitle_preview,
-                    audio_output, 
-                    video_output,
-                    txt_download, 
-                    srt_download, 
-                    vtt_download,
-                    tsv_download, 
-                    json_download,
-                    status_text,
-                    time_info
-                ],
-                show_progress="full"
-            ).then(
-                fn=finish_transcription,
-                outputs=[transcribe_button, transcribing]
-            )
-
+            )  
+                  
     # Set up the flagging callback
     flagging_callback.setup(
         [rag_text_box, rag_chat_bot] + chat_interface.additional_inputs,
@@ -1015,5 +724,6 @@ with gr.Blocks() as demo:
     )
 
 if __name__ == "__main__":
-    logger.info("Starting the Gradio interface of the ai-workbench")
-    demo.launch(server_port=7860, debug=True, share=False)
+    logger.info("Starting the Gradio interface")
+    demo.launch(debug=True, share=False)
+    demo.launch(debug=True, share=False)
