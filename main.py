@@ -117,6 +117,27 @@ async def process_image_wrapper(message: str, history: List[tuple[str, str]], im
         logger.error("Full traceback:", exc_info=True)
         return error_message
 
+# Helper function to process content as RAG context
+def load_content(url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap, max_tokens):
+    try:
+        # Create a new RAGAssistant instance or use an existing one
+        global rag_assistant  # Assuming you have a global rag_assistant instance
+        if not hasattr(globals(), 'rag_assistant') or rag_assistant is None:
+            rag_assistant = RAGAssistant(
+                model_name=model_choice,
+                embedding_model=embedding_choice,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                max_tokens=max_tokens
+            )
+        
+        # Call the setup_vectorstore method
+        rag_assistant.setup_vectorstore(url_input, file_input)
+        
+        return "Content loaded successfully into memory."
+    except Exception as e:
+        return f"Error loading content: {str(e)}"
+
 # Wrapper function for Gradio interface RAG_assistant:    
 async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_size, chunk_overlap, temperature, num_similar_docs, max_tokens, urls, files, language, prompt_info, history_flag, retrieval_method):
     # Create the embedding model based on the choice

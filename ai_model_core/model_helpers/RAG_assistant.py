@@ -139,7 +139,7 @@ class RAGAssistant:
                 search_type="mmr",
                 search_kwargs={"k": self.num_similar_docs, "fetch_k": 20}
             )
-        elif method == "similarity_score_threshold":
+        elif method == "similarity_threshold":
             return self.vectorstore.as_retriever(
                 search_type="similarity_score_threshold",
                 search_kwargs={"score_threshold": 0.8, "k": self.num_similar_docs}
