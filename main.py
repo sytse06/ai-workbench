@@ -182,6 +182,25 @@ async def rag_wrapper(message, history, model_choice, embedding_choice, chunk_si
     except Exception as e:
         logger.error(f"Error in RAG function: {str(e)}")
         return f"An error occurred: {str(e)}"
+    
+async def summarize_wrapper(file_input, model_choice, chain_type, chunk_size, chunk_overlap, temperature, max_tokens):
+    summarizer = SummarizationAssistant(
+        model_name=model_choice,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        chain_type=chain_type
+    )
+    
+    if not file_input:
+        return "Please upload a file to summarize."
+    
+    try:
+        summary = await summarizer.summarize(file_input.name)
+        return summary
+    except Exception as e:
+        return f"An error occurred during summarization: {str(e)}"
 
 # Helper functions for Gradio interface
 def clear_chat():
@@ -358,7 +377,40 @@ with gr.Blocks() as demo:
                     flag_options = gr.Dropdown(
                         ["High quality", "Incorrect", "Ambiguous", "Inappropriate"],
                         label="Flagging Options"
-                    )  
+                    )
+                    
+        with gr.Tab("Summarization Assistant"):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    file_input = gr.File(
+                        label="Upload Document",
+                        file_types=[".txt", ".pdf", ".docx"],
+                    )
+                    model_choice = gr.Dropdown(
+                        ["Ollama (LLama3.1)", "Claude Sonnet", "Ollama (phi3.5)", "OpenAI GPT-4o-mini"],
+                        label="Choose Model",
+                        value="Ollama (LLama3.1)"
+                    )
+                    chain_type = gr.Dropdown(
+                        ["stuff", "map_reduce", "refine"],
+                        label="Summarization Strategy",
+                        value="stuff"
+                    )
+                    with gr.Accordion("Summarization Options", open=False):
+                        chunk_size = gr.Slider(minimum=100, maximum=5000, value=2000, step=100, label="Chunk Size")
+                        chunk_overlap = gr.Slider(minimum=0, maximum=500, value=200, step=10, label="Chunk Overlap")
+                        temperature = gr.Slider(minimum=0, maximum=1, value=0.4, step=0.1, label="Temperature")
+                        max_tokens = gr.Slider(minimum=50, maximum=4000, value=1000, step=50, label="Max Tokens")
+
+                with gr.Column(scale=4):
+                    summary_output = gr.Textbox(label="Summary Output", lines=10)
+                    summarize_button = gr.Button("Summarize Document")
+
+            summarize_button.click(
+                fn=summarize_wrapper,
+                inputs=[file_input, model_choice, chain_type, chunk_size, chunk_overlap, temperature, max_tokens],
+                outputs=summary_output
+            )  
                   
     # Set up the flagging callback
     flagging_callback.setup([rag_text_box, rag_chat_bot] + chat_interface.additional_inputs, "flagged_rag_data")
@@ -380,4 +432,4 @@ with gr.Blocks() as demo:
 
 if __name__ == "__main__":
     logger.info("Starting the Gradio interface")
-    demo.launch(debug=True, share=True)
+    demo.launch(debug=True, share=False)
