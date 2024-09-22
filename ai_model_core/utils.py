@@ -2,6 +2,10 @@
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from typing import List, Union, Any
 from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader, TextLoader, WebBaseLoader
+from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import HuggingFaceEmbeddings
 import logging
 import yaml
 
@@ -42,3 +46,29 @@ def load_config(file_path: str) -> dict:
     with open(file_path, 'r') as file:
         config = yaml.safe_load(file)
     return config
+
+def load_document(file_path: str) -> List[str]:
+    """Load document based on file extension."""
+    _, ext = os.path.splitext(file_path)
+    if ext.lower() == '.pdf':
+        loader = PyPDFLoader(file_path)
+    elif ext.lower() == '.txt':
+        loader = TextLoader(file_path)
+    else:
+        raise ValueError(f"Unsupported file type: {ext}")
+    return loader.load()
+
+def load_web_content(url: str) -> List[str]:
+    """Load content from a web URL."""
+    loader = WebBaseLoader(url)
+    return loader.load()
+
+def create_vectorstore(documents: List[str], embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2") -> FAISS:
+    """Create a FAISS vectorstore from documents."""
+    embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
+    return FAISS.from_documents(documents, embeddings)
+
+def split_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[str]:
+    """Split text into chunks."""
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    return text_splitter.split_text(text)
