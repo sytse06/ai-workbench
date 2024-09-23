@@ -11,41 +11,21 @@ import traceback
 # Third-party imports
 from PIL import Image
 import gradio as gr
-from langchain_core.documents import Document
-
-# Local imports
-from ai_model_core.config.settings import (
-    load_config, 
-    get_prompt_list, 
-    update_prompt_list
-)
-from ai_model_core.shared_utils.factory import (
-    get_model,
-    get_embedding_model,
-    WHISPER_MODELS,
-    OUTPUT_FORMATS
-)
-from ai_model_core.shared_utils.utils import ( 
-    EnhancedContentLoader,
-    get_prompt_template,
-    _format_history
-)
-from ai_model_core.model_helpers import (
-    ChatAssistant, 
-    PromptAssistant, 
-    VisionAssistant,
-    RAGAssistant, 
-    SummarizationAssistant,
-    TranscriptionAssistant
-)
-
-from ai_model_core.model_helpers.transcription_assistant import (
-    TranscriptionContext
-)
-
-# Set environment variables
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
-os.environ['USER_AGENT'] = 'my-RAG-agent'
+import asyncio
+from typing import List, Union, Any
+from langchain_community.chat_models import ChatAnthropic, ChatOllama
+from langchain_openai import ChatOpenAI
+from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import BaseMessage
+from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthrough
+from langchain_community.vectorstores import FAISS
+from ai_model_core.config.credentials import get_api_key, load_credentials
+from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
+from ai_model_core import get_model, get_embedding_model, get_prompt_template, get_system_prompt, _format_history, load_document, load_web_content, split_text
+from ai_model_core.model_helpers import ChatAssistant, PromptAssistant, VisionAssistant, RAGAssistant, SummarizationAssistant
+from ai_model_core.model_helpers.RAG_assistant import CustomHuggingFaceEmbeddings
 
 # Load config at startup
 config = load_config()
@@ -75,9 +55,8 @@ logger.propagate = False
 chat_assistant = ChatAssistant("Ollama (LLama3.2)")
 prompt_assistant = PromptAssistant("Ollama (LLama3.2)")
 vision_assistant = VisionAssistant("Ollama (LLaVA)")
-rag_assistant = RAGAssistant("Ollama (LLama3.2)")
-summarization_assistant = SummarizationAssistant("Ollama (LLama3.2)")
-transcription_assistant = TranscriptionAssistant(model_size="base")
+rag_assistant = RAGAssistant("Ollama (LLama3.1)")
+summarization_assistant = SummarizationAssistant("Ollama (LLama3.1)")
 
 # Wrapper function for Gradio implementation chat_assistant:
 async def chat_wrapper(
