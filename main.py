@@ -21,8 +21,8 @@ from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthr
 from langchain_community.vectorstores import FAISS
 from ai_model_core.config.credentials import get_api_key, load_credentials
 from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
-from ai_model_core import get_model, get_embedding_model, get_prompt_template, get_system_prompt, _format_history
-from ai_model_core.model_helpers import ChatAssistant, PromptAssistant, VisionAssistant, RAGAssistant
+from ai_model_core import get_model, get_embedding_model, get_prompt_template, get_system_prompt, _format_history, load_document, load_web_content, split_text
+from ai_model_core.model_helpers import ChatAssistant, PromptAssistant, VisionAssistant, RAGAssistant, SummarizationAssistant
 from ai_model_core.model_helpers.RAG_assistant import CustomHuggingFaceEmbeddings
 
 # Load config at startup
@@ -63,6 +63,7 @@ chat_assistant = ChatAssistant("Ollama (LLama3.1)")
 prompt_assistant = PromptAssistant("Ollama (LLama3.1)")
 vision_assistant = VisionAssistant("Ollama (LLaVA)")
 rag_assistant = RAGAssistant("Ollama (LLama3.1)")
+summarization_assistant = SummarizationAssistant("Ollama (LLama3.1)")
 
 # Wrapper function for Gradio interface chat_assistant:
 async def chat_wrapper(message, history, model_choice, history_flag, temperature, max_tokens):

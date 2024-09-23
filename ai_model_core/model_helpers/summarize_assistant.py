@@ -5,10 +5,9 @@ from operator import add
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
-from ai_model_interface.utils import (
-    load_document, split_text, get_prompt_template, load_config
-)
-
+from ai_model_core import get_model, get_embedding_model, get_prompt_template, get_system_prompt, _format_history, load_document, load_web_content, split_text, create_vectorstore
+from ai_model_core.config.credentials import get_api_key, load_credentials
+from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
 class State(TypedDict):
     input: str
     chunks: List[str]
