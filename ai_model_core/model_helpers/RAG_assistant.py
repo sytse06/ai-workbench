@@ -28,9 +28,10 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from ai_model_core import get_model, get_embedding_model, get_prompt_template, get_system_prompt, _format_history
+from ai_model_core import get_model, get_embedding_model, get_prompt_template, get_system_prompt, _format_history, load_documents, load_from_files, _load_from_urls, split_documents, load_and_split_document
 from ai_model_core.config.credentials import get_api_key, load_credentials
 from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
+from ai_model_core.utils import EnhancedContentLoader
 
 class State(TypedDict):
     input: str
@@ -110,24 +111,37 @@ class RAGAssistant:
         self.use_history = True
         self.config = load_config()
         self.max_tokens = max_tokens
+        self.content_loader = EnhancedContentLoader(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        self.retrieval_method = retrieval_method
     
-    def load_content(self, url_input, file_input, model_choice, embedding_choice, chunk_size, chunk_overlap, max_tokens, retrieval_method="similarity"):
+    def load_content(self, url_input: str, file_input: Union[str, List[str]]):
         try:
-            # Update the current instance instead of creating a new one
-            self.model_local = get_model(model_choice)
-            self.embedding_model_name = embedding_choice
-            self.embedding_model = get_embedding_model(embedding_choice)  # Update the embedding model
-            self.chunk_size = chunk_size
-            self.chunk_overlap = chunk_overlap
-            self.max_tokens = max_tokens
-            
-            # Call the setup_vectorstore method with the retrieval_method
-            self.setup_vectorstore(url_input, file_input, retrieval_method)
-            
+            docs = self.content_loader.load_and_split_document(file_input, url_input)
+            self.setup_vectorstore(docs)
             return "Content loaded successfully into memory."
         except Exception as e:
             return f"Error loading content: {str(e)}"
-    
+        
+    def setup_vectorstore(self, docs: List[Document]):
+        if not docs:
+            raise ValueError("No documents were loaded.")
+
+        # If using the custom embedding function for all-MiniLM-L6-v2
+        if isinstance(self.embedding_model, CustomHuggingFaceEmbeddings):
+            texts = [doc.page_content for doc in docs]
+            embeddings = self.embedding_model.embed_documents(texts)
+            self.vectorstore = FAISS.from_embeddings(
+                text_embeddings=list(zip(texts, embeddings)),
+                embedding=self.embedding_model,
+            )
+        else:
+            self.vectorstore = FAISS.from_documents(
+                documents=docs,
+                embedding=self.embedding_model,
+            )
+
+        self.retriever = self.select_retriever(self.retrieval_method)
+
     def select_retriever(self, method):
         if method == "similarity":
             return self.vectorstore.as_retriever(
@@ -146,63 +160,6 @@ class RAGAssistant:
             )
         else:
             raise ValueError(f"Unknown retrieval method: {method}")
-        
-    def setup_vectorstore(self, urls, files, retrieval_method="similarity"):
-        docs = []
-        # Check and process URLs if they are provided
-        if urls and isinstance(urls, str):
-            print(f"URLs: {urls}")
-            urls_list = urls.split("\n")
-            for url in urls_list:
-                url = url.strip()
-                if url:
-                    print(f"Loading URL: {url}")
-                    try:
-                        loaded_docs = WebBaseLoader(url).load()
-                        if loaded_docs:
-                            docs.extend(loaded_docs)
-                        else:
-                            print(f"Warning: URL {url} returned no content.")
-                    except Exception as e:
-                        print(f"Error loading URL {url}: {str(e)}")
-        else:
-            print("No valid URLs provided.")
-            
-        # Process uploaded files
-        if files:
-            print(f"Files: {files}")
-            for file in files:
-                file_extension = os.path.splitext(file.name)[1].lower()
-                if file_extension == '.txt':
-                    docs.extend(TextLoader(file.name).load())
-                elif file_extension == '.pdf':
-                    docs.extend(PyMuPDFLoader(file.name).load())
-                elif file_extension == '.docx':
-                    docs.extend(Docx2txtLoader(file.name).load())
-        else:
-            print("No files provided.")
-                
-        if docs:
-            text_splitter = CharacterTextSplitter.from_tiktoken_encoder(chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
-            doc_splits = text_splitter.split_documents(docs)
-        else:
-            raise ValueError("No documents were loaded.")
-
-        # If using the custom embedding function for all-MiniLM-L6-v2
-        if isinstance(self.embedding_model, CustomHuggingFaceEmbeddings):
-            texts = [doc.page_content for doc in doc_splits]
-            embeddings = self.embedding_model.embed_documents(texts)
-            self.vectorstore = FAISS.from_embeddings(
-                text_embeddings=list(zip(texts, embeddings)),
-                embedding=self.embedding_model,
-            )
-        else:
-            self.vectorstore = FAISS.from_documents(
-                documents=doc_splits,
-                embedding=self.embedding_model,
-            )
-
-        self.retriever = self.select_retriever(retrieval_method)
     
     async def retrieve_context(self, query: str) -> List[Document]:
         # Use run_in_executor to run the synchronous invoke method in a separate thread

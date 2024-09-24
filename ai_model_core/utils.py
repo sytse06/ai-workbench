@@ -19,26 +19,41 @@ class EnhancedContentLoader:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
-    def load_and_split_document(self, file_paths: Union[str, List[str]], urls: str = None) -> List[Document]:
+    def load_documents(self, file_paths: Union[str, List[str]], urls: str = None) -> List[Document]:
         docs = []
 
         # Process URLs
         if urls:
-            urls_list = urls.split("\n")
-            for url in urls_list:
-                url = url.strip()
-                if url:
-                    print(f"Loading URL: {url}")
-                    try:
-                        loaded_docs = WebBaseLoader(url).load()
-                        if loaded_docs:
-                            docs.extend(loaded_docs)
-                        else:
-                            print(f"Warning: URL {url} returned no content.")
-                    except Exception as e:
-                        print(f"Error loading URL {url}: {str(e)}")
+            docs.extend(self._load_from_urls(urls))
 
         # Process files
+        if file_paths:
+            docs.extend(self._load_from_files(file_paths))
+
+        if not docs:
+            raise ValueError("No documents were loaded.")
+
+        return docs
+
+    def _load_from_urls(self, urls: str) -> List[Document]:
+        docs = []
+        urls_list = urls.split("\n")
+        for url in urls_list:
+            url = url.strip()
+            if url:
+                print(f"Loading URL: {url}")
+                try:
+                    loaded_docs = WebBaseLoader(url).load()
+                    if loaded_docs:
+                        docs.extend(loaded_docs)
+                    else:
+                        print(f"Warning: URL {url} returned no content.")
+                except Exception as e:
+                    print(f"Error loading URL {url}: {str(e)}")
+        return docs
+
+    def _load_from_files(self, file_paths: Union[str, List[str]]) -> List[Document]:
+        docs = []
         if isinstance(file_paths, str):
             file_paths = [file_paths]
 
@@ -52,17 +67,8 @@ class EnhancedContentLoader:
                 docs.extend(Docx2txtLoader(file_path).load())
             else:
                 print(f"Unsupported file type: {file_extension}")
-
-        if not docs:
-            raise ValueError("No documents were loaded.")
-
-        # Split documents
-        text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
-            chunk_size=self.chunk_size, 
-            chunk_overlap=self.chunk_overlap
-        )
-        return text_splitter.split_documents(docs)
-
+        return docs
+    
     def load_pdf(self, file_path: str) -> List[Document]:
         docs = []
         pdf = fitz.open(file_path) #fitz = PyMuPDF
@@ -88,6 +94,17 @@ class EnhancedContentLoader:
                 print(f"Warning: No text extracted from page {page_num + 1}")
         
         return docs
+    
+    def split_documents(self, docs: List[Document]) -> List[Document]:
+        text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
+            chunk_size=self.chunk_size, 
+            chunk_overlap=self.chunk_overlap
+        )
+        return text_splitter.split_documents(docs)
+
+    def load_and_split_document(self, file_paths: Union[str, List[str]], urls: str = None) -> List[Document]:
+        docs = self.load_documents(file_paths, urls)
+        return self.split_documents(docs)
     
 def get_system_prompt(language_choice: str, config: dict) -> str:
     try:
@@ -124,24 +141,3 @@ def load_config(file_path: str) -> dict:
     with open(file_path, 'r') as file:
         config = yaml.safe_load(file)
     return config
-
-def load_document(file_path: str) -> List[str]:
-    """Load document based on file extension."""
-    _, ext = os.path.splitext(file_path)
-    if ext.lower() == '.pdf':
-        loader = PyPDFLoader(file_path)
-    elif ext.lower() == '.txt':
-        loader = TextLoader(file_path)
-    else:
-        raise ValueError(f"Unsupported file type: {ext}")
-    return loader.load()
-
-def load_web_content(url: str) -> List[str]:
-    """Load content from a web URL."""
-    loader = WebBaseLoader(url)
-    return loader.load()
-
-def split_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[str]:
-    """Split text into chunks."""
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    return text_splitter.split_text(text)
