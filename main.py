@@ -3,29 +3,25 @@
 import os
 import logging
 import sys
-import asyncio
-from typing import List, Union, Tuple
-from pathlib import Path
-import traceback
-
-# Third-party imports
+from typing import List, Union
+from typing import List, Union
 from PIL import Image
 import gradio as gr
-import asyncio
-from typing import List, Union, Any
-from langchain_community.chat_models import ChatAnthropic, ChatOllama
-from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
-from langchain_core.messages import BaseMessage
-from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthrough
-from langchain_community.vectorstores import FAISS
-from ai_model_core.config.credentials import get_api_key, load_credentials
-from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
-from ai_model_core import get_model, get_embedding_model, get_prompt_template, get_system_prompt, _format_history, load_document, load_web_content, split_text
-from ai_model_core.model_helpers import ChatAssistant, PromptAssistant, VisionAssistant, RAGAssistant, SummarizationAssistant
-from ai_model_core.model_helpers.RAG_assistant import CustomHuggingFaceEmbeddings
+from ai_model_core.config.settings import (
+    load_config, get_prompt_list, update_prompt_list
+)
+from ai_model_core.model_helpers import (
+    ChatAssistant, PromptAssistant, VisionAssistant,
+    RAGAssistant, SummarizationAssistant
+)
+from ai_model_core.model_helpers.RAG_assistant import (
+    CustomHuggingFaceEmbeddings
+)
+from ai_model_core import get_embedding_model
+
+# Set environment variables
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+os.environ['USER_AGENT'] = 'my-RAG-agent'
 
 # Load config at startup
 config = load_config()
@@ -40,6 +36,9 @@ f_handler = logging.FileHandler('app.log')
 c_handler.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
 f_handler.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
 
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 formatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
@@ -58,38 +57,28 @@ vision_assistant = VisionAssistant("Ollama (LLaVA)")
 rag_assistant = RAGAssistant("Ollama (LLama3.1)")
 summarization_assistant = SummarizationAssistant("Ollama (LLama3.1)")
 
-# Wrapper function for Gradio implementation chat_assistant:
-async def chat_wrapper(
-    message: str,
-    history: List[Tuple[str, str]],
-    model_choice: str,
-    temperature: float,
-    max_tokens: int,
-    files: List[gr.File],
-    history_flag: bool,
-    use_context: bool = True
-) -> str:
-    
+# Wrapper functions for Gradio interface
+async def chat_wrapper(message, history, model_choice, history_flag,
+                       temperature, max_tokens):
     global chat_assistant
     chat_assistant.update_model(model_choice)
-    
-    # Generate response
-    result = []
-    async for chunk in chat_assistant.chat(
-        message=message,
-        history=history,
-        history_flag=history_flag,
-        stream=True,
-        use_context=use_context
-    ):
-        result.append(chunk)
-        yield ''.join(result)
+    chat_assistant.temperature = temperature
+    chat_assistant.max_tokens = max_tokens
 
-# File processing handler
-async def process_files_wrapper(files: List[gr.File]) -> Tuple[str, bool]:  
-    return await chat_assistant.process_chat_context_files(files)
+    try:
+        result = []
+        async for chunk in chat_assistant.chat(
+            message, history, history_flag, stream=True
+        ):
+        async for chunk in chat_assistant.chat(
+            message, history, history_flag, stream=True
+        ):
+            result.append(chunk)
+            yield ''.join(result)
+    except Exception as e:
+        logger.error(f"Error in chat function: {str(e)}")
+        yield f"An error occurred: {str(e)}"
 
-# Wrapper function for Gradio interface prompt_assistant:
 async def prompt_wrapper(
     message: str,
     history: List[tuple[str, str]],
@@ -106,11 +95,12 @@ async def prompt_wrapper(
     async for chunk in prompt_assistant.prompt(
         message, history, prompt_info, language_choice, history_flag, stream
     ):
+    async for chunk in prompt_assistant.prompt(
+        message, history, prompt_info, language_choice, history_flag, stream
+    ):
         result.append(chunk)
         yield ''.join(result)
 
-
-# Wrapper function for Gradio interface vision_assistant:
 async def process_image_wrapper(
     message: str,
     history: List[tuple[str, str]],
@@ -142,26 +132,37 @@ async def process_image_wrapper(
         logger.error("Full traceback:", exc_info=True)
         return error_message
 
-# Wrapper function for loading documents (RAG and summarization)
-def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
+def load_content(url_input, file_input, model_choice, embedding_choice,
+                 chunk_size, chunk_overlap, max_tokens):
     try:
-        loader = EnhancedContentLoader(chunk_size, chunk_overlap)
-        file_paths = file_input if isinstance(file_input, list) else [file_input] if file_input else None
-        docs = loader.load_and_split_documents(file_paths=file_paths, urls=url_input, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-        return f"Successfully loaded {len(docs)} chunks of text.", docs
+        global rag_assistant
+        if not hasattr(globals(), 'rag_assistant') or rag_assistant is None:
+            rag_assistant = RAGAssistant(
+                model_name=model_choice,
+                embedding_model=embedding_choice,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                max_tokens=max_tokens
+            )
+        
+        rag_assistant.setup_vectorstore(url_input, file_input)
+        return "Content loaded successfully into memory."
     except Exception as e:
         logger.error(f"Error in load_documents: {str(e)}")
         return f"An error occurred while loading documents: {str(e)}", None
 
-# Wrapper function for Gradio interface RAG_assistant:
 async def rag_wrapper(message, history, model_choice, embedding_choice,
                       chunk_size, chunk_overlap, temperature, num_similar_docs,
                       max_tokens, urls, files, language, prompt_info,
                       history_flag, retrieval_method):
-
-    # Create the embedding model based on the choice
-    embedding_model = get_embedding_model(embedding_choice)
-
+    embedding_model = (
+        CustomHuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+        if embedding_choice == "all-MiniLM-L6-v2"
+        else get_embedding_model(embedding_choice)
+    )
+    
     rag_assistant = RAGAssistant(
         model_name=model_choice,
         embedding_model=embedding_choice,
@@ -172,7 +173,7 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
         language=language,
         max_tokens=max_tokens
     )
-
+    
     try:
         logger.info("Setting up vectorstore")
         content_loader = EnhancedContentLoader(chunk_size, chunk_overlap)
@@ -194,24 +195,31 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
         result = await rag_assistant.query(
             message, history if history_flag else None
         )
+        result = await rag_assistant.query(
+            message, history if history_flag else None
+        )
         return result
     except Exception as e:
         logger.error(f"Error in RAG function: {str(e)}")
         return f"An error occurred: {str(e)}"
-    
-async def summarize_wrapper(file_input, model_choice, chain_type, chunk_size, chunk_overlap, temperature, max_tokens):
+
+async def summarize_wrapper(file_input, model_choice, chain_type, chunk_size,
+                            chunk_overlap, max_tokens, temperature, language,
+                            verbose):
     summarizer = SummarizationAssistant(
         model_name=model_choice,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        temperature=temperature,
         max_tokens=max_tokens,
-        chain_type=chain_type
+        temperature=temperature,
+        chain_type=chain_type,
+        language=language,
+        verbose=verbose
     )
-    
+
     if not file_input:
         return "Please upload a file to summarize."
-    
+
     try:
         summary = await summarizer.summarize(file_input.name)
         return summary
@@ -224,6 +232,7 @@ def clear_chat():
 
 def clear_vision_chat():
     return None, None, gr.update(value=None)
+
 flagging_callback = gr.CSVLogger()
 
 async def transcription_wrapper_streaming(
@@ -367,39 +376,34 @@ with gr.Blocks() as demo:
 
     with gr.Tabs():
         # Chat Tab
+        # Chat Tab
         with gr.Tab("Chat"):
             with gr.Row():
                 with gr.Column(scale=1):
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.2)", "Claude Sonnet", 
-                         "Claude Sonnet beta", "Deepseek v3",
-                         "Mistral (large)", "Mistral (small)",
-                         "Ollama (LLama3.1)", "OpenAI GPT-4o-mini"],
+                        ["Ollama (LLama3.1)", "Claude Sonnet",
+                         "Ollama (Deepseek-coder-v2)",
+                         "Ollama (YI-coder)", "OpenAI GPT-4o-mini"],
                         label="Choose Model",
                         value="Ollama (LLama3.2)"
                     )
-                    # File upload section
-                    with gr.Group():
-                        file_input = gr.File(
-                            label="Upload Context Content",
-                            file_count="multiple",
-                            file_types=[".txt", ".md", ".py"]
-                            )
-                        load_button = gr.Button("Load in chat context")
-                        load_output = gr.Textbox(
-                        label="Load Status", interactive=False
-                        )
-                        use_context = gr.Checkbox(
-                            label="Use uploaded files as context",
-                            value=True
-                            )
-                        
-                    with gr.Accordion("Model parameters", open=False):
-                        history_flag = gr.Checkbox(
+                    history_flag = gr.Checkbox(
                         label="Include conversation history", value=True
                     )
+                    history_flag = gr.Checkbox(
+                        label="Include conversation history", value=True
+                    )
+                    with gr.Accordion("Model parameters", open=False):
                         temperature = gr.Slider(
-                            minimum=0, maximum=1, value=0.1, step=0.1,
+                            minimum=0, maximum=1, value=0.7, step=0.1,
+                            label="Temperature"
+                        )
+                        max_tokens = gr.Slider(
+                            minimum=150, maximum=4000, value=500, step=50,
+                            label="Max Tokens"
+                        )
+                        temperature = gr.Slider(
+                            minimum=0, maximum=1, value=0.7, step=0.1,
                             label="Temperature"
                         )
                         max_tokens = gr.Slider(
@@ -408,19 +412,31 @@ with gr.Blocks() as demo:
                         )
                 with gr.Column(scale=4):
                     chat_bot = gr.Chatbot(
-                        height=600,
-                        show_copy_button=True,
+                        height=600, show_copy_button=True,
                         show_copy_all_button=True
                     )
                     chat_text_box = gr.Textbox(
-                        label="User input",
-                        placeholder="Type your question here..."
+                        label="Chat input",
+                        placeholder="Type your message here..."
                     )
-                    
-                    chat_interface = gr.ChatInterface(
+                    chat_bot = gr.Chatbot(
+                        height=600, show_copy_button=True,
+                        show_copy_all_button=True
+                    )
+                    chat_text_box = gr.Textbox(
+                        label="Chat input",
+                        placeholder="Type your message here..."
+                    )
+                    gr.ChatInterface(
                         fn=chat_wrapper,
                         chatbot=chat_bot,
                         textbox=chat_text_box,
+                        additional_inputs=[
+                            model_choice, history_flag, temperature, max_tokens
+                        ],
+                        additional_inputs=[
+                            model_choice, history_flag, temperature, max_tokens
+                        ],
                         additional_inputs=[
                             model_choice, temperature, max_tokens, file_input,
                             use_context, history_flag
@@ -431,23 +447,14 @@ with gr.Blocks() as demo:
                         clear_btn="🗑️ Clear",
                     )
 
-            # Connect the load_button to the process_chat_context_files
-            loaded_docs = gr.State()
-            load_button.click(
-                fn=lambda files: asyncio.run(process_files_wrapper(files)),
-                inputs=[file_input],
-                outputs=[load_output, loaded_docs]
-            )
-            
+        # Prompting Tab
         # Prompting Tab
         with gr.Tab("Prompting"):
             with gr.Row():
                 with gr.Column(scale=1):
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.2)", "Claude Sonnet",
-                         "Claude Sonnet beta", "Deepseek v3",
-                         "Mistral (large)", "Mistral (small)",
-                         "OpenAI GPT-4o-mini", "Ollama (LLama3.1)"],
+                        ["Ollama (LLama3.1)",  "Ollama (phi3.5)",
+                         "OpenAI GPT-4o-mini", "Claude Sonnet"],
                         label="Choose Model",
                         value="Ollama (LLama3.2)"
                     )
@@ -455,6 +462,13 @@ with gr.Blocks() as demo:
                         ["english", "dutch"],
                         label="Choose Language",
                         value="english"
+                    )
+                    prompt_info = gr.Dropdown(
+                        choices=get_prompt_list(language_choice.value),
+                        label="Prompt Selection", interactive=True
+                    )
+                    history_flag_prompt = gr.Checkbox(
+                        label="Include conversation history", value=True
                     )
                     prompt_info = gr.Dropdown(
                         choices=get_prompt_list(language_choice.value),
@@ -473,10 +487,22 @@ with gr.Blocks() as demo:
                         label="Prompt input",
                         placeholder="Type your prompt here..."
                     )
+                    prompt_chat_bot = gr.Chatbot(
+                        height=600, show_copy_button=True,
+                        show_copy_all_button=True
+                    )
+                    prompt_text_box = gr.Textbox(
+                        label="Prompt input",
+                        placeholder="Type your prompt here..."
+                    )
                     gr.ChatInterface(
                         fn=prompt_wrapper,
                         chatbot=prompt_chat_bot,
                         textbox=prompt_text_box,
+                        additional_inputs=[
+                            model_choice, prompt_info, language_choice,
+                            history_flag_prompt
+                        ],
                         additional_inputs=[
                             model_choice, prompt_info, language_choice,
                             history_flag_prompt
@@ -488,15 +514,18 @@ with gr.Blocks() as demo:
                     )
 
         # Vision Assistant Tab
+        # Vision Assistant Tab
         with gr.Tab("Vision Assistant"):
             with gr.Row():
                 with gr.Column(scale=1):
                     image_input = gr.Image(
                         type="pil", label="Upload Image", image_mode="RGB"
                     )
+                    image_input = gr.Image(
+                        type="pil", label="Upload Image", image_mode="RGB"
+                    )
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLaVA)", "Ollama (llama3.2-vision)", 
-                         "Mistral (pixtral)", "OpenAI GPT-4o-mini",
+                        ["Ollama (LLaVA)", "OpenAI GPT-4o-mini",
                          "Claude Sonnet"],
                         label="Choose Model",
                         value="Ollama (LLaVA)"
@@ -504,8 +533,19 @@ with gr.Blocks() as demo:
                     history_flag = gr.Checkbox(
                         label="Include conversation history", value=True
                     )
+                    history_flag = gr.Checkbox(
+                        label="Include conversation history", value=True
+                    )
 
                 with gr.Column(scale=4):
+                    vision_chatbot = gr.Chatbot(
+                        height=600, show_copy_button=True,
+                        show_copy_all_button=True
+                    )
+                    vision_question_input = gr.Textbox(
+                        label="Ask about the image",
+                        placeholder="Type your question about the image here..."
+                    )
                     vision_chatbot = gr.Chatbot(
                         height=600, show_copy_button=True,
                         show_copy_all_button=True
@@ -521,10 +561,14 @@ with gr.Blocks() as demo:
                         additional_inputs=[
                             image_input, model_choice, history_flag
                         ],
+                        additional_inputs=[
+                            image_input, model_choice, history_flag
+                        ],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear"
+                    )
                     )
 
             vision_clear_btn = gr.Button("Clear All")
@@ -533,6 +577,8 @@ with gr.Blocks() as demo:
                 inputs=[],
                 outputs=[vision_chatbot, vision_question_input, image_input]
             )
+
+        # RAG Assistant Tab
 
         # RAG Assistant Tab
         with gr.Tab("RAG Assistant"):
@@ -550,12 +596,10 @@ with gr.Blocks() as demo:
                     )
                     with gr.Accordion("RAG Options", open=False):
                         model_choice = gr.Dropdown(
-                            ["Ollama (LLama3.2)", "Claude Sonnet",
-                             "Claude Sonnet beta", "Deepseek v3",
-                             "Mistral (large)", "Mistral (small)",
+                            ["Ollama (LLama3.1)", "Claude Sonnet",
                              "Ollama (phi3.5)", "OpenAI GPT-4o-mini"],
                             label="Choose Model",
-                            value="Ollama (LLama3.2)"
+                            value="Ollama (LLama3.1)"
                         )
                         embedding_choice = gr.Dropdown(
                             [
@@ -571,34 +615,32 @@ with gr.Blocks() as demo:
                             label="Choose Embedding Model",
                             value="nomic-embed-text"
                         )
-                        chunk_size = gr.Slider(
-                            minimum=100, maximum=2500, value=500, step=100,
-                            label="Chunk Size"
-                        )
-                        chunk_overlap = gr.Slider(
-                            minimum=0, maximum=250, value=50, step=10,
-                            label="Chunk Overlap"
-                        )
                         max_tokens = gr.Slider(
                             minimum=50, maximum=4000, value=1000, step=50,
                             label="Max token generation"
+                        )
+                        chunk_size = gr.Slider(
+                            minimum=100, maximum=2500, value=500, step=100,
+                            label="Fragment Size"
+                        )
+                        chunk_overlap = gr.Slider(
+                            minimum=0, maximum=250, value=50, step=10,
+                            label="Fragment Overlap"
                         )
                         temperature = gr.Slider(
                             minimum=0, maximum=1, value=0.1, step=0.1,
                             label="Temp text generation"
                         )
                         retrieval_method = gr.Dropdown(
-                            choices=["similarity", "mmr",
-                                     "similarity_threshold"],
-                            label="Select Retriever Method",
-                            value="similarity"
+                            choices=["similarity", "mmr", "similarity_threshold"],
+                            label="Select Retriever Method", value="similarity"
                         )
                         num_similar_docs = gr.Slider(
-                            minimum=2, maximum=5, value=3, step=1,
+                            minimum=2, maximum=10, value=3, step=1,
                             label="Search Number of Fragments"
                         )
 
-                    load_button = gr.Button("Load content")
+                    load_button = gr.Button("Process content for analysis")
                     load_output = gr.Textbox(
                         label="Load Status", interactive=False
                     )
@@ -615,8 +657,17 @@ with gr.Blocks() as demo:
                     history_flag = gr.Checkbox(
                         label="Include conversation history", value=True
                     )
-
+                    
                 with gr.Column(scale=4):
+                    rag_chat_bot = gr.Chatbot(
+                        height=600, show_copy_button=True,
+                        show_copy_all_button=True
+                    )
+                    rag_text_box = gr.Textbox(
+                        label="RAG input",
+                        placeholder="Type your question here..."
+                    )
+                    chat_interface = gr.ChatInterface(
                     rag_chat_bot = gr.Chatbot(
                         height=600, show_copy_button=True,
                         show_copy_all_button=True
@@ -632,14 +683,14 @@ with gr.Blocks() as demo:
                         additional_inputs=[
                             model_choice, embedding_choice, chunk_size,
                             chunk_overlap, temperature, num_similar_docs,
-                            max_tokens, url_input, file_input,
-                            language_choice, prompt_info, history_flag,
-                            retrieval_method
+                            max_tokens, url_input, file_input, language_choice,
+                            prompt_info, history_flag, retrieval_method
                         ],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",
                         undo_btn="↩️ Undo",
                         clear_btn="🗑️ Clear",
+                    )
                     )
                     flag_btn = gr.Button("Flag")
                     flag_options = gr.Dropdown(
@@ -647,7 +698,8 @@ with gr.Blocks() as demo:
                          "Inappropriate"],
                         label="Flagging Options"
                     )
-                    
+
+        # Summarization Assistant Tab
         with gr.Tab("Summarization Assistant"):
             with gr.Row():
                 with gr.Column(scale=1):
@@ -656,7 +708,8 @@ with gr.Blocks() as demo:
                         file_types=[".txt", ".pdf", ".docx"],
                     )
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.1)", "Claude Sonnet", "Ollama (phi3.5)", "OpenAI GPT-4o-mini"],
+                        ["Ollama (LLama3.1)", "Claude Sonnet",
+                         "Ollama (phi3.5)", "OpenAI GPT-4o-mini"],
                         label="Choose Model",
                         value="Ollama (LLama3.1)"
                     )
@@ -666,22 +719,58 @@ with gr.Blocks() as demo:
                         value="stuff"
                     )
                     with gr.Accordion("Summarization Options", open=False):
-                        chunk_size = gr.Slider(minimum=100, maximum=5000, value=2000, step=100, label="Chunk Size")
-                        chunk_overlap = gr.Slider(minimum=0, maximum=500, value=200, step=10, label="Chunk Overlap")
-                        temperature = gr.Slider(minimum=0, maximum=1, value=0.4, step=0.1, label="Temperature")
-                        max_tokens = gr.Slider(minimum=50, maximum=4000, value=1000, step=50, label="Max Tokens")
+                        chunk_size = gr.Slider(
+                            minimum=100, maximum=5000,
+                            value=500, step=100,
+                            label="Chunk Size"
+                        )
+                        chunk_overlap = gr.Slider(
+                            minimum=0, maximum=500,
+                            value=200, step=10,
+                            label="Chunk Overlap"
+                        )
+                        max_tokens = gr.Slider(
+                            minimum=50, maximum=4000,
+                            value=1000, step=50,
+                            label="Max Tokens"
+                        )
+                        temperature = gr.Slider(
+                            minimum=0, maximum=1,
+                            value=0.4, step=0.1,
+                            label="Temperature"
+                        )
+                        language = gr.Dropdown(
+                            ["english", "dutch"],
+                            label="Choose Language",
+                            value="english"
+                        )
+                        verbose = gr.Checkbox(
+                            label="Verbose Mode",
+                            value=False
+                        )
 
                 with gr.Column(scale=4):
-                    summary_output = gr.Textbox(label="Summary Output", lines=10)
+                    summary_output = gr.Textbox(
+                        label="Summary Output",
+                        lines=10
+                    )
                     summarize_button = gr.Button("Summarize Document")
 
             summarize_button.click(
                 fn=summarize_wrapper,
-                inputs=[file_input, model_choice, chain_type, chunk_size, chunk_overlap, temperature, max_tokens],
+                inputs=[
+                    file_input, model_choice, chain_type, chunk_size,
+                    chunk_overlap, max_tokens, temperature, language,
+                    verbose
+                ],
                 outputs=summary_output
-            )  
-                  
+            )
+
     # Set up the flagging callback
+    flagging_callback.setup(
+        [rag_text_box, rag_chat_bot] + chat_interface.additional_inputs,
+        "flagged_rag_data"
+    )
     flagging_callback.setup(
         [rag_text_box, rag_chat_bot] + chat_interface.additional_inputs,
         "flagged_rag_data"
@@ -696,6 +785,20 @@ with gr.Blocks() as demo:
         preprocess=False
     )
 
+    load_button.click(
+        fn=load_content,
+        inputs=[
+            url_input, file_input, model_choice, embedding_choice,
+            chunk_size, chunk_overlap, max_tokens
+        ],
+        outputs=load_output
+    )
+
+    language_choice.change(
+        fn=update_prompt_list,
+        inputs=[language_choice],
+        outputs=[prompt_info]
+    )
     language_choice.change(
         fn=update_prompt_list,
         inputs=[language_choice],

@@ -5,9 +5,13 @@ import fitz  # PyMuPDF
 import pytesseract
 from PIL import Image
 from langchain.schema import Document
+import fitz  # PyMuPDF
+import pytesseract
+from PIL import Image
+from langchain.schema import Document
 from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyPDFLoader, TextLoader, WebBaseLoader
+from langchain_community.document_loaders import PyMuPDFLoader, TextLoader, WebBaseLoader, Docx2txtLoader
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 import logging
@@ -17,85 +21,55 @@ import shutil
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
 class EnhancedContentLoader:
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        self.temp_dir = Path("input/tmp")
-        self.temp_dir.mkdir(parents=True, exist_ok=True)
 
-    def load_documents(self, file_paths: Union[str, List[str],  List[Any]], urls: str = None) -> List[Document]:
+    def load_and_split_document(self, file_paths: Union[str, List[str]], urls: str = None) -> List[Document]:
         docs = []
 
         # Process URLs
         if urls:
-            docs.extend(self._load_from_urls(urls))
+            urls_list = urls.split("\n")
+            for url in urls_list:
+                url = url.strip()
+                if url:
+                    print(f"Loading URL: {url}")
+                    try:
+                        loaded_docs = WebBaseLoader(url).load()
+                        if loaded_docs:
+                            docs.extend(loaded_docs)
+                        else:
+                            print(f"Warning: URL {url} returned no content.")
+                    except Exception as e:
+                        print(f"Error loading URL {url}: {str(e)}")
 
         # Process files
-        if file_paths:
-            docs.extend(self._load_from_files(file_paths))
+        if isinstance(file_paths, str):
+            file_paths = [file_paths]
+
+        for file_path in file_paths:
+            file_extension = os.path.splitext(file_path)[1].lower()
+            if file_extension == '.txt':
+                docs.extend(TextLoader(file_path).load())
+            elif file_extension == '.pdf':
+                docs.extend(self.load_pdf(file_path))
+            elif file_extension == '.docx':
+                docs.extend(Docx2txtLoader(file_path).load())
+            else:
+                print(f"Unsupported file type: {file_extension}")
 
         if not docs:
             raise ValueError("No documents were loaded.")
 
-        return docs
+        # Split documents
+        text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
+            chunk_size=self.chunk_size, 
+            chunk_overlap=self.chunk_overlap
+        )
+        return text_splitter.split_documents(docs)
 
-    def _load_from_urls(self, urls: str) -> List[Document]:
-        docs = []
-        urls_list = urls.split("\n")
-        for url in urls_list:
-            url = url.strip()
-            if url:
-                print(f"Loading URL: {url}")
-                try:
-                    loaded_docs = WebBaseLoader(url).load()
-                    if loaded_docs:
-                        docs.extend(loaded_docs)
-                    else:
-                        print(f"Warning: URL {url} returned no content.")
-                except Exception as e:
-                    print(f"Error loading URL {url}: {str(e)}")
-        return docs
-
-    def _load_from_files(self, file_paths: Union[str, List[str], List[Any]]) -> List[Document]:
-        docs = []
-        
-        # Ensure file_paths is always a list
-        if not isinstance(file_paths, list):
-            file_paths = [file_paths]
-        
-        for file_obj in file_paths:
-            try:
-                if isinstance(file_obj, str):
-                    file_path = file_obj
-                elif hasattr(file_obj, 'name'):  # For file-like objects (e.g., TemporaryFile)
-                    file_path = file_obj.name
-                else:
-                    print(f"Unsupported file input type: {type(file_obj)}")
-                    continue
-
-                file_extension = Path(file_path).suffix.lower()
-                if file_extension == '.txt':
-                    docs.extend(TextLoader(file_path).load())
-                elif file_extension == '.pdf':
-                    docs.extend(self.load_pdf(file_path))
-                elif file_extension == '.docx':
-                    docs.extend(Docx2txtLoader(file_path).load())
-                elif file_extension in ['.mp4', '.m4a', '.webm', '.mp3', '.wav', '.aac', '.ogg']:
-                    docs.append(self.load_media_file(file_path))
-                else:
-                    print(f"Unsupported file type: {file_extension}")
-
-            except Exception as e:
-                print(f"Error processing file {file_obj}: {str(e)}")
-            finally:
-                # Clean up the temporary file if it was created
-                if 'temp_path' in locals():
-                    temp_path.unlink(missing_ok=True)
-
-        return docs
-        
     def load_pdf(self, file_path: str) -> List[Document]:
         docs = []
         pdf = fitz.open(file_path) #fitz = PyMuPDF
@@ -121,22 +95,6 @@ class EnhancedContentLoader:
                 print(f"Warning: No text extracted from page {page_num + 1}")
         
         return docs
-    
-    def split_documents(self, docs: List[Document], chunk_size: int, chunk_overlap: int) -> List[Document]:
-        text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-            chunk_size=chunk_size, 
-            chunk_overlap=chunk_overlap
-        )
-        return text_splitter.split_documents(docs)
-
-    def load_and_split_document(self, file_paths: Union[str, List[str]], urls: str = None, chunk_size: int = None, chunk_overlap: int = None) -> List[Document]:
-        docs = self.load_documents(file_paths, urls)
-        
-        # Use provided chunk_size and chunk_overlap if given, otherwise use default values
-        chunk_size = chunk_size or self.chunk_size
-        chunk_overlap = chunk_overlap or self.chunk_overlap
-        
-        return self.split_documents(docs, chunk_size, chunk_overlap)
     
 def get_system_prompt(language_choice: str, config: dict) -> str:
     try:
@@ -189,11 +147,6 @@ def load_web_content(url: str) -> List[str]:
     """Load content from a web URL."""
     loader = WebBaseLoader(url)
     return loader.load()
-
-def create_vectorstore(documents: List[str], embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2") -> FAISS:
-    """Create a FAISS vectorstore from documents."""
-    embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
-    return FAISS.from_documents(documents, embeddings)
 
 def split_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[str]:
     """Split text into chunks."""
