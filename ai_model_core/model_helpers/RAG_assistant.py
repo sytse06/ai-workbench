@@ -1,36 +1,25 @@
 # model_helpers/RAG_assistant.py
-from langgraph.graph import StateGraph, END
+# Standard library imports
+import asyncio
+from typing import TypedDict, List, Annotated, Union
+from operator import add
+
+# Third-party imports
 import torch
 from transformers import AutoTokenizer, AutoModel
 import fitz  # PyMuPDF
 import pytesseract
 from PIL import Image
-import io
+from langgraph.graph import StateGraph, END
 from langchain.schema import Document
-from typing import TypedDict, List, Annotated
-from operator import add
-#import BeautifulSoup4
-import asyncio
-import os
-import pypdf
-from langchain_community.document_loaders import WebBaseLoader, TextLoader, PyMuPDFLoader, Docx2txtLoader
 from langchain_community.vectorstores import FAISS
-from langchain_community import embeddings
-from langchain_community.embeddings import OllamaEmbeddings
-from langchain_community.embeddings import OpenAIEmbeddings
-from langchain_openai import OpenAIEmbeddings
-from langchain_community.embeddings import HuggingFaceEmbeddings
-#from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.chat_models import ChatOllama
-from langchain.schema import Document
-from langchain.chains import RetrievalQA
-from langchain.text_splitter import CharacterTextSplitter
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from ai_model_core import get_model, get_embedding_model, get_prompt_template, get_system_prompt, _format_history, load_documents, load_from_files, _load_from_urls, split_documents, load_and_split_document
-from ai_model_core.config.credentials import get_api_key, load_credentials
-from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
+
+# Local imports
+from ai_model_core import get_model, get_embedding_model, get_prompt_template, _format_history
+from ai_model_core.config.settings import load_config
 from ai_model_core.utils import EnhancedContentLoader
 
 class State(TypedDict):
@@ -71,6 +60,7 @@ class PyMuPDFLoader:
                 print(f"Warning: No text extracted from page {page_num + 1}")
         
         return docs
+
 class CustomHuggingFaceEmbeddings:
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, clean_up_tokenization_spaces=True)
