@@ -16,17 +16,10 @@ from langchain_community.document_loaders import WebBaseLoader, TextLoader, PyMu
 from langchain_community.vectorstores import FAISS
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-
-# Local imports
-from ..shared_utils import (
-    get_model,
-    get_embedding_model,
-    get_prompt_template,
-    _format_history
-)
-from ..config.settings import load_config
-from ..shared_utils.utils import EnhancedContentLoader
-
+from ai_model_core import get_model, get_embedding_model, get_prompt_template, get_system_prompt, _format_history, load_documents, load_from_files, _load_from_urls, split_documents, load_and_split_document
+from ai_model_core.config.credentials import get_api_key, load_credentials
+from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
+from ai_model_core.utils import EnhancedContentLoader
 
 class State(TypedDict):
     input: str
@@ -64,26 +57,17 @@ class RAGAssistant:
         self.use_history = True
         self.config = load_config()
         self.max_tokens = max_tokens
-        self.content_loader = EnhancedContentLoader(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
-        )
+        self.content_loader = EnhancedContentLoader(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         self.retrieval_method = retrieval_method
-
-    def process_content(
-        self,
-        url_input: str,
-        file_input: Union[str, List[str]]
-    ):
+    
+    def load_content(self, url_input: str, file_input: Union[str, List[str]]):
         try:
-            docs = self.content_loader.load_and_split_document(
-                file_paths=file_input, urls=url_input
-            )
+            docs = self.content_loader.load_and_split_document(file_input, url_input)
             self.setup_vectorstore(docs)
             return "Content loaded successfully into memory."
         except Exception as e:
             return f"Error loading content: {str(e)}"
-
+        
     def setup_vectorstore(self, docs: List[Document]):
         if not docs:
             raise ValueError("No documents were loaded.")
@@ -92,9 +76,8 @@ class RAGAssistant:
         if self.embedding_model_name.startswith("e5-"):
             texts = [doc.page_content for doc in docs]
             embeddings = self.embedding_model.embed_documents(texts)
-            text_embeddings = list(zip(texts, embeddings))
             self.vectorstore = FAISS.from_embeddings(
-                text_embeddings=text_embeddings,
+                text_embeddings=list(zip(texts, embeddings)),
                 embedding=self.embedding_model,
             )
         else:
@@ -131,7 +114,7 @@ class RAGAssistant:
             )
         else:
             raise ValueError(f"Unknown retrieval method: {method}")
-
+    
     async def retrieve_context(self, query: str) -> List[Document]:
         loop = asyncio.get_event_loop()
         docs = await loop.run_in_executor(

@@ -3,7 +3,9 @@
 import os
 import logging
 import sys
-from typing import List, Union
+import yaml
+from io import BytesIO
+import base64
 from typing import List, Union
 from PIL import Image
 import gradio as gr
@@ -17,8 +19,11 @@ from ai_model_core.model_helpers import (
 from ai_model_core.model_helpers.RAG_assistant import (
     CustomHuggingFaceEmbeddings
 )
-from ai_model_core import get_embedding_model
-
+from ai_model_core import (
+    get_model, get_embedding_model, get_prompt_template, 
+    get_system_prompt, _format_history, 
+    get_embedding_model
+)
 # Set environment variables
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 os.environ['USER_AGENT'] = 'my-RAG-agent'
@@ -57,7 +62,7 @@ vision_assistant = VisionAssistant("Ollama (LLaVA)")
 rag_assistant = RAGAssistant("Ollama (LLama3.1)")
 summarization_assistant = SummarizationAssistant("Ollama (LLama3.1)")
 
-# Wrapper functions for Gradio interface
+# Wrapper function for Gradio interface chat_assistant:
 async def chat_wrapper(message, history, model_choice, history_flag,
                        temperature, max_tokens):
     global chat_assistant
@@ -79,6 +84,7 @@ async def chat_wrapper(message, history, model_choice, history_flag,
         logger.error(f"Error in chat function: {str(e)}")
         yield f"An error occurred: {str(e)}"
 
+# Wrapper function for Gradio interface vision_assistant:
 async def prompt_wrapper(
     message: str,
     history: List[tuple[str, str]],
@@ -101,6 +107,7 @@ async def prompt_wrapper(
         result.append(chunk)
         yield ''.join(result)
 
+# Wrapper function for Gradio interface vision_assistant:
 async def process_image_wrapper(
     message: str,
     history: List[tuple[str, str]],
@@ -132,6 +139,7 @@ async def process_image_wrapper(
         logger.error("Full traceback:", exc_info=True)
         return error_message
 
+# Helper function to process content as RAG context
 def load_content(url_input, file_input, model_choice, embedding_choice,
                  chunk_size, chunk_overlap, max_tokens):
     try:
@@ -151,6 +159,7 @@ def load_content(url_input, file_input, model_choice, embedding_choice,
         logger.error(f"Error in load_documents: {str(e)}")
         return f"An error occurred while loading documents: {str(e)}", None
 
+# Wrapper function for Gradio interface RAG_assistant:  
 async def rag_wrapper(message, history, model_choice, embedding_choice,
                       chunk_size, chunk_overlap, temperature, num_similar_docs,
                       max_tokens, urls, files, language, prompt_info,
@@ -203,6 +212,7 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
         logger.error(f"Error in RAG function: {str(e)}")
         return f"An error occurred: {str(e)}"
 
+# Wrapper function for Gradio interface summarize_assistant:
 async def summarize_wrapper(file_input, model_choice, chain_type, chunk_size,
                             chunk_overlap, max_tokens, temperature, language,
                             verbose):
@@ -694,8 +704,7 @@ with gr.Blocks() as demo:
                     )
                     flag_btn = gr.Button("Flag")
                     flag_options = gr.Dropdown(
-                        ["High quality", "OK", "Incorrect", "Ambiguous",
-                         "Inappropriate"],
+                        ["High quality", "OK", "Incorrect", "Ambiguous", "Inappropriate"],
                         label="Flagging Options"
                     )
 
@@ -703,9 +712,15 @@ with gr.Blocks() as demo:
         with gr.Tab("Summarization Assistant"):
             with gr.Row():
                 with gr.Column(scale=1):
+                    url_input = gr.Textbox(
+                        label="Webpage to load",
+                        placeholder="Enter URs here",
+                        lines=1
+                    )
                     file_input = gr.File(
                         label="Upload Document",
                         file_types=[".txt", ".pdf", ".docx"],
+                        file_count="multiple"
                     )
                     model_choice = gr.Dropdown(
                         ["Ollama (LLama3.1)", "Claude Sonnet",
@@ -713,12 +728,17 @@ with gr.Blocks() as demo:
                         label="Choose Model",
                         value="Ollama (LLama3.1)"
                     )
-                    chain_type = gr.Dropdown(
+                    with gr.Accordion("Summarization Options", open=False):
+                        chain_type = gr.Dropdown(
                         ["stuff", "map_reduce", "refine"],
                         label="Summarization Strategy",
                         value="stuff"
                     )
-                    with gr.Accordion("Summarization Options", open=False):
+                        language = gr.Dropdown(
+                            ["english", "dutch"],
+                            label="Choose Language",
+                            value="english"
+                        )
                         chunk_size = gr.Slider(
                             minimum=100, maximum=5000,
                             value=500, step=100,
@@ -739,11 +759,6 @@ with gr.Blocks() as demo:
                             value=0.4, step=0.1,
                             label="Temperature"
                         )
-                        language = gr.Dropdown(
-                            ["english", "dutch"],
-                            label="Choose Language",
-                            value="english"
-                        )
                         verbose = gr.Checkbox(
                             label="Verbose Mode",
                             value=False
@@ -752,7 +767,8 @@ with gr.Blocks() as demo:
                 with gr.Column(scale=4):
                     summary_output = gr.Textbox(
                         label="Summary Output",
-                        lines=10
+                        lines=10, 
+                        show_copy_button=True
                     )
                     summarize_button = gr.Button("Summarize Document")
 
