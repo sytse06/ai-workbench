@@ -13,7 +13,7 @@ from operator import add
 import asyncio
 import os
 import pypdf
-from langchain_community.document_loaders import WebBaseLoader, TextLoader, PyPDFLoader, Docx2txtLoader
+from langchain_community.document_loaders import WebBaseLoader, TextLoader, PyMuPDFLoader, Docx2txtLoader
 from langchain_community.vectorstores import FAISS
 from langchain_community import embeddings
 from langchain_community.embeddings import OllamaEmbeddings

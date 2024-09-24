@@ -1,16 +1,94 @@
 # ai_model_interface/utils.py
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from typing import List, Union, Any
+import fitz  # PyMuPDF
+import pytesseract
+from PIL import Image
+from langchain.schema import Document
 from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyPDFLoader, TextLoader, WebBaseLoader
+from langchain_community.document_loaders import PyMuPDFLoader, TextLoader, WebBaseLoader, Docx2txtLoader
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 import logging
 import yaml
 
 logger = logging.getLogger(__name__)
+class EnhancedContentLoader:
+    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
 
+    def load_and_split_document(self, file_paths: Union[str, List[str]], urls: str = None) -> List[Document]:
+        docs = []
+
+        # Process URLs
+        if urls:
+            urls_list = urls.split("\n")
+            for url in urls_list:
+                url = url.strip()
+                if url:
+                    print(f"Loading URL: {url}")
+                    try:
+                        loaded_docs = WebBaseLoader(url).load()
+                        if loaded_docs:
+                            docs.extend(loaded_docs)
+                        else:
+                            print(f"Warning: URL {url} returned no content.")
+                    except Exception as e:
+                        print(f"Error loading URL {url}: {str(e)}")
+
+        # Process files
+        if isinstance(file_paths, str):
+            file_paths = [file_paths]
+
+        for file_path in file_paths:
+            file_extension = os.path.splitext(file_path)[1].lower()
+            if file_extension == '.txt':
+                docs.extend(TextLoader(file_path).load())
+            elif file_extension == '.pdf':
+                docs.extend(self.load_pdf(file_path))
+            elif file_extension == '.docx':
+                docs.extend(Docx2txtLoader(file_path).load())
+            else:
+                print(f"Unsupported file type: {file_extension}")
+
+        if not docs:
+            raise ValueError("No documents were loaded.")
+
+        # Split documents
+        text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
+            chunk_size=self.chunk_size, 
+            chunk_overlap=self.chunk_overlap
+        )
+        return text_splitter.split_documents(docs)
+
+    def load_pdf(self, file_path: str) -> List[Document]:
+        docs = []
+        pdf = fitz.open(file_path) #fitz = PyMuPDF
+        
+        for page_num in range(len(pdf)):
+            page = pdf.load_page(page_num)
+            text = page.get_text("text")
+            
+            if not text.strip():  # If no text was extracted, try OCR
+                pix = page.get_pixmap()
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                text = pytesseract.image_to_string(img)
+            
+            if text.strip():
+                docs.append(Document(
+                    page_content=text,
+                    metadata={
+                        "page": page_num + 1,
+                        "source": file_path
+                    }
+                ))
+            else:
+                print(f"Warning: No text extracted from page {page_num + 1}")
+        
+        return docs
+    
 def get_system_prompt(language_choice: str, config: dict) -> str:
     try:
         return config["system_prompt_settings"][language_choice]["system_prompt"]
@@ -62,11 +140,6 @@ def load_web_content(url: str) -> List[str]:
     """Load content from a web URL."""
     loader = WebBaseLoader(url)
     return loader.load()
-
-def create_vectorstore(documents: List[str], embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2") -> FAISS:
-    """Create a FAISS vectorstore from documents."""
-    embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
-    return FAISS.from_documents(documents, embeddings)
 
 def split_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[str]:
     """Split text into chunks."""
