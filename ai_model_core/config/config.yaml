@@ -159,37 +159,99 @@ prompts:
         EXTRACTED THEMES:
       
       Note: Ensure your entire response is no more than 250 words.
-    sequential_map_reduce_summary: |
-      Below is a set of themes and key points extracted from different chunks of a larger document:
+    summarize_map_reduce: |
+      Analyze the following chunk of text:
+      {docs}
+      Identify and list the 3-5 main themes or key points from this chunk. 
+      For each theme or key point, provide a brief 1-2 sentence explanation.
+      Themes:
+      1.
+      2.
+      3.
+      4.
+      5.
+    reduce_template: |
+      Below is a set of themes and key points extracted from different chunks of a larger text:
+      {docs}
+      Your task is to:
+      1. Identify the most recurring and significant themes across all chunks.
+      2. Consolidate similar themes.
+      3. Provide a final, coherent summary of 3-5 main themes or key points that represent the entire text.
+      4. Ensure your summary is concise (150-200 words) and captures the essence of the original text.
+
+      Final Summary:
+    summarize_refine: |
+      Your task is to refine and improve an existing summary of a text.
+
+      Existing summary:
+      {existing_answer}
+
+      New context to consider:
       {text}
 
-      Your task is to create a unified summary that:
-        1. Identifies common themes across sections
-        2. Synthesizes key findings
-        3. Maintains logical flow
-        4. Preserves important details
+      Instructions:
+      1. Carefully read the existing summary and the new context.
+      2. Identify any new, important information in the context that is missing from the existing summary.
+      3. Determine if the new information significantly changes or adds to the main points of the existing summary.
+      4. If the new context is relevant:
+        - Incorporate the new information into the existing summary.
+        - Ensure the refined summary remains concise (no more than 25% longer than the original).
+        - Maintain a coherent flow of ideas.
+      5. If the new context isn't useful or doesn't add significant value:
+        - Return the original summary unchanged.
 
-      Guidelines:
-      - Combine related themes
-      - Eliminate redundancy
-      - Maintain coherence
-      - Preserve unique insights
-      - Create a balanced narrative
+      Refined Summary:
+    summarize_stuff: |
+      Write a concise summary of the following text in 4 sentences:
+      "{text}"
+      Focus on the main ideas and key points. Avoid including minor details.
+      CONCISE SUMMARY:
+    summarize_map: |
+      Analyze the following set of documents:
+      {docs}
+      
+      Your task is to:
+      1. Identify the 3-5 main themes or key points from these documents.
+      2. For each theme or key point:
+        a. Provide a brief 1-2 sentence explanation.
+        b. Include a specific example or short quote from the documents to support this theme (if available).
+      3. Maintain the original tone and style of the documents in your analysis.
+      
+      Format your response as follows:
+      Theme 1: [Theme title]
+      Explanation: [1-2 sentence explanation]
+      Example/Quote: "[relevant quote or example]"
+      
+      Theme 2: [Theme title]
+      Explanation: [1-2 sentence explanation]
+      Example/Quote: "[relevant quote or example]"
+      
+      [Continue for up to 5 themes]
+      
+      Note: Ensure your entire response is no more than 250 words.
+    summarize_map_reduce: |
+      Analyze the following chunk of text:
+      {docs}
+      Identify and list the 3-5 main themes or key points from this chunk. 
+      For each theme or key point, provide a brief 1-2 sentence explanation.
+      Themes:
+      1.
+      2.
+      3.
+      4.
+      5.
+    reduce_template: |
+      Below is a set of themes and key points extracted from different chunks of a larger text:
+      {docs}
+      Your task is to:
+      1. Identify the most recurring and significant themes across all chunks.
+      2. Consolidate similar themes.
+      3. Provide a final, coherent summary of 3-5 main themes or key points that represent the entire text.
+      4. Ensure your summary is concise (150-200 words) and captures the essence of the original text.
 
-      FINAL UNIFIED SUMMARY:
-    initial_refine_summary: |
-      Write a concise summary of the following text chunk for a refinement process:
-      {text}
-
-      Guidelines:
-      - Capture main ideas for further refinement
-      - Include key details that may be enriched later
-      - Use clear language that can be built upon
-      - Focus on essential information for iterative improvement
-
-      INITIAL REFINEMENT SUMMARY:
-    sequential_refine_summary: |
-      You are refining an existing summary with new information.
+      Final Summary:
+    summarize_refine: |
+      Your task is to refine and improve an existing summary of a text.
 
         CURRENT SUMMARY:
         {existing_summary}
@@ -253,101 +315,8 @@ prompts:
 
 # language_specific:
   dutch:
-    RAG-Prompt: |
-      Context informatie:
-      {context}
-
-      Vraag: {question}
-
-      Instructies:
-      1. Gebruik alleen de informatie uit de bovenstaande context om je antwoord te formuleren
-      2. Formuleer je antwoord duidelijk, goed leesbaar en beknopt
-      3. Houd een vriendelijke, professionele toon aan die past bij marketingdoeleinden
-      4. Verwijs bij het delen van informatie naar specifieke delen uit de context
-      5. Als de context onvoldoende informatie bevat om de vraag te beantwoorden, geef dit duidelijk aan en specificeer welke aanvullende informatie nodig zou zijn
-
-      Antwoord:
-    messaging_house_campagne: |
-      {intentie}
-        "Ontwikkel een messaging house voor een campagne en zorg ervoor dat de boodschap
-        overtuigend is en aansluit bij de behoeften van de doelgroep. Elke sectie moet duidelijk,
-        consistent en ondersteund zijn door bewijspunten om de kernboodschap te versterken."
-      {instructie}
-        "Schrijf een messaging house uit voor een marketing campagne door de volgende onderdelen stap-voor-stap
-        te doorlopen. Zorg dat de boodschap overtuigend en inspirerend is voor de beoogde doelgroep,
-        met elke sectie duidelijk en consistent geformuleerd. Voeg waar mogelijk bewijsvoering toe
-        om de boodschap te versterken."
-      {Merkbelofte}
-        "Beschrijf in één krachtige zin de belofte die het merk doet aan de doelgroep.
-        Deze belofte moet vertrouwen wekken en het merk onderscheiden van concurrenten. Geef aan
-        hoe deze belofte een centrale uitdaging of pijnpunt van de doelgroep oplost. Zorg dat
-        de belofte zowel praktisch als inspirerend is en benadruk de tastbare voordelen die
-        de beoogde doelgroep zal ervaren."
-      {Missie}
-        "Schrijf een korte, inspirerende missie die de merkwaarden en doelen samenvat.
-        Toon hoe deze missie aansluit bij de waarden, behoeften en aspiraties van de beoogde doelgroep.
-        Maak duidelijk hoe de missie inzicht toont in de unieke uitdagingen van de doelgroep
-        en de inzet van het merk om deze vraag adequaat te adresseren."
-      {Doelgroep}
-        "Beschrijf de primaire doelgroep van deze campagne, inclusief kenmerken, behoeften en specifieke pijnpunten.
-        Overweeg demografische informatie, sectorbehoeften en aankoopmotivaties. Benoem eventuele secundaire
-        doelgroepen of beïnvloeders die deze campagne ook aanspreekt en leg uit hoe zij bij het proces betrokken zijn.
-        Leg uit hoe de campagne aansluit op de motivaties van de doelgroep en hoe het merk hen kan helpen hun unieke
-        uitdagingen te overwinnen of doelen te bereiken."
-      {Primaire boodschap}
-        "Ontwikkel een kernboodschap die de unieke waarde van de oplossing in één overtuigende zin samenvat.
-        Deze boodschap moet emotioneel resoneren en onze oplossing neerzetten als essentieel en transformerend
-        voor de doelgroep. Beschrijf de specifieke voordelen en onderscheidende kenmerken van de oplossing
-        die deze boodschap ondersteunen en benadruk de waarde die het merk biedt. Maak de boodschap inspirerend
-        en aansprekend, waarbij de flexibiliteit en innovatiekracht van het merk duidelijk naar voren komen."
-      {Merkpijlers}
-        "Identificeer de drie tot vijf belangrijkste merkaspecten (merkpijlers) die de basis vormen van de boodschap.
-        Geef een korte beschrijving van elke pijler en leg uit hoe het helpt bij het oplossen van specifieke uitdagingen
-        waarmee de doelgroep te maken heeft. Onderbouw elke pijler met relevante bewijspunten, zoals klantcases,
-        statistieken of kenmerken die de praktische waarde voor de doelgroep aantonen. Zorg dat elke pijler herkenbaar
-        en geloofwaardig overkomt, met een duidelijk verband naar de kernboodschap."
-      {Bewijspunten en Praktijkvoorbeelden}
-        "Geef per merkpijler één of meerdere voorbeelden die het succes of de impact van onze oplossing illustreren.
-        Denk aan klantcases of voorbeelden van hoe specifieke functies van ons platform een verschil hebben gemaakt.
-        Voeg feiten of cijfers toe die de waarde van onze oplossing in de praktijk aantonen, zoals verbeterde efficiëntie,
-        kostenbesparing of klanttevredenheid. Zorg dat deze bewijspunten overtuigend en toegankelijk zijn, zodat de doelgroep
-        zich kan inleven in het succes dat ze zelf kunnen ervaren."
-    casebeschrijving: |
-      "Schrijf een casebeschrijving gebaseerd op de volgende vijf hoofdonderwerpen en de bijbehorende vragen. Gebruik de context van het messaging house om antwoorden te verrijken met merkwaarden, doelen, en merkpijlers."
-      {Zakelijke_Uitdaging_en_Achtergrond}
-        "Beschrijf het initiële probleem of de uitdaging die de organisatie motiveerde om een nieuwe oplossing te zoeken. Welke strategische doelen werden hierdoor niet bereikt?"
-      {Merkbelofte}
-        "Merkbelofte: {merkbelofte}"
-      {Missie}
-        "Missie: {missie}"
-      {Oplossingsvereisten_en_Selectieproces}
-        "Geef aan welke specifieke eisen de oplossing moest vervullen. Bespreek het besluitvormingsproces en de belanghebbenden die betrokken waren bij de keuze."
-      {Doelgroep}
-        "Doelgroep: {doelgroep}"
-      {Merkpijlers}
-        "Merkpijlers: {merkpijlers}"
-      {Implementatie_en_Ontwikkeling}
-        "Welke stappen zijn ondernomen tijdens de implementatie? Omschrijf de structuur van de teams en de rollen die ze speelden, en bespreek eventuele uitdagingen of risico’s."
-      {Merkpijlers}
-        "Merkpijlers: {merkpijlers}"
-      {Bewijspunten_en_Praktijkvoorbeelden}
-        "Bewijspunten en praktijkvoorbeelden: {bewijspunten_en_praktijkvoorbeelden}"
-      {Resultaten_en_Voordelen}
-        "Beschrijf de belangrijkste resultaten na implementatie. Hoe heeft de oplossing de efficiëntie, klanttevredenheid, of omzet beïnvloed, en welke langetermijnvoordelen zijn behaald?"
-      {Primaire_Boodschap}
-        "Primaire boodschap: {primaire_boodschap}"
-      {Bewijspunten_en_Praktijkvoorbeelden}
-        "Bewijspunten en praktijkvoorbeelden: {bewijspunten_en_praktijkvoorbeelden}"
-      {Toekomstplannen_en_Schaalbaarheid}
-        "Omschrijf de toekomstplannen voor verdere benutting of uitbreiding van de oplossing en hoe deze past in de groeiambities of marktveranderingen van de organisatie."
-      {Missie}
-        "Missie: {missie}"
-      {Merkbelofte}
-        "Merkbelofte: {merkbelofte}"
-      {Merkpijlers}
-        "Merkpijlers: {merkpijlers}"
-    summary_stuff: |
-      Schrijf een beknopte samenvatting van de volgende tekst in 6 zinnen:
+    summarize_stuff: |
+      Schrijf een beknopte samenvatting van de volgende tekst in 4 zinnen:
       "{text}"
       Concentreer je op de hoofdideeën en kernpunten. Vermijd het opnemen van kleine details.
       BEKNOPTE SAMENVATTING:

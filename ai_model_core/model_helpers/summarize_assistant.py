@@ -44,7 +44,7 @@ class SummarizationAssistant:
 
     def summarize_map_reduce(self, chunks: List[str]) -> str:
         map_prompt = get_prompt_template("summarize_map", self.config)
-        reduce_prompt = get_prompt_template("summarize_reduce", self.config)
+        reduce_prompt = get_prompt_template("summarize_map_reduce", self.config)
         
         map_chain = (
             map_prompt 
