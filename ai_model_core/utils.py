@@ -17,10 +17,9 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 import logging
 import yaml
 import os
-import shutil
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
 class EnhancedContentLoader:
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
         self.chunk_size = chunk_size
@@ -102,16 +101,21 @@ class EnhancedContentLoader:
         
         return docs
     
-    def split_documents(self, docs: List[Document]) -> List[Document]:
-        text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
-            chunk_size=self.chunk_size, 
-            chunk_overlap=self.chunk_overlap
+    def split_documents(self, docs: List[Document], chunk_size: int, chunk_overlap: int) -> List[Document]:
+        text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+            chunk_size=chunk_size, 
+            chunk_overlap=chunk_overlap
         )
         return text_splitter.split_documents(docs)
 
-    def load_and_split_document(self, file_paths: Union[str, List[str]], urls: str = None) -> List[Document]:
+    def load_and_split_document(self, file_paths: Union[str, List[str]], urls: str = None, chunk_size: int = None, chunk_overlap: int = None) -> List[Document]:
         docs = self.load_documents(file_paths, urls)
-        return self.split_documents(docs)
+        
+        # Use provided chunk_size and chunk_overlap if given, otherwise use default values
+        chunk_size = chunk_size or self.chunk_size
+        chunk_overlap = chunk_overlap or self.chunk_overlap
+        
+        return self.split_documents(docs, chunk_size, chunk_overlap)
     
 def get_system_prompt(language_choice: str, config: dict) -> str:
     try:
