@@ -49,7 +49,9 @@ class CustomHuggingFaceEmbeddings:
         encoded_input = self.tokenizer(
             texts, padding=True, truncation=True, return_tensors='pt'
         )
-        encoded_input = {k: v.to(self.device) for k, v in encoded_input.items()}
+        encoded_input = {
+            k: v.to(self.device) for k, v in encoded_input.items()
+        }
         with torch.no_grad():
             model_output = self.model(**encoded_input)
         attention_mask = encoded_input['attention_mask']
@@ -57,7 +59,9 @@ class CustomHuggingFaceEmbeddings:
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(
             token_embeddings.size()
         ).float()
-        sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+        sum_embeddings = torch.sum(
+            token_embeddings * input_mask_expanded, 1
+        )
         sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
         embeddings = (sum_embeddings / sum_mask).cpu().numpy()
         return embeddings.tolist()
@@ -118,8 +122,9 @@ class RAGAssistant:
         if isinstance(self.embedding_model, CustomHuggingFaceEmbeddings):
             texts = [doc.page_content for doc in docs]
             embeddings = self.embedding_model.embed_documents(texts)
+            text_embeddings = list(zip(texts, embeddings))
             self.vectorstore = FAISS.from_embeddings(
-                text_embeddings=list(zip(texts, embeddings)),
+                text_embeddings=text_embeddings,
                 embedding=self.embedding_model,
             )
         else:
@@ -131,29 +136,28 @@ class RAGAssistant:
         self.retriever = self.select_retriever(self.retrieval_method)
 
     def select_retriever(self, method):
+        base_kwargs = {"k": self.num_similar_docs}
         if method == "similarity":
             return self.vectorstore.as_retriever(
                 search_type="similarity",
-                search_kwargs={"k": self.num_similar_docs}
+                search_kwargs=base_kwargs
             )
         elif method == "mmr":
+            mmr_kwargs = {**base_kwargs, "fetch_k": 20}
             return self.vectorstore.as_retriever(
                 search_type="mmr",
-                search_kwargs={"k": self.num_similar_docs, "fetch_k": 20}
+                search_kwargs=mmr_kwargs
             )
         elif method == "similarity_threshold":
+            threshold_kwargs = {**base_kwargs, "score_threshold": 0.8}
             return self.vectorstore.as_retriever(
                 search_type="similarity_score_threshold",
-                search_kwargs={
-                    "score_threshold": 0.8,
-                    "k": self.num_similar_docs
-                }
+                search_kwargs=threshold_kwargs
             )
         else:
             raise ValueError(f"Unknown retrieval method: {method}")
 
     async def retrieve_context(self, query: str) -> List[Document]:
-        # Use run_in_executor to run the synchronous invoke method in a thread
         loop = asyncio.get_event_loop()
         docs = await loop.run_in_executor(None, self.retriever.invoke, query)
         return docs
@@ -196,45 +200,19 @@ class RAGAssistant:
                 "Call setup_vectorstore() first."
             )
 
-        # Retrieve relevant documents
         relevant_docs = await self.retrieve_context(question)
         context = "\n\n".join(doc.page_content for doc in relevant_docs)
 
-        # Base RAG prompt
-        base_rag_template = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer.
-
-            Context:
-            {context}
-
-            Question: {question}
-
-            Answer:"""
-
+        base_rag_template = self._get_base_rag_template()
         base_rag_prompt = ChatPromptTemplate.from_template(base_rag_template)
 
-        # Construct the chain
         if prompt_template:
-            # If a custom prompt template is set, use it to format the question
             custom_prompt = get_prompt_template(prompt_template, self.config)
-            rag_chain = (
-                {"context": RunnablePassthrough(), "question": custom_prompt}
-                | base_rag_prompt
-                | self.model_local.bind(
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens
-                )
-                | StrOutputParser()
+            rag_chain = self._create_custom_chain(
+                base_rag_prompt, custom_prompt
             )
         else:
-            # If no custom prompt template, use the base RAG prompt directly
-            rag_chain = (
-                base_rag_prompt
-                | self.model_local.bind(
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens
-                )
-                | StrOutputParser()
-            )
+            rag_chain = self._create_base_chain(base_rag_prompt)
 
         input_dict = {"question": question, "context": context}
         if self.use_history and history:
@@ -242,11 +220,46 @@ class RAGAssistant:
 
         response = await rag_chain.ainvoke(input_dict)
 
-        # Check if response is None and handle it
         if response is None:
-            return (
-                "I apologize, but I couldn't generate a response. "
-                "Please try rephrasing your question or providing more context."
-            )
+            return self._get_error_message()
 
         return response
+
+    def _get_base_rag_template(self):
+        return (
+            "Use the following pieces of context to answer the question at "
+            "the end. If you don't know the answer, just say that you don't "
+            "know, don't try to make up an answer.\n\n"
+            "Context:\n{context}\n\n"
+            "Question: {question}\n\n"
+            "Answer:"
+        )
+
+    def _create_custom_chain(self, base_rag_prompt, custom_prompt):
+        context_and_question = {
+            "context": RunnablePassthrough(),
+            "question": custom_prompt
+        }
+        return (
+            context_and_question
+            | base_rag_prompt
+            | self._get_model_chain()
+        )
+
+    def _create_base_chain(self, base_rag_prompt):
+        return base_rag_prompt | self._get_model_chain()
+
+    def _get_model_chain(self):
+        return (
+            self.model_local.bind(
+                temperature=self.temperature,
+                max_tokens=self.max_tokens
+            )
+            | StrOutputParser()
+        )
+
+    def _get_error_message(self):
+        return (
+            "I apologize, but I couldn't generate a response. "
+            "Please try rephrasing your question or providing more context."
+        )
