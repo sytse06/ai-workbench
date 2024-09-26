@@ -3,9 +3,6 @@ import logging
 from typing import TypedDict, List, Annotated
 from operator import add
 from langgraph.graph import StateGraph, END
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
-from langchain.schema import Document
 from ai_model_core import get_model, get_prompt_template
 from ai_model_core.config.settings import load_config
 from ai_model_core.utils import EnhancedContentLoader
@@ -180,13 +177,19 @@ class SummarizationAssistant:
 
     def setup_graph(self):
         self.graph = StateGraph(State)
+        
+        # Add nodes
         self.graph.add_node("load_document", self.load_document)
         self.graph.add_node("summarize_chunks", self.summarize_chunks)
 
+        # Set the entry point
         self.graph.set_entry_point("load_document")
+        
+        # Add edges
         self.graph.add_edge("load_document", "summarize_chunks")
         self.graph.add_edge("summarize_chunks", END)
 
+        # Compile the graph
         self.graph_runnable = self.graph.compile()
 
     async def summarize(self, file_path: str) -> str:
