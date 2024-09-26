@@ -145,10 +145,10 @@ def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
     try:
         loader = EnhancedContentLoader(chunk_size, chunk_overlap)
         docs = loader.load_documents(file_paths=file_input, urls=url_input)
-        return f"Successfully loaded {len(docs)} chunks of text."
+        return f"Successfully loaded {len(docs)} chunks of text.", docs
     except Exception as e:
         logger.error(f"Error in load_documents: {str(e)}")
-        return f"An error occurred while loading documents: {str(e)}"
+        return f"An error occurred while loading documents: {str(e)}", None
 
 # Wrapper function for Gradio interface RAG_assistant:
 async def rag_wrapper(message, history, model_choice, embedding_choice,
@@ -194,9 +194,8 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
         logger.error(f"Error in RAG function: {str(e)}")
         return f"An error occurred: {str(e)}"
 
-
 # Wrapper function for Gradio interface summarize_assistant:
-async def summarize_wrapper(file_input, model_choice, chain_type, chunk_size,
+async def summarize_wrapper(docs, model_choice, chain_type, chunk_size,
                             chunk_overlap, max_tokens, temperature, language,
                             verbose):
     summarizer = SummarizationAssistant(
@@ -210,15 +209,15 @@ async def summarize_wrapper(file_input, model_choice, chain_type, chunk_size,
         verbose=verbose
     )
 
-    if not file_input:
-        return "Please upload a file to summarize."
+    if not docs:
+        return "No documents loaded. Please load content first."
 
     try:
-        summary = await summarizer.summarize(file_input.name)
-        return summary
+        summary = await summarizer.summarize(docs)
+        return f"Summary of loaded content:\n{summary}"
     except Exception as e:
-        return f"An error occurred during summarization: {str(e)}"
-
+        error_trace = traceback.format_exc()
+        return f"An error occurred during summarization: {str(e)}\n\nTraceback:\n{error_trace}"
 
 # Helper functions for Gradio interface
 def clear_chat():
@@ -703,7 +702,7 @@ with gr.Blocks() as demo:
             load_button.click(
                 fn=load_documents_wrapper,
                 inputs=[url_input, file_input, chunk_size, chunk_overlap],
-                outputs=load_output
+                outputs=[load_output, gr.State()]
             )
 
         # Summarization Assistant Tab
@@ -718,7 +717,7 @@ with gr.Blocks() as demo:
                     file_input = gr.File(
                         label="Upload Document",
                         file_types=[".txt", ".pdf", ".docx"],
-                        file_count="multiple"
+                        file_count="single"
                     )
                     chunk_size = gr.Slider(
                         minimum=100, maximum=5000,
@@ -775,16 +774,17 @@ with gr.Blocks() as demo:
                     summarize_button = gr.Button("Summarize Document")
 
             # Connect the load_button to the load_documents_wrapper function
+            loaded_docs = gr.State()
             load_button.click(
                 fn=load_documents_wrapper,
                 inputs=[url_input, file_input, chunk_size, chunk_overlap],
-                outputs=load_output
+                outputs=[load_output, loaded_docs]
             )
 
             summarize_button.click(
                 fn=summarize_wrapper,
                 inputs=[
-                    file_input, model_choice, chain_type, chunk_size,
+                    loaded_docs, model_choice, chain_type, chunk_size,
                     chunk_overlap, max_tokens, temperature, language,
                     verbose
                 ],
