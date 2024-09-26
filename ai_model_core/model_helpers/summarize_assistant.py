@@ -3,10 +3,9 @@ import logging
 from typing import TypedDict, List, Annotated
 from operator import add
 from langgraph.graph import StateGraph, END
-from langchain.schema import Document
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
+from langchain.schema import Document
 from ai_model_core import get_model, get_prompt_template
 from ai_model_core.config.settings import load_config
 from ai_model_core.utils import EnhancedContentLoader
@@ -48,6 +47,7 @@ class SummarizationAssistant:
             chunk_overlap=self.chunk_overlap
         )
         self.graph = StateGraph(State)
+        self.graph_runnable = None
 
     def log_verbose(self, message: str):
         if self.verbose:
@@ -55,7 +55,9 @@ class SummarizationAssistant:
 
     def load_and_split_document(self, file_path: str) -> List[str]:
         documents = self.content_loader.load_and_split_document(file_path)
-        self.log_verbose(f"Loaded and split document into {len(documents)} chunks")
+        self.log_verbose(
+            f"Loaded and split document into {len(documents)} chunks"
+        )
         return [doc.page_content for doc in documents]
 
     def summarize_stuff(self, chunks: List[str]) -> str:
@@ -81,7 +83,9 @@ class SummarizationAssistant:
 
     def summarize_map_reduce(self, chunks: List[str]) -> str:
         map_prompt = get_prompt_template("summarize_map", self.config)
-        reduce_prompt = get_prompt_template("summarize_map_reduce", self.config)
+        reduce_prompt = get_prompt_template(
+            "summarize_map_reduce", self.config
+        )
 
         map_chain = (
             map_prompt
@@ -145,19 +149,24 @@ class SummarizationAssistant:
                     "text": chunk,
                     "existing_summary": current_summary
                 })
-            self.log_verbose(f"Current summary after chunk {i+1}: {current_summary}")
+            self.log_verbose(
+                f"Current summary after chunk {i+1}: {current_summary}"
+            )
 
         return current_summary
 
-    def load_document(self, state):
+    def load_document(self, state: State) -> State:
         file_path = state["input"]
         self.log_verbose(f"Loading document: {file_path}")
         chunks = self.load_and_split_document(file_path)
-        return {"chunks": chunks}
+        state["chunks"] = chunks
+        return state
 
-    def summarize_chunks(self, state):
+    def summarize_chunks(self, state: State) -> State:
         chunks = state["chunks"]
-        self.log_verbose(f"Summarizing {len(chunks)} chunks using {self.chain_type} method")
+        self.log_verbose(
+            f"Summarizing {len(chunks)} chunks using {self.chain_type} method"
+        )
         if self.chain_type == "stuff":
             summary = self.summarize_stuff(chunks)
         elif self.chain_type == "map_reduce":
@@ -166,12 +175,15 @@ class SummarizationAssistant:
             summary = self.summarize_refine(chunks)
         else:
             raise ValueError(f"Unknown chain type: {self.chain_type}")
-        return {"final_summary": summary}
+        state["final_summary"] = summary
+        return state
 
     def setup_graph(self):
+        self.graph = StateGraph(State)
         self.graph.add_node("load_document", self.load_document)
         self.graph.add_node("summarize_chunks", self.summarize_chunks)
 
+        self.graph.set_entry_point("load_document")
         self.graph.add_edge("load_document", "summarize_chunks")
         self.graph.add_edge("summarize_chunks", END)
 
@@ -181,8 +193,12 @@ class SummarizationAssistant:
         self.log_verbose(f"Summarizing file: {file_path}")
         self.log_verbose(f"Using chain type: {self.chain_type}")
 
-        if not hasattr(self, 'graph_runnable'):
+        if not self.graph_runnable:
             self.setup_graph()
 
         result = await self.graph_runnable.ainvoke({"input": file_path})
         return result["final_summary"]
+
+
+# Ensure the SummarizationAssistant is initialized correctly in main.py
+summarization_assistant = SummarizationAssistant()

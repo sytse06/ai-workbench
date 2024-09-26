@@ -1,9 +1,6 @@
 import os
 import logging
 import sys
-import yaml
-from io import BytesIO
-import base64
 from typing import List, Union
 from PIL import Image
 import gradio as gr
@@ -17,11 +14,9 @@ from ai_model_core.model_helpers import (
 from ai_model_core.model_helpers.RAG_assistant import (
     CustomHuggingFaceEmbeddings
 )
-from ai_model_core import (
-    get_model, get_embedding_model, get_prompt_template, 
-    get_system_prompt, _format_history, 
-    get_embedding_model
-)
+from ai_model_core import get_embedding_model
+from ai_model_core.utils import EnhancedContentLoader
+
 # Set environment variables
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 os.environ['USER_AGENT'] = 'my-RAG-agent'
@@ -49,12 +44,14 @@ logger.addHandler(c_handler)
 logger.addHandler(f_handler)
 logger.propagate = False
 
+
 # Initialize assistants with default models
 chat_assistant = ChatAssistant("Ollama (LLama3.1)")
 prompt_assistant = PromptAssistant("Ollama (LLama3.1)")
 vision_assistant = VisionAssistant("Ollama (LLaVA)")
 rag_assistant = RAGAssistant("Ollama (LLama3.1)")
 summarization_assistant = SummarizationAssistant("Ollama (LLama3.1)")
+
 
 # Wrapper function for Gradio interface chat_assistant:
 async def chat_wrapper(message, history, model_choice, history_flag,
@@ -74,6 +71,7 @@ async def chat_wrapper(message, history, model_choice, history_flag,
     except Exception as e:
         logger.error(f"Error in chat function: {str(e)}")
         yield f"An error occurred: {str(e)}"
+
 
 # Wrapper function for Gradio interface vision_assistant:
 async def prompt_wrapper(
@@ -95,6 +93,7 @@ async def prompt_wrapper(
         result.append(chunk)
         yield ''.join(result)
 
+
 # Wrapper function for Gradio interface vision_assistant:
 async def process_image_wrapper(
     message: str,
@@ -111,7 +110,7 @@ async def process_image_wrapper(
 
     try:
         result = await vision_assistant.process_image(image, message, stream)
-        
+
         if isinstance(result, list):
             result_text = ''.join(result)
         else:
@@ -119,7 +118,7 @@ async def process_image_wrapper(
 
         if history_flag:
             history.append((message, result_text))
-        
+
         return result_text
     except Exception as e:
         error_message = f"An error occurred: {str(e)}"
@@ -127,38 +126,28 @@ async def process_image_wrapper(
         logger.error("Full traceback:", exc_info=True)
         return error_message
 
-# Helper function to process content as RAG context
-def load_content(url_input, file_input, model_choice, embedding_choice,
-                 chunk_size, chunk_overlap, max_tokens):
+# Wrapper function for loading documents (RAG and summarization)
+def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
     try:
-        global rag_assistant
-        if not hasattr(globals(), 'rag_assistant') or rag_assistant is None:
-            rag_assistant = RAGAssistant(
-                model_name=model_choice,
-                embedding_model=embedding_choice,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                max_tokens=max_tokens
-            )
-        
-        rag_assistant.setup_vectorstore(url_input, file_input)
-        return "Content loaded successfully into memory."
+        loader = EnhancedContentLoader(chunk_size, chunk_overlap)
+        docs = loader.load_documents(file_paths=file_input, urls=url_input)
+        return f"Successfully loaded {len(docs)} chunks of text."
     except Exception as e:
-        return f"Error loading content: {str(e)}"
+        logger.error(f"Error in load_documents: {str(e)}")
+        return f"An error occurred while loading documents: {str(e)}"
 
-# Wrapper function for Gradio interface RAG_assistant:  
+# Wrapper function for Gradio interface RAG_assistant:
 async def rag_wrapper(message, history, model_choice, embedding_choice,
                       chunk_size, chunk_overlap, temperature, num_similar_docs,
                       max_tokens, urls, files, language, prompt_info,
                       history_flag, retrieval_method):
-    embedding_model = (
-        CustomHuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
-        )
-        if embedding_choice == "all-MiniLM-L6-v2"
-        else get_embedding_model(embedding_choice)
-    )
-    
+    # Note: embedding_model is not used in this function, but might be needed
+    # in the RAGAssistant initialization. If not needed, consider removing it.
+    _ = (CustomHuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2"
+    ) if embedding_choice == "all-MiniLM-L6-v2"
+       else get_embedding_model(embedding_choice))
+
     rag_assistant = RAGAssistant(
         model_name=model_choice,
         embedding_model=embedding_choice,
@@ -169,13 +158,15 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
         language=language,
         max_tokens=max_tokens
     )
-    
+
     try:
         logger.info("Setting up vectorstore")
-        rag_assistant.setup_vectorstore(urls, files, retrieval_method)
+        content_loader = EnhancedContentLoader(chunk_size, chunk_overlap)
+        docs = content_loader.load_documents(file_paths=files, urls=urls)
+        rag_assistant.setup_vectorstore(docs)
         rag_assistant.prompt_template = prompt_info
         rag_assistant.use_history = history_flag
-        
+
         logger.info("Querying RAG assistant")
         result = await rag_assistant.query(
             message, history if history_flag else None
@@ -184,6 +175,7 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
     except Exception as e:
         logger.error(f"Error in RAG function: {str(e)}")
         return f"An error occurred: {str(e)}"
+
 
 # Wrapper function for Gradio interface summarize_assistant:
 async def summarize_wrapper(file_input, model_choice, chain_type, chunk_size,
@@ -209,12 +201,15 @@ async def summarize_wrapper(file_input, model_choice, chain_type, chunk_size,
     except Exception as e:
         return f"An error occurred during summarization: {str(e)}"
 
+
 # Helper functions for Gradio interface
 def clear_chat():
     return None
 
+
 def clear_vision_chat():
     return None, None, gr.update(value=None)
+
 
 flagging_callback = gr.CSVLogger()
 
@@ -405,15 +400,17 @@ with gr.Blocks() as demo:
                             label="Temp text generation"
                         )
                         retrieval_method = gr.Dropdown(
-                            choices=["similarity", "mmr", "similarity_threshold"],
-                            label="Select Retriever Method", value="similarity"
+                            choices=["similarity", "mmr",
+                                     "similarity_threshold"],
+                            label="Select Retriever Method",
+                            value="similarity"
                         )
                         num_similar_docs = gr.Slider(
                             minimum=2, maximum=10, value=3, step=1,
                             label="Search Number of Fragments"
                         )
 
-                    load_button = gr.Button("Process content for analysis")
+                    load_button = gr.Button("Load content")
                     load_output = gr.Textbox(
                         label="Load Status", interactive=False
                     )
@@ -430,7 +427,7 @@ with gr.Blocks() as demo:
                     history_flag = gr.Checkbox(
                         label="Include conversation history", value=True
                     )
-                    
+
                 with gr.Column(scale=4):
                     rag_chat_bot = gr.Chatbot(
                         height=600, show_copy_button=True,
@@ -447,8 +444,9 @@ with gr.Blocks() as demo:
                         additional_inputs=[
                             model_choice, embedding_choice, chunk_size,
                             chunk_overlap, temperature, num_similar_docs,
-                            max_tokens, url_input, file_input, language_choice,
-                            prompt_info, history_flag, retrieval_method
+                            max_tokens, url_input, file_input,
+                            language_choice, prompt_info, history_flag,
+                            retrieval_method
                         ],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",
@@ -457,9 +455,17 @@ with gr.Blocks() as demo:
                     )
                     flag_btn = gr.Button("Flag")
                     flag_options = gr.Dropdown(
-                        ["High quality", "OK", "Incorrect", "Ambiguous", "Inappropriate"],
+                        ["High quality", "OK", "Incorrect", "Ambiguous",
+                         "Inappropriate"],
                         label="Flagging Options"
                     )
+
+            # Connect the load_button to the load_documents_wrapper function
+            load_button.click(
+                fn=load_documents_wrapper,
+                inputs=[url_input, file_input, chunk_size, chunk_overlap],
+                outputs=load_output
+            )
 
         # Summarization Assistant Tab
         with gr.Tab("Summarization Assistant"):
@@ -467,7 +473,7 @@ with gr.Blocks() as demo:
                 with gr.Column(scale=1):
                     url_input = gr.Textbox(
                         label="Webpage to load",
-                        placeholder="Enter URs here",
+                        placeholder="Enter URLs here",
                         lines=1
                     )
                     file_input = gr.File(
@@ -475,32 +481,36 @@ with gr.Blocks() as demo:
                         file_types=[".txt", ".pdf", ".docx"],
                         file_count="multiple"
                     )
-                    model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.1)", "Claude Sonnet",
-                         "Ollama (phi3.5)", "OpenAI GPT-4o-mini"],
-                        label="Choose Model",
-                        value="Ollama (LLama3.1)"
+                    chunk_size = gr.Slider(
+                        minimum=100, maximum=5000,
+                        value=500, step=100,
+                        label="Chunk Size"
+                        )
+                    chunk_overlap = gr.Slider(
+                        minimum=0, maximum=500,
+                        value=200, step=10,
+                        label="Chunk Overlap"
+                        )
+                    load_button = gr.Button("Load content")
+                    load_output = gr.Textbox(
+                        label="Load Status", interactive=False
                     )
                     with gr.Accordion("Summarization Options", open=False):
-                        chain_type = gr.Dropdown(
-                        ["stuff", "map_reduce", "refine"],
-                        label="Summarization Strategy",
-                        value="stuff"
-                    )
+                        model_choice = gr.Dropdown(
+                            ["Ollama (LLama3.1)", "Claude Sonnet",
+                             "Ollama (phi3.5)", "OpenAI GPT-4o-mini"],
+                            label="Choose Model",
+                            value="Ollama (LLama3.1)"
+                        )
                         language = gr.Dropdown(
                             ["english", "dutch"],
                             label="Choose Language",
                             value="english"
                         )
-                        chunk_size = gr.Slider(
-                            minimum=100, maximum=5000,
-                            value=500, step=100,
-                            label="Chunk Size"
-                        )
-                        chunk_overlap = gr.Slider(
-                            minimum=0, maximum=500,
-                            value=200, step=10,
-                            label="Chunk Overlap"
+                        chain_type = gr.Dropdown(
+                            ["stuff", "map_reduce", "refine"],
+                            label="Summarization Strategy",
+                            value="stuff"
                         )
                         max_tokens = gr.Slider(
                             minimum=50, maximum=4000,
@@ -520,10 +530,17 @@ with gr.Blocks() as demo:
                 with gr.Column(scale=4):
                     summary_output = gr.Textbox(
                         label="Summary Output",
-                        lines=10, 
+                        lines=25,
                         show_copy_button=True
                     )
                     summarize_button = gr.Button("Summarize Document")
+
+            # Connect the load_button to the load_documents_wrapper function
+            load_button.click(
+                fn=load_documents_wrapper,
+                inputs=[url_input, file_input, chunk_size, chunk_overlap],
+                outputs=load_output
+            )
 
             summarize_button.click(
                 fn=summarize_wrapper,
@@ -544,18 +561,10 @@ with gr.Blocks() as demo:
     # Connect the flagging button to the callback
     flag_btn.click(
         lambda *args: flagging_callback.flag(args[:-1] + (args[-1],)),
-        [rag_text_box, rag_chat_bot] + chat_interface.additional_inputs + [flag_options],
+        [rag_text_box, rag_chat_bot] + chat_interface.additional_inputs +
+        [flag_options],
         None,
         preprocess=False
-    )
-
-    load_button.click(
-        fn=load_content,
-        inputs=[
-            url_input, file_input, model_choice, embedding_choice,
-            chunk_size, chunk_overlap, max_tokens
-        ],
-        outputs=load_output
     )
 
     language_choice.change(
