@@ -178,7 +178,7 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
         return f"An error occurred: {str(e)}"
 
 # Wrapper function for Gradio interface summarize_assistant:
-async def summarize_wrapper(docs, model_choice, chain_type, chunk_size,
+async def summarize_wrapper(loaded_docs, model_choice, chain_type, chunk_size,
                             chunk_overlap, max_tokens, temperature, language,
                             verbose):
     summarizer = SummarizationAssistant(
@@ -187,16 +187,15 @@ async def summarize_wrapper(docs, model_choice, chain_type, chunk_size,
         chunk_overlap=chunk_overlap,
         max_tokens=max_tokens,
         temperature=temperature,
-        chain_type=chain_type,
-        language=language,
         verbose=verbose
     )
 
-    if not docs:
+    if not loaded_docs:
         return "No documents loaded. Please load content first."
 
     try:
-        summary = await summarizer.summarize(docs)
+        # Assuming loaded_docs contains the actual document content
+        summary = await summarizer.summarize(loaded_docs, method=chain_type, language=language)
         return f"Summary of loaded content:\n{summary}"
     except Exception as e:
         error_trace = traceback.format_exc()
