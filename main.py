@@ -178,24 +178,26 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
         return f"An error occurred: {str(e)}"
 
 # Wrapper function for Gradio interface summarize_assistant:
-async def summarize_wrapper(loaded_docs, model_choice, chain_type, chunk_size,
+async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
                             chunk_overlap, max_tokens, temperature, language,
                             verbose):
-    summarizer = SummarizationAssistant(
-        model_name=model_choice,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        verbose=verbose
-    )
-
-    if not loaded_docs:
-        return "No documents loaded. Please load content first."
-
     try:
-        # Assuming loaded_docs contains the actual document content
-        summary = await summarizer.summarize(loaded_docs, method=chain_type, language=language)
+        summarizer = SummarizationAssistant(
+            model_name=model_choice,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            method=method,
+            token_max=max_tokens,
+            verbose=verbose
+        )
+
+        if not loaded_docs:
+            return "No documents loaded. Please load content first."
+
+        # Extract content from loaded documents
+        content = [doc.page_content for doc in loaded_docs]
+
+        summary = await summarizer.summarize(content, method=method, language=language)
         return f"Summary of loaded content:\n{summary}"
     except Exception as e:
         error_trace = traceback.format_exc()
@@ -506,7 +508,7 @@ with gr.Blocks() as demo:
                             label="Choose Language",
                             value="english"
                         )
-                        chain_type = gr.Dropdown(
+                        method = gr.Dropdown(
                             ["stuff", "map_reduce", "refine"],
                             label="Summarization Strategy",
                             value="stuff"
@@ -545,7 +547,7 @@ with gr.Blocks() as demo:
             summarize_button.click(
                 fn=summarize_wrapper,
                 inputs=[
-                    loaded_docs, model_choice, chain_type, chunk_size,
+                    loaded_docs, model_choice, method, chunk_size,
                     chunk_overlap, max_tokens, temperature, language,
                     verbose
                 ],

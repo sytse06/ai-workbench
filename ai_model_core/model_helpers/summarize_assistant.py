@@ -2,10 +2,11 @@
 # Standard library imports
 import logging
 from typing import List, Literal, TypedDict, Annotated, Union
+import operator
 from operator import add
 
 # Third-party imports
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, END, START
 from langchain_core.documents import Document
 from langgraph.constants import Send
 from langchain_core.output_parsers import StrOutputParser
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class OverallState(TypedDict):
     chunks: List[Document]
-    intermediate_summaries: Annotated[List[str], add]
+    intermediate_summaries: Annotated[List[str], operator.add]
     collapsed_summaries: List[Document]
     final_summary: str
     method: Literal["stuff", "map_reduce", "refine"]
@@ -34,11 +35,14 @@ class SummaryState(TypedDict):
     existing_summary: str  # For refine method
 
 class SummarizationAssistant:
-    def __init__(self, model_name: str, chunk_size: int = 1000, chunk_overlap: int = 200, token_max: int = 1000, verbose: bool = False):
+    def __init__(self, model_name: str, chunk_size: int = 1000, chunk_overlap: int = 200, temperature: float = 0.4, method: str = "map_reduce", token_max: int = 1000, verbose: bool = False):
         self.model = get_model(model_name)
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.token_max = token_max
+        self.graph = StateGraph(OverallState)
+        self.method = method
+        self.temperature = temperature
         self.content_loader = EnhancedContentLoader(chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
         self.config = load_config()
         self.verbose = verbose
@@ -53,6 +57,12 @@ class SummarizationAssistant:
         self.refine_prompt = get_prompt_template("summarize_refine", self.config)
         
         self.log_verbose("Prompt templates loaded successfully")
+        
+        # Initialize graph_runnable with None
+        self.graph_runnable = None
+        
+        # Call setup_graph() during initialization
+        self.setup_graph()
 
     def log_verbose(self, message: str):
         if self.verbose:
@@ -115,24 +125,28 @@ class SummarizationAssistant:
         self.graph = StateGraph(OverallState)
         
         # Add nodes
+        self.graph.add_node("START", lambda x: x) 
         self.graph.add_node("summarize_stuff", self.summarize_stuff)
         self.graph.add_node("generate_map_summary", self.generate_map_summary)
         self.graph.add_node("reduce_summaries", self.reduce_summaries)
         self.graph.add_node("refine_summary", self.refine_summary)
 
         # Add edges
-        self.graph.add_conditional_edges("START", self.map_summaries, 
+        self.graph.add_conditional_edges(START, self.map_summaries, 
                                          ["summarize_stuff", "generate_map_summary", "refine_summary"])
         self.graph.add_edge("generate_map_summary", "reduce_summaries")
         self.graph.add_edge("summarize_stuff", END)
         self.graph.add_edge("reduce_summaries", END)
         self.graph.add_edge("refine_summary", END)
+        
+        # Ensure START is connected to END
+        self.graph.add_edge(START, END)
 
         # Compile the graph
         self.graph_runnable = self.graph.compile()
         self.log_verbose("Summarization graph setup completed")
 
-    async def summarize(self, content: Union[str, List[str]], method: str = "map_reduce", language: str = "english") -> str:
+    async def summarize(self, content: Union[str, List[str]], method: str = None, language: str = "english") -> str:
         self.log_verbose(f"Starting summarization process using {method} method")
         self.log_verbose(f"Loading splitted documents")
 
