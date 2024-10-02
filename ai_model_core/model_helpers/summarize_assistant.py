@@ -124,28 +124,39 @@ class SummarizationAssistant:
         self.log_verbose("Setting up summarization graph")
         self.graph = StateGraph(OverallState)
         
+        # Define the router function
+        def router(state: OverallState) -> str:
+            method = state["method"]
+            if method == "stuff":
+                return "summarize_stuff"
+            elif method == "map_reduce":
+                return "generate_map_summary"
+            elif method == "refine":
+                return "refine_summary"
+            else:
+                raise ValueError(f"Unknown method: {method}")
+
         # Add nodes
-        self.graph.add_node("START", lambda x: x) 
+        self.graph.add_node("router", router)
         self.graph.add_node("summarize_stuff", self.summarize_stuff)
         self.graph.add_node("generate_map_summary", self.generate_map_summary)
         self.graph.add_node("reduce_summaries", self.reduce_summaries)
         self.graph.add_node("refine_summary", self.refine_summary)
 
         # Add edges
-        self.graph.add_conditional_edges(START, self.map_summaries, 
-                                         ["summarize_stuff", "generate_map_summary", "refine_summary"])
+        self.graph.add_edge(START, "router")
+        self.graph.add_edge("router", "summarize_stuff")
+        self.graph.add_edge("router", "generate_map_summary")
+        self.graph.add_edge("router", "refine_summary")
         self.graph.add_edge("generate_map_summary", "reduce_summaries")
         self.graph.add_edge("summarize_stuff", END)
         self.graph.add_edge("reduce_summaries", END)
         self.graph.add_edge("refine_summary", END)
-        
-        # Ensure START is connected to END
-        self.graph.add_edge(START, END)
 
         # Compile the graph
         self.graph_runnable = self.graph.compile()
         self.log_verbose("Summarization graph setup completed")
-
+        
     async def summarize(self, content: Union[str, List[str]], method: str = None, language: str = "english") -> str:
         self.log_verbose(f"Starting summarization process using {method} method")
         self.log_verbose(f"Loading splitted documents")
