@@ -226,7 +226,7 @@ with gr.Blocks() as demo:
                 with gr.Column(scale=1):
                     model_choice = gr.Dropdown(
                         ["Ollama (LLama3.1)", "Claude Sonnet",
-                         "Ollama (Deepseek-coder-v2)",
+                         "Ollama (LLama3.2)",
                          "Ollama (YI-coder)", "OpenAI GPT-4o-mini"],
                         label="Choose Model",
                         value="Ollama (LLama3.1)"

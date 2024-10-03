@@ -38,6 +38,11 @@ def get_model(choice: str, **kwargs):
             model_kwargs=model_kwargs,
             **kwargs
         )
+    elif choice == "Ollama (LLama3.2)":
+        return ChatOllama(
+            model="llama3.2",
+            base_url="http://localhost:11434",
+            **kwargs)
     elif choice == "Ollama (phi3.5)":
         return ChatOllama(
             model="phi3.5",
