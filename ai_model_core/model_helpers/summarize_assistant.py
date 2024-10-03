@@ -9,11 +9,9 @@ from ai_model_core.utils import EnhancedContentLoader
 
 logger = logging.getLogger(__name__)
 
-
-class State(TypedDict):
-    input: str
-    chunks: List[str]
-    intermediate_summaries: List[str]
+class OverallState(TypedDict):
+    chunks: List[Document]
+    intermediate_summaries: Annotated[List[str], operator.add]
     final_summary: str
     all_actions: Annotated[List[str], add]
 
@@ -50,134 +48,78 @@ class SummarizationAssistant:
         if self.verbose:
             logger.info(message)
 
-    def load_and_split_document(self, file_path: str) -> List[str]:
-        documents = self.content_loader.load_and_split_document(file_path)
-        self.log_verbose(
-            f"Loaded and split document into {len(documents)} chunks"
-        )
-        return [doc.page_content for doc in documents]
+    async def summarize_stuff(self, state: OverallState) -> dict:
+        self.log_verbose("Starting 'stuff' summarization method")
+        combined_text = "\n\n".join([chunk.page_content for chunk in state["chunks"]])
+        self.log_verbose(f"Combined text length: {len(combined_text)} characters")
+        chain = self.stuff_prompt | self.model | StrOutputParser()
+        summary = await chain.ainvoke({"text": combined_text})
+        self.log_verbose(f"'Stuff' summarization completed. Summary length: {len(summary)} characters")
+        return {"final_summary": summary}
 
-    def summarize_stuff(self, chunks: List[str]) -> str:
-        combined_text = "\n\n".join(chunks)
-        summarize_prompt = get_prompt_template("summarize_stuff", self.config)
+    async def generate_map_summary(self, state: SummaryState) -> dict:
+        self.log_verbose(f"Generating map summary for chunk of length: {len(state['content'])} characters")
+        chain = self.map_prompt | self.model | StrOutputParser()
+        summary = await chain.ainvoke({"chunk": state["content"]})
+        self.log_verbose(f"Map summary generated. Length: {len(summary)} characters")
+        return {"intermediate_summaries": [summary]}
 
-        chain = (
-            summarize_prompt
-            | self.model.bind(
-                temperature=self.temperature,
-                max_tokens=self.max_tokens
-            )
-        )
+    async def reduce_summaries(self, state: OverallState) -> dict:
+        self.log_verbose(f"Reducing {len(state['intermediate_summaries'])} intermediate summaries")
+        combined_summaries = "\n\n".join(state["intermediate_summaries"])
+        chain = self.map_reduce_prompt | self.model | StrOutputParser()
+        final_summary = await chain.ainvoke({"summaries": combined_summaries})
+        self.log_verbose(f"Reduction completed. Final summary length: {len(final_summary)} characters")
+        return {"final_summary": final_summary}
 
-        self.log_verbose("Summarizing using 'stuff' method")
-        self.log_verbose(f"Prompt: {summarize_prompt}")
+    async def refine_summary(self, state: SummaryState) -> dict:
+        self.log_verbose(f"Refining summary. New content length: {len(state['content'])} characters")
+        chain = self.refine_prompt | self.model | StrOutputParser()
+        refined_summary = await chain.ainvoke({
+            "text": state["content"],
+            "existing_summary": state["existing_summary"]
+        })
+        self.log_verbose(f"Summary refined. New summary length: {len(refined_summary)} characters")
+        return {"final_summary": refined_summary}
 
-        result = chain.invoke({"text": combined_text})
-
-        self.log_verbose(f"Summary result: {result}")
-
-        return result
-
-    def summarize_map_reduce(self, chunks: List[str]) -> str:
-        map_prompt = get_prompt_template("summarize_map", self.config)
-        reduce_prompt = get_prompt_template(
-            "summarize_map_reduce", self.config
-        )
-
-        map_chain = (
-            map_prompt
-            | self.model.bind(
-                temperature=self.temperature,
-                max_tokens=self.max_tokens // 2
-            )
-        )
-
-        self.log_verbose("Summarizing using 'map_reduce' method")
-        self.log_verbose(f"Map prompt: {map_prompt}")
-
-        intermediate_summaries = []
-        for i, chunk in enumerate(chunks):
-            self.log_verbose(f"Processing chunk {i+1}/{len(chunks)}")
-            summary = map_chain.invoke({"chunk": chunk})
-            intermediate_summaries.append(summary)
-            self.log_verbose(f"Intermediate summary {i+1}: {summary}")
-
-        reduce_chain = (
-            reduce_prompt
-            | self.model.bind(
-                temperature=self.temperature,
-                max_tokens=self.max_tokens
-            )
-        )
-
-        self.log_verbose(f"Reduce prompt: {reduce_prompt}")
-
-        summaries = "\n\n".join(intermediate_summaries)
-        result = reduce_chain.invoke({"summaries": summaries})
-
-        self.log_verbose(f"Final summary: {result}")
-
-        return result
-
-    def summarize_refine(self, chunks: List[str]) -> str:
-        refine_prompt = get_prompt_template("summarize_refine", self.config)
-
-        chain = (
-            refine_prompt
-            | self.model.bind(
-                temperature=self.temperature,
-                max_tokens=self.max_tokens
-            )
-        )
-
-        self.log_verbose("Summarizing using 'refine' method")
-        self.log_verbose(f"Refine prompt: {refine_prompt}")
-
-        current_summary = ""
-        for i, chunk in enumerate(chunks):
-            self.log_verbose(f"Processing chunk {i+1}/{len(chunks)}")
-            if i == 0:
-                current_summary = chain.invoke({
-                    "text": chunk,
-                    "existing_summary": ""
+    def map_summaries(self, state: OverallState) -> List[Send]:
+        self.log_verbose(f"Mapping summaries using {state['method']} method")
+        if state["method"] == "map_reduce":
+            return [
+                Send("generate_map_summary", {"content": chunk.page_content})
+                for chunk in state["chunks"]
+            ]
+        elif state["method"] == "refine":
+            return [
+                Send("refine_summary", {
+                    "content": chunk.page_content,
+                    "existing_summary": state.get("final_summary", "")
                 })
-            else:
-                current_summary = chain.invoke({
-                    "text": chunk,
-                    "existing_summary": current_summary
-                })
-            self.log_verbose(
-                f"Current summary after chunk {i+1}: {current_summary}"
-            )
-
-        return current_summary
-
-    def load_document(self, state: State) -> State:
-        file_path = state["input"]
-        self.log_verbose(f"Loading document: {file_path}")
-        chunks = self.load_and_split_document(file_path)
-        state["chunks"] = chunks
-        return state
-
-    def summarize_chunks(self, state: State) -> State:
-        chunks = state["chunks"]
-        self.log_verbose(
-            f"Summarizing {len(chunks)} chunks using {self.chain_type} method"
-        )
-        if self.chain_type == "stuff":
-            summary = self.summarize_stuff(chunks)
-        elif self.chain_type == "map_reduce":
-            summary = self.summarize_map_reduce(chunks)
-        elif self.chain_type == "refine":
-            summary = self.summarize_refine(chunks)
-        else:
-            raise ValueError(f"Unknown chain type: {self.chain_type}")
-        state["final_summary"] = summary
-        return state
+                for chunk in state["chunks"]
+            ]
+        else:  # stuff method
+            return [Send("summarize_stuff", {})]
 
     def setup_graph(self):
-        self.graph = StateGraph(State)
-        
+        self.log_verbose("Setting up summarization graph")
+        self.graph = StateGraph(OverallState)
+
+        # Define the router function
+        def router(state: OverallState) -> dict:
+            method = state["method"]
+            if method == "stuff":
+                return {"next_step": "summarize_stuff"}
+            elif method == "map_reduce":
+                return {"next_step": "generate_map_summary"}
+            elif method == "refine":
+                return {"next_step": "refine_summary"}
+            else:
+                raise ValueError(f"Unknown method: {method}")
+
+        # Define the decision function
+        def decide_next_step(state: OverallState) -> str:
+            return state["next_step"]
+
         # Add nodes
         self.graph.add_node("load_document", self.load_document)
         self.graph.add_node("summarize_chunks", self.summarize_chunks)
@@ -186,21 +128,51 @@ class SummarizationAssistant:
         self.graph.set_entry_point("load_document")
         
         # Add edges
-        self.graph.add_edge("load_document", "summarize_chunks")
-        self.graph.add_edge("summarize_chunks", END)
+        self.graph.add_edge(START, "router")
+        self.graph.add_conditional_edges(
+            "router",
+            decide_next_step,
+            {
+                "summarize_stuff": "summarize_stuff",
+                "generate_map_summary": "generate_map_summary",
+                "refine_summary": "refine_summary",
+            }
+        )
+        self.graph.add_edge("generate_map_summary", "reduce_summaries")
+        self.graph.add_edge("summarize_stuff", END)
+        self.graph.add_edge("reduce_summaries", END)
+        self.graph.add_edge("refine_summary", END)
 
         # Compile the graph
         self.graph_runnable = self.graph.compile()
+        self.log_verbose("Summarization graph setup completed")
+            
+    async def summarize(self, content: Union[str, List[str]], method: str = None, language: str = "english") -> dict:
+        self.log_verbose(f"Starting summarization process using {method} method")
+        self.log_verbose(f"Loading splitted documents")
 
-    async def summarize(self, file_path: str) -> str:
-        self.log_verbose(f"Summarizing file: {file_path}")
-        self.log_verbose(f"Using chain type: {self.chain_type}")
+        # Use EnhancedContentLoader to load and split documents
+        if isinstance(content, str):
+           chunks = self.content_loader.split_text(content)
+        elif isinstance(content, list):
+           chunks = content
+        else:
+           raise ValueError("Content must be either a string or a list of strings")
+
+        self.log_verbose(f"Processing {len(chunks)} chunks")
 
         if not self.graph_runnable:
             self.setup_graph()
 
-        result = await self.graph_runnable.ainvoke({"input": file_path})
-        return result["final_summary"]
+        result = await self.graph_runnable.ainvoke({
+            "chunks": chunks,
+            "method": method,
+            "language": language,
+            "intermediate_summaries": [],
+            "final_summary": ""
+        })
+        self.log_verbose(f"Summarization completed. Final summary length: {len(result['final_summary'])} characters")
+        return result
 
 
 # Ensure the SummarizationAssistant is initialized correctly in main.py
