@@ -195,26 +195,29 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
         return f"An error occurred: {str(e)}"
 
 # Wrapper function for Gradio interface summarize_assistant:
-async def summarize_wrapper(docs, model_choice, chain_type, chunk_size,
-                            chunk_overlap, max_tokens, temperature, language,
+async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
+                            chunk_overlap, max_tokens, temperature, prompt_info, language,
                             verbose):
-    summarizer = SummarizationAssistant(
-        model_name=model_choice,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        chain_type=chain_type,
-        language=language,
-        verbose=verbose
-    )
-
-    if not docs:
-        return "No documents loaded. Please load content first."
+    if loaded_docs is None or len(loaded_docs) == 0:
+        return "Error: No documents loaded. Please load documents before summarizing."
 
     try:
-        summary = await summarizer.summarize(docs)
-        return f"Summary of loaded content:\n{summary}"
+        summarizer = SummarizationAssistant(
+            model_name=model_choice,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            method=method,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            prompt_info=prompt_info,
+            language_choice=language,
+            verbose=verbose
+        )
+
+        # Perform summary
+        summary = await summarizer.summarize(loaded_docs, method=method, prompt_info=prompt_info, language=language)
+        return summary['final_summary']
+    
     except Exception as e:
         error_trace = traceback.format_exc()
         return f"An error occurred during summarization: {str(e)}\n\nTraceback:\n{error_trace}"
@@ -740,30 +743,34 @@ with gr.Blocks() as demo:
                             label="Choose Model",
                             value="Ollama (LLama3.1)"
                         )
-                        language = gr.Dropdown(
+                        language_choice = gr.Dropdown(
                             ["english", "dutch"],
-                            label="Choose Language",
+                            label="Choose Prompt Family",
                             value="english"
                         )
-                        chain_type = gr.Dropdown(
-                            ["stuff", "map_reduce", "refine"],
-                            label="Summarization Strategy",
-                            value="stuff"
+                        prompt_info = gr.Dropdown(
+                            choices=get_prompt_list(language_choice.value),
+                            label="Prompt Template", interactive=True
                         )
+                        method = gr.Dropdown(
+                                ["stuff", "map_reduce", "refine"],
+                                label="Summarization Strategy",
+                                value="stuff"
+                            )
                         max_tokens = gr.Slider(
                             minimum=50, maximum=4000,
                             value=1000, step=50,
                             label="Max Tokens"
-                        )
+                            )
                         temperature = gr.Slider(
                             minimum=0, maximum=1,
                             value=0.4, step=0.1,
                             label="Temperature"
-                        )
+                            )
                         verbose = gr.Checkbox(
                             label="Verbose Mode",
                             value=False
-                        )
+                            )
 
                 with gr.Column(scale=4):
                     summary_output = gr.Textbox(
@@ -784,9 +791,9 @@ with gr.Blocks() as demo:
             summarize_button.click(
                 fn=summarize_wrapper,
                 inputs=[
-                    loaded_docs, model_choice, chain_type, chunk_size,
-                    chunk_overlap, max_tokens, temperature, language,
-                    verbose
+                    loaded_docs, model_choice, method, chunk_size,
+                    chunk_overlap, max_tokens, temperature, prompt_info, 
+                    language_choice, verbose
                 ],
                 outputs=summary_output
             )
