@@ -131,7 +131,8 @@ async def process_image_wrapper(
 def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
     try:
         loader = EnhancedContentLoader(chunk_size, chunk_overlap)
-        docs = loader.load_documents(file_paths=file_input, urls=url_input)
+        docs = loader.load_documents(file_paths=file_input.name if file_input 
+                                     else None, urls=url_input if url_input else None)
         return f"Successfully loaded {len(docs)} chunks of text.", docs
     except Exception as e:
         logger.error(f"Error in load_documents: {str(e)}")
@@ -181,6 +182,9 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
 async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
                             chunk_overlap, max_tokens, temperature, language,
                             verbose):
+    if loaded_docs is None or len(loaded_docs) == 0:
+        return "Error: No documents loaded. Please load documents before summarizing."
+
     try:
         summarizer = SummarizationAssistant(
             model_name=model_choice,
@@ -191,14 +195,10 @@ async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
             verbose=verbose
         )
 
-        if not loaded_docs:
-            return "No documents loaded. Please load content first."
-
-        # Extract content from loaded documents
-        content = [doc.page_content for doc in loaded_docs]
-
-        summary = await summarizer.summarize(content, method=method, language=language)
-        return f"Summary of loaded content:\n{summary}"
+        # Perform summary
+        summary = await summarizer.summarize(loaded_docs, method=method, language=language)
+        return summary['final_summary']
+    
     except Exception as e:
         error_trace = traceback.format_exc()
         return f"An error occurred during summarization: {str(e)}\n\nTraceback:\n{error_trace}"
