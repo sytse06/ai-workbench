@@ -34,11 +34,11 @@ class SummaryState(TypedDict):
     existing_summary: str  # For refine method
 
 class SummarizationAssistant:
-    def __init__(self, model_name: str, chunk_size: int = 1000, chunk_overlap: int = 200, temperature: float = 0.4, method: str = "map_reduce", token_max: int = 1000, prompt_info: str = "summarize", language_choice: str = "english", verbose: bool = False):
+    def __init__(self, model_name: str, chunk_size: int = 1000, chunk_overlap: int = 200, temperature: float = 0.4, method: str = "map_reduce", max_tokens: int = 1000, prompt_info: str = "summarize", language_choice: str = "english", verbose: bool = False):
         self.model = get_model(model_name)
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        self.token_max = token_max
+        self.max_tokens = max_tokens
         self.graph = StateGraph(OverallState)
         self.method = method
         self.temperature = temperature
@@ -56,7 +56,6 @@ class SummarizationAssistant:
         self.map_reduce_prompt = get_prompt_template(f"{self.prompt_info}_map_reduce", self.config, self.language_choice)
         self.reduce_prompt = get_prompt_template("reduce_template", self.config, self.language_choice)
         self.refine_prompt = get_prompt_template(f"{self.prompt_info}_refine", self.config, self.language_choice)
-        
         self.log_verbose("Prompt templates loaded successfully")
         
         # Initialize graph_runnable with None
@@ -79,11 +78,21 @@ class SummarizationAssistant:
             combined_text = "\n\n".join(state["chunks"])
         
         self.log_verbose(f"Combined text length: {len(combined_text)} characters")
+        
+        # Get prompt_info from state or use a fallback if it's not in the state
+        prompt_info = state.get("prompt_info", self.prompt_info)
+        self.log_verbose(f"Using prompt_info: {prompt_info}")
+        
+        # Create the Langchain chain with the prompt_info and user_message
         chain = self.stuff_prompt | self.model | StrOutputParser()
-        summary = await chain.ainvoke({"text": combined_text})
+        summary = await chain.ainvoke({
+            "text": combined_text,         # User message
+            "prompt_info": prompt_info      # Pass prompt info
+        })
+        
         self.log_verbose(f"'Stuff' summarization completed. Summary length: {len(summary)} characters")
         return {"final_summary": summary}
-
+    
     async def generate_map_summary(self, state: SummaryState) -> dict:
         self.log_verbose(f"Generating map summary for chunk of length: {len(state['content'])} characters")
         chain = self.map_prompt | self.model | StrOutputParser()
@@ -173,7 +182,7 @@ class SummarizationAssistant:
         self.graph_runnable = self.graph.compile()
         self.log_verbose("Summarization graph setup completed")
             
-    async def summarize(self, content: Union[str, List[str], List[Document]], method: str = None, language: str = "english") -> dict:
+    async def summarize(self, content: Union[str, List[str], List[Document]], method: str = None, prompt_info: str = None, language: str = "english") -> dict:
         self.log_verbose(f"Starting summarization process using {method} method")
         self.log_verbose(f"Loading and splitting documents")
 
@@ -202,7 +211,9 @@ class SummarizationAssistant:
             "method": method or self.method,  # Use the provided method or the default
             "language": language,
             "intermediate_summaries": [],
-            "final_summary": ""
+            "final_summary": "",
+            "prompt_info": prompt_info or self.prompt_info,
+            "user_message": self.get_combined_text(chunks)
         })
         self.log_verbose(f"Summarization completed. Final summary length: {len(result['final_summary'])} characters")
         return result

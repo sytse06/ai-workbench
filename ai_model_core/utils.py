@@ -120,7 +120,7 @@ def get_system_prompt(language_choice: str, config: dict) -> str:
         logger.error(f"System prompt not found for language: {language_choice}")
         return "Default system prompt"
 
-def get_prompt_template(prompt_info: str, config: dict) -> ChatPromptTemplate:
+def get_prompt_template(prompt_info: str, config: dict, language_choice: str = "english") -> ChatPromptTemplate:
     """
     Creates a ChatPromptTemplate using the prompt_info and config.
 

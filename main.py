@@ -180,7 +180,7 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
 
 # Wrapper function for Gradio interface summarize_assistant:
 async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
-                            chunk_overlap, max_tokens, temperature, language,
+                            chunk_overlap, max_tokens, temperature, prompt_info, language,
                             verbose):
     if loaded_docs is None or len(loaded_docs) == 0:
         return "Error: No documents loaded. Please load documents before summarizing."
@@ -191,12 +191,15 @@ async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             method=method,
-            token_max=max_tokens,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            prompt_info=prompt_info,
+            language_choice=language,
             verbose=verbose
         )
 
         # Perform summary
-        summary = await summarizer.summarize(loaded_docs, method=method, language=language)
+        summary = await summarizer.summarize(loaded_docs, method=method, prompt_info=prompt_info, language=language)
         return summary['final_summary']
     
     except Exception as e:
@@ -503,30 +506,34 @@ with gr.Blocks() as demo:
                             label="Choose Model",
                             value="Ollama (LLama3.1)"
                         )
-                        language = gr.Dropdown(
+                        language_choice = gr.Dropdown(
                             ["english", "dutch"],
-                            label="Choose Language",
+                            label="Choose Prompt Family",
                             value="english"
                         )
-                        method = gr.Dropdown(
-                            ["stuff", "map_reduce", "refine"],
-                            label="Summarization Strategy",
-                            value="stuff"
+                        prompt_info = gr.Dropdown(
+                            choices=get_prompt_list(language_choice.value),
+                            label="Prompt Template", interactive=True
                         )
+                        method = gr.Dropdown(
+                                ["stuff", "map_reduce", "refine"],
+                                label="Summarization Strategy",
+                                value="stuff"
+                            )
                         max_tokens = gr.Slider(
                             minimum=50, maximum=4000,
                             value=1000, step=50,
                             label="Max Tokens"
-                        )
+                            )
                         temperature = gr.Slider(
                             minimum=0, maximum=1,
                             value=0.4, step=0.1,
                             label="Temperature"
-                        )
+                            )
                         verbose = gr.Checkbox(
                             label="Verbose Mode",
                             value=False
-                        )
+                            )
 
                 with gr.Column(scale=4):
                     summary_output = gr.Textbox(
@@ -548,8 +555,8 @@ with gr.Blocks() as demo:
                 fn=summarize_wrapper,
                 inputs=[
                     loaded_docs, model_choice, method, chunk_size,
-                    chunk_overlap, max_tokens, temperature, language,
-                    verbose
+                    chunk_overlap, max_tokens, temperature, prompt_info, 
+                    language_choice, verbose
                 ],
                 outputs=summary_output
             )
