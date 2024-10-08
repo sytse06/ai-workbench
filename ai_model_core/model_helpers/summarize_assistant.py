@@ -83,11 +83,11 @@ class SummarizationAssistant:
         prompt_info = state.get("prompt_info", self.prompt_info)
         self.log_verbose(f"Using prompt_info: {prompt_info}")
         
-        # Create the Langchain chain with the prompt_info and user_message
+        # Create the Langchain chain with the prompt_info and the summarized text
         chain = self.stuff_prompt | self.model | StrOutputParser()
         summary = await chain.ainvoke({
-            "text": combined_text,         # User message
-            "prompt_info": prompt_info      # Pass prompt info
+            "user_message": combined_text,   
+            "prompt_info": prompt_info
         })
         
         self.log_verbose(f"'Stuff' summarization completed. Summary length: {len(summary)} characters")
@@ -212,8 +212,7 @@ class SummarizationAssistant:
             "language": language,
             "intermediate_summaries": [],
             "final_summary": "",
-            "prompt_info": prompt_info or self.prompt_info,
-            "user_message": self.get_combined_text(chunks)
+            "prompt_info": prompt_info or self.prompt_info
         })
         self.log_verbose(f"Summarization completed. Final summary length: {len(result['final_summary'])} characters")
         return result
