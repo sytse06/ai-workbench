@@ -508,12 +508,8 @@ with gr.Blocks() as demo:
                         )
                         language_choice = gr.Dropdown(
                             ["english", "dutch"],
-                            label="Choose Prompt Family",
+                            label="Choose language",
                             value="english"
-                        )
-                        prompt_info = gr.Dropdown(
-                            choices=get_prompt_list(language_choice.value),
-                            label="Prompt Template", interactive=True
                         )
                         method = gr.Dropdown(
                                 ["stuff", "map_reduce", "refine"],
