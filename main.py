@@ -25,7 +25,7 @@ os.environ['USER_AGENT'] = 'my-RAG-agent'
 # Load config at startup
 config = load_config()
 
-# Set up logging
+# Logging config
 DEBUG_MODE = config.get('debug_mode', False)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
@@ -199,12 +199,30 @@ async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
         )
 
         # Perform summary
-        summary = await summarizer.summarize(loaded_docs, method=method, prompt_info=prompt_info, language=language)
-        return summary['final_summary']
+        summary_result = await summarizer.summarize(loaded_docs, method=method, prompt_info=prompt_info, language=language)
+        final_summary = summary_result.get('final_summary', 'No summary generated')
+        
+        # Construct interaction info string
+        interaction_info = "Summarization Process:\n\n"
+        if verbose and 'intermediate_steps' in summary_result:
+            for i, step in enumerate(summary_result['intermediate_steps'], 1):
+                interaction_info += f"Step {i}:\n"
+                interaction_info += f"Input: {step['input'][:100]}...\n"
+                interaction_info += f"Output: {step['output'][:100]}...\n\n"
+        interaction_info += f"Final prompt: {summary_result.get('final_prompt', 'N/A')[:200]}...\n"
+        interaction_info += f"Model: {model_choice}\n"
+        interaction_info += f"Method: {method}\n"
+        interaction_info += f"Chunk size: {chunk_size}\n"
+        interaction_info += f"Chunk overlap: {chunk_overlap}\n"
+        interaction_info += f"Max tokens: {max_tokens}\n"
+        interaction_info += f"Temperature: {temperature}\n"
+
+        return final_summary, interaction_info
     
     except Exception as e:
         error_trace = traceback.format_exc()
-        return f"An error occurred during summarization: {str(e)}\n\nTraceback:\n{error_trace}"
+        error_message = f"An error occurred during summarization: {str(e)}\n\nTraceback:\n{error_trace}"
+        return error_message, "" 
 
 # Helper functions for Gradio interface
 def clear_chat():
@@ -536,7 +554,13 @@ with gr.Blocks() as demo:
                         label="Summary Output",
                         lines=25,
                         show_copy_button=True
-                    )
+                        )
+                    interaction_info = gr.Textbox(
+                        label="Interaction Info",
+                        lines=10,
+                        show_copy_button=True,
+                        visible=False  # Initially hidden
+                        )
                     summarize_button = gr.Button("Summarize Document")
 
             # Connect the load_button to the load_documents_wrapper function
@@ -546,6 +570,8 @@ with gr.Blocks() as demo:
                 inputs=[url_input, file_input, chunk_size, chunk_overlap],
                 outputs=[load_output, loaded_docs]
             )
+            def update_interaction_visibility(verbose):
+                return gr.update(visible=verbose)
 
             summarize_button.click(
                 fn=summarize_wrapper,
@@ -554,7 +580,13 @@ with gr.Blocks() as demo:
                     chunk_overlap, max_tokens, temperature, prompt_info, 
                     language_choice, verbose
                 ],
-                outputs=summary_output
+                outputs=[summary_output, interaction_info]
+            )
+
+            verbose.change(
+                fn=update_interaction_visibility,
+                inputs=[verbose],
+                outputs=[interaction_info]
             )
 
     # Set up the flagging callback
