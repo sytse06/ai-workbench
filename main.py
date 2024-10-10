@@ -202,22 +202,19 @@ async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
         summary_result = await summarizer.summarize(loaded_docs, method=method, prompt_info=prompt_info, language=language)
         final_summary = summary_result.get('final_summary', 'No summary generated')
         
-        # Construct interaction info string
-        interaction_info = "Summarization Process:\n\n"
-        if verbose and 'intermediate_steps' in summary_result:
-            for i, step in enumerate(summary_result['intermediate_steps'], 1):
-                interaction_info += f"Step {i}:\n"
-                interaction_info += f"Input: {step['input'][:100]}...\n"
-                interaction_info += f"Output: {step['output'][:100]}...\n\n"
-        interaction_info += f"Final prompt: {summary_result.get('final_prompt', 'N/A')[:200]}...\n"
+        # Construct interaction info with LLM
+        interaction_info = summary_result.get('interaction_info', "Summarization Process:\n\n")
+        
+        # Add additional information
+        interaction_info += f"\nAdditional Information:\n"
         interaction_info += f"Model: {model_choice}\n"
-        interaction_info += f"Method: {method}\n"
+        interaction_info += f"Summarization Method: {summary_result.get('method', method)}\n"
         interaction_info += f"Chunk size: {chunk_size}\n"
         interaction_info += f"Chunk overlap: {chunk_overlap}\n"
         interaction_info += f"Max tokens: {max_tokens}\n"
         interaction_info += f"Temperature: {temperature}\n"
-
-        return final_summary, interaction_info
+        interaction_info += f"Final Prompt Info: {summary_result.get('prompt_info', prompt_info)}\n"
+        interaction_info += f"Processed Chunks: {summary_result.get('current_chunk_index', 'Unknown')}\n"
     
     except Exception as e:
         error_trace = traceback.format_exc()
