@@ -24,7 +24,8 @@ from ai_model_core.config.settings import load_config
 from ai_model_core.utils import EnhancedContentLoader
 logger = logging.getLogger(__name__)
 
-class OverallState(MessagesState):
+class SummarizationState(TypedDict):
+    messages: Annotated[List[str], operator.add]
     chunks: List[Document]
     intermediate_summaries: Annotated[List[str], operator.add]
     final_summary: str
@@ -42,7 +43,7 @@ class SummarizationAssistant:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.max_tokens = max_tokens
-        self.graph = StateGraph(OverallState)
+        self.graph = StateGraph(SummarizationState)
         self.method = method
         self.temperature = temperature
         self.content_loader = EnhancedContentLoader(chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
@@ -71,7 +72,7 @@ class SummarizationAssistant:
         if self.verbose:
             logger.info(message)
 
-    async def summarize_stuff(self, state: OverallState) -> dict:
+    async def summarize_stuff(self, state: SummarizationState) -> dict:
         logger.info("Starting 'stuff' summarization method")
         
         interaction_info = []
@@ -108,10 +109,10 @@ class SummarizationAssistant:
             "final_prompt": full_prompt
         }
     
-    async def generate_map_summary(self, state: OverallState) -> OverallState:
-        self.log_verbose(f"Generating map summary for chunk {len(state['intermediate_summaries']) + 1}")
-        
-        chunk = state["chunks"][len(state["intermediate_summaries"])]
+    async def generate_map_summary(self, state: SummarizationState):
+        self.log_verbose(f"Generating map summary for chunk {state['current_chunk_index'] + 1}")
+    
+        chunk = state["chunks"][state["current_chunk_index"]]
         content = chunk.page_content
         prompt_info = state.get("prompt_info", self.prompt_info)
         
@@ -128,18 +129,14 @@ class SummarizationAssistant:
             self.log_verbose(f"Map summary generated. Length: {len(summary)} characters")
                         
             return {
-                "chunks": [],  # Empty list to avoid updating
-                "intermediate_summaries": [summary],  # Add new summary
-                "final_summary": "",  # Empty string to avoid updating
-                "method": state["method"],
-                "current_chunk_index": state["current_chunk_index"],
-                "prompt_info": state["prompt_info"]
+                "intermediate_summaries": [summary],  
+                "current_chunk_index": state["current_chunk_index"] + 1
             }
         except Exception as e:
             self.log_verbose(f"Error in generate_map_summary: {str(e)}")
             raise
 
-    async def reduce_summaries(self, state: OverallState) -> dict:
+    async def reduce_summaries(self, state: SummarizationState):
         self.log_verbose(f"Reducing {len(state['intermediate_summaries'])} intermediate summaries")
         combined_summaries = "\n\n".join(state["intermediate_summaries"])
         prompt_info = state.get("prompt_info", self.prompt_info)
@@ -153,18 +150,15 @@ class SummarizationAssistant:
             })
             self.log_verbose(f"Reduction completed. Final summary length: {len(final_summary)} characters")
             return {
-                "chunks": [],  # Empty list to avoid updating
-                "intermediate_summaries": [],  # Clear intermediate summaries
                 "final_summary": final_summary,
-                "method": state["method"],
-                "current_chunk_index": state["current_chunk_index"],
-                "prompt_info": state["prompt_info"]
+                "intermediate_summaries": [],
+                "current_chunk_index": len(state["chunks"])
             }
         except Exception as e:
             self.log_verbose(f"Error in reduce_summaries: {str(e)}")
             raise
 
-    async def refine_summary(self, state: OverallState) -> dict:
+    async def refine_summary(self, state: SummarizationState):
         self.log_verbose(f"Refining summary. Processing chunk {state['current_chunk_index'] + 1}")
         
         chunk = state["chunks"][state["current_chunk_index"]]
@@ -197,7 +191,7 @@ class SummarizationAssistant:
             self.log_verbose(f"Error in refine_summary: {str(e)}")
             raise
 
-    def map_summaries(self, state: OverallState) -> List[Send]:
+    def map_summaries(self, state: SummarizationState) -> List[Send]:
         self.log_verbose(f"Mapping summaries using {state['method']} method")
         if state["method"] == "map_reduce":
             return [
@@ -214,31 +208,32 @@ class SummarizationAssistant:
             ]
         else:  # stuff method
             return [Send("summarize_stuff", {})]
+    
+    def router(self, state: SummarizationState) -> dict:
+        method = state["method"]
+        if method == "stuff":
+            return {"next_step": "summarize_stuff"}
+        elif method == "map_reduce":
+            if state["current_chunk_index"] < len(state["chunks"]):
+                return {"next_step": "generate_map_summary"}
+            elif len(state["intermediate_summaries"]) > 0:
+                return {"next_step": "reduce_summaries"}
+            else:
+                return {"next_step": END}
+        elif method == "refine":
+            if state["current_chunk_index"] < len(state["chunks"]):
+                return {"next_step": "refine_summary"}
+            else:
+                return {"next_step": END}
+        else:
+            raise ValueError(f"Unknown method: {method}")
 
     def setup_graph(self):
         self.log_verbose("Setting up summarization graph")
-        self.graph = StateGraph(OverallState)
-
-        # This router plans the route of the summary
-        def router(state: OverallState) -> OverallState:
-            method = state["method"]
-            if method == "stuff":
-                return {"next_step": "summarize_stuff"}
-            elif method == "map_reduce":
-                if len(state["intermediate_summaries"]) < len(state["chunks"]):
-                    return {"next_step": "generate_map_summary"}
-                else:
-                    return {"next_step": "reduce_summaries"}
-            elif method == "refine":
-                if state["current_chunk_index"] < len(state["chunks"]):
-                    return {"next_step": "refine_summary"}
-                else:
-                    return {"next_step": END}
-            else:
-                raise ValueError(f"Unknown method: {method}")
+        self.graph = StateGraph(SummarizationState)
 
         # Defined nodes
-        self.graph.add_node("router", router)
+        self.graph.add_node("router", self.router)
         self.graph.add_node("summarize_stuff", self.summarize_stuff)
         self.graph.add_node("generate_map_summary", self.generate_map_summary)
         self.graph.add_node("reduce_summaries", self.reduce_summaries)
@@ -292,37 +287,45 @@ class SummarizationAssistant:
         if not self.graph_runnable:
             self.setup_graph()
             
-        input_data = {
-            "chunks": chunks,
-            "method": method or self.method,
-            "language": language,
-            "intermediate_summaries": [],
-            "final_summary": "",
-            "prompt_info": prompt_info or self.prompt_info,
-            "current_chunk_index": 0
-        }
+        initial_state = SummarizationState(
+            messages=[], 
+            chunks=chunks,
+            method=method,
+            language=language,
+            intermediate_summaries=[],
+            final_summary="",
+            prompt_info=prompt_info or self.prompt_info,
+            current_chunk_index=0
+        )
 
-        interaction_info.append(f"Using method: {input_data['method']}")
-        interaction_info.append(f"Language: {input_data['language']}")
-        interaction_info.append(f"Prompt info: {input_data['prompt_info']}")
+        interaction_info.append(f"Using method: {method}")
+        interaction_info.append(f"Language: {language}")
+        interaction_info.append(f"Prompt info: {initial_state['prompt_info']}")
 
-        result = await self.graph_runnable.ainvoke(input_data)
+        try:
+            final_state = await self.graph_runnable.ainvoke(initial_state)
+            
+            result = {
+                "final_summary": final_state.get("final_summary", "No summary generated"),
+                "method": method, 
+                "current_chunk_index": final_state.get("current_chunk_index", len(chunks)),
+                "prompt_info": prompt_info or self.prompt_info
+            }
 
-        # Process the result based on the method used
-        final_summary = result.get("final_summary", "No summary generated")
+            interaction_info.append(f"Summarization completed. Final summary length: {len(result['final_summary'])} characters")
 
-        interaction_info.append(f"Summarization completed. Final summary length: {len(final_summary)} characters")
+            result['interaction_info'] = "\n".join(interaction_info)
 
-        result['final_summary'] = final_summary
-        result['interaction_info'] = "\n".join(interaction_info)
+            if self.verbose and 'intermediate_steps' in final_state:
+                result['interaction_info'] += "\n\nIntermediate Steps:\n"
+                for i, step in enumerate(final_state['intermediate_steps'], 1):
+                    result['interaction_info'] += f"\nStep {i}:\n"
+                    result['interaction_info'] += f"Input: {step['input'][:100]}...\n"
+                    result['interaction_info'] += f"Output: {step['output'][:100]}...\n"
 
-        if self.verbose and 'intermediate_steps' in result:
-            result['interaction_info'] += "\n\nIntermediate Steps:\n"
-            for i, step in enumerate(result['intermediate_steps'], 1):
-                result['interaction_info'] += f"\nStep {i}:\n"
-                result['interaction_info'] += f"Input: {step['input'][:100]}...\n"
-                result['interaction_info'] += f"Output: {step['output'][:100]}...\n"
+            self.log_verbose(result['interaction_info'])
 
-        self.log_verbose(result['interaction_info'])
-
-        return result
+            return result
+        except Exception as e:
+            self.log_verbose(f"An error occurred during summarization: {str(e)}")
+            raise
