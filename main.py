@@ -465,10 +465,11 @@ with gr.Blocks() as demo:
                     )
 
             # Connect the load_button to the load_documents_wrapper function
+            loaded_docs = gr.State()
             load_button.click(
                 fn=load_documents_wrapper,
                 inputs=[url_input, file_input, chunk_size, chunk_overlap],
-                outputs=[load_output, gr.State()]
+                outputs=[load_output, loaded_docs]
             )
 
         # Summarization Assistant Tab
