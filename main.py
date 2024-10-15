@@ -131,8 +131,8 @@ async def process_image_wrapper(
 def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
     try:
         loader = EnhancedContentLoader(chunk_size, chunk_overlap)
-        docs = loader.load_documents(file_paths=file_input.name if file_input 
-                                     else None, urls=url_input if url_input else None)
+        file_paths = file_input if isinstance(file_input, list) else [file_input] if file_input else None
+        docs = loader.load_and_split_document(file_paths=file_paths, urls=url_input, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         return f"Successfully loaded {len(docs)} chunks of text.", docs
     except Exception as e:
         logger.error(f"Error in load_documents: {str(e)}")
@@ -164,7 +164,14 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
     try:
         logger.info("Setting up vectorstore")
         content_loader = EnhancedContentLoader(chunk_size, chunk_overlap)
-        docs = content_loader.load_documents(file_paths=files, urls=urls)
+        
+        logger.debug(f"Type of files: {type(files)}")
+        if files:
+            logger.debug(f"Number of files: {len(files)}")
+            logger.debug(f"Type of first file: {type(files[0])}")
+            logger.debug(f"Attributes of first file: {dir(files[0])}")
+            
+        docs = content_loader.load_and_split_document(file_paths=files, urls=urls, chunk_size=chunk_size, chunk_overlap=chunk_overlap)        
         rag_assistant.setup_vectorstore(docs)
         rag_assistant.prompt_template = prompt_info
         rag_assistant.use_history = history_flag
@@ -387,17 +394,17 @@ with gr.Blocks() as demo:
                             label="Choose Embedding Model",
                             value="nomic-embed-text"
                         )
-                        max_tokens = gr.Slider(
-                            minimum=50, maximum=4000, value=1000, step=50,
-                            label="Max token generation"
-                        )
                         chunk_size = gr.Slider(
                             minimum=100, maximum=2500, value=500, step=100,
-                            label="Fragment Size"
+                            label="Chunk Size"
                         )
                         chunk_overlap = gr.Slider(
                             minimum=0, maximum=250, value=50, step=10,
-                            label="Fragment Overlap"
+                            label="Chunk Overlap"
+                        )
+                        max_tokens = gr.Slider(
+                            minimum=50, maximum=4000, value=1000, step=50,
+                            label="Max token generation"
                         )
                         temperature = gr.Slider(
                             minimum=0, maximum=1, value=0.1, step=0.1,
@@ -410,7 +417,7 @@ with gr.Blocks() as demo:
                             value="similarity"
                         )
                         num_similar_docs = gr.Slider(
-                            minimum=2, maximum=10, value=3, step=1,
+                            minimum=2, maximum=5, value=3, step=1,
                             label="Search Number of Fragments"
                         )
 

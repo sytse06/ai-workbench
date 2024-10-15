@@ -13,6 +13,8 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 import logging
 import yaml
 import os
+import shutil
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +22,10 @@ class EnhancedContentLoader:
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        self.temp_dir = Path("input/tmp")
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
 
-    def load_documents(self, file_paths: Union[str, List[str]], urls: str = None) -> List[Document]:
+    def load_documents(self, file_paths: Union[str, List[str],  List[Any]], urls: str = None) -> List[Document]:
         docs = []
 
         # Process URLs
@@ -54,23 +58,44 @@ class EnhancedContentLoader:
                     print(f"Error loading URL {url}: {str(e)}")
         return docs
 
-    def _load_from_files(self, file_paths: Union[str, List[str]]) -> List[Document]:
+    def _load_from_files(self, file_paths: Union[str, List[str], List[Any]]) -> List[Document]:
         docs = []
-        if isinstance(file_paths, str):
+        
+        # Ensure file_paths is always a list
+        if not isinstance(file_paths, list):
             file_paths = [file_paths]
+        
+        for file_obj in file_paths:
+            try:
+                if isinstance(file_obj, str):
+                    file_path = file_obj
+                elif hasattr(file_obj, 'name'):  # For file-like objects (e.g., TemporaryFile)
+                    file_path = file_obj.name
+                else:
+                    print(f"Unsupported file input type: {type(file_obj)}")
+                    continue
 
-        for file_path in file_paths:
-            file_extension = os.path.splitext(file_path)[1].lower()
-            if file_extension == '.txt':
-                docs.extend(TextLoader(file_path).load())
-            elif file_extension == '.pdf':
-                docs.extend(self.load_pdf(file_path))
-            elif file_extension == '.docx':
-                docs.extend(Docx2txtLoader(file_path).load())
-            else:
-                print(f"Unsupported file type: {file_extension}")
+                file_extension = Path(file_path).suffix.lower()
+                if file_extension == '.txt':
+                    docs.extend(TextLoader(file_path).load())
+                elif file_extension == '.pdf':
+                    docs.extend(self.load_pdf(file_path))
+                elif file_extension == '.docx':
+                    docs.extend(Docx2txtLoader(file_path).load())
+                elif file_extension in ['.mp4', '.m4a', '.webm', '.mp3', '.wav', '.aac', '.ogg']:
+                    docs.append(self.load_media_file(file_path))
+                else:
+                    print(f"Unsupported file type: {file_extension}")
+
+            except Exception as e:
+                print(f"Error processing file {file_obj}: {str(e)}")
+            finally:
+                # Clean up the temporary file if it was created
+                if 'temp_path' in locals():
+                    temp_path.unlink(missing_ok=True)
+
         return docs
-    
+        
     def load_pdf(self, file_path: str) -> List[Document]:
         docs = []
         pdf = fitz.open(file_path) #fitz = PyMuPDF
