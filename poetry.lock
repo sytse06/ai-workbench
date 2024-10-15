@@ -1643,10 +1643,6 @@ pydantic = [
     {version = ">=2.7.4,<3.0.0", markers = "python_full_version >= \"3.12.4\""},
 ]
 requests = ">=2,<3"
-requests-toolbelt = ">=1.0.0,<2.0.0"
-
-[package.extras]
-langsmith-pyo3 = ["langsmith-pyo3 (>=0.1.0rc2,<0.2.0)"]
 
 [[package]]
 name = "llvmlite"
@@ -1867,28 +1863,6 @@ files = [
 ]
 
 [[package]]
-name = "mistralai"
-version = "1.2.5"
-description = "Python Client SDK for the Mistral AI API."
-optional = false
-python-versions = "<4.0,>=3.8"
-files = [
-    {file = "mistralai-1.2.5-py3-none-any.whl", hash = "sha256:5f0ef2680ead0329569111face1bf2ff7c67c454d43aa0e21324a8faf6c3ab22"},
-    {file = "mistralai-1.2.5.tar.gz", hash = "sha256:05d4130f79704e3b19c0b6320944a348547879fce6894feeb72d9e9d0ee65151"},
-]
-
-[package.dependencies]
-eval-type-backport = ">=0.2.0,<0.3.0"
-httpx = ">=0.27.0,<0.28.0"
-jsonpath-python = ">=1.0.6,<2.0.0"
-pydantic = ">=2.9.0,<3.0.0"
-python-dateutil = ">=2.8.2,<3.0.0"
-typing-inspect = ">=0.9.0,<0.10.0"
-
-[package.extras]
-gcp = ["google-auth (==2.27.0)", "requests (>=2.32.3,<3.0.0)"]
-
-[[package]]
 name = "more-itertools"
 version = "10.5.0"
 description = "More routines for operating on iterables, beyond itertools"
@@ -1898,30 +1872,6 @@ files = [
     {file = "more-itertools-10.5.0.tar.gz", hash = "sha256:5482bfef7849c25dc3c6dd53a6173ae4795da2a41a80faea6700d9f5846c5da6"},
     {file = "more_itertools-10.5.0-py3-none-any.whl", hash = "sha256:037b0d3203ce90cca8ab1defbbdac29d5f993fc20131f3664dc8d6acfa872aef"},
 ]
-
-[[package]]
-name = "moviepy"
-version = "1.0.3"
-description = "Video editing with Python"
-optional = false
-python-versions = "*"
-files = [
-    {file = "moviepy-1.0.3.tar.gz", hash = "sha256:2884e35d1788077db3ff89e763c5ba7bfddbd7ae9108c9bc809e7ba58fa433f5"},
-]
-
-[package.dependencies]
-decorator = ">=4.0.2,<5.0"
-imageio = {version = ">=2.5,<3.0", markers = "python_version >= \"3.4\""}
-imageio_ffmpeg = {version = ">=0.2.0", markers = "python_version >= \"3.4\""}
-numpy = {version = ">=1.17.3", markers = "python_version > \"2.7\""}
-proglog = "<=1.0.0"
-requests = ">=2.8.1,<3.0"
-tqdm = ">=4.11.2,<5.0"
-
-[package.extras]
-doc = ["Sphinx (>=1.5.2,<2.0)", "numpydoc (>=0.6.0,<1.0)", "pygame (>=1.9.3,<2.0)", "sphinx_rtd_theme (>=0.1.10b0,<1.0)"]
-optional = ["matplotlib (>=2.0.0,<3.0)", "opencv-python (>=3.0,<4.0)", "scikit-image (>=0.13.0,<1.0)", "scikit-learn", "scipy (>=0.19.0,<1.5)", "youtube_dl"]
-test = ["coverage (<5.0)", "coveralls (>=1.1,<2.0)", "pytest (>=3.0.0,<4.0)", "pytest-cov (>=2.5.1,<3.0)", "requests (>=2.8.1,<3.0)"]
 
 [[package]]
 name = "mpmath"
@@ -2254,6 +2204,40 @@ llvmlite = "==0.43.*"
 numpy = ">=1.22,<2.1"
 
 [[package]]
+name = "numba"
+version = "0.60.0"
+description = "compiling Python code using LLVM"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "numba-0.60.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:5d761de835cd38fb400d2c26bb103a2726f548dc30368853121d66201672e651"},
+    {file = "numba-0.60.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:159e618ef213fba758837f9837fb402bbe65326e60ba0633dbe6c7f274d42c1b"},
+    {file = "numba-0.60.0-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:1527dc578b95c7c4ff248792ec33d097ba6bef9eda466c948b68dfc995c25781"},
+    {file = "numba-0.60.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:fe0b28abb8d70f8160798f4de9d486143200f34458d34c4a214114e445d7124e"},
+    {file = "numba-0.60.0-cp310-cp310-win_amd64.whl", hash = "sha256:19407ced081d7e2e4b8d8c36aa57b7452e0283871c296e12d798852bc7d7f198"},
+    {file = "numba-0.60.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:a17b70fc9e380ee29c42717e8cc0bfaa5556c416d94f9aa96ba13acb41bdece8"},
+    {file = "numba-0.60.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:3fb02b344a2a80efa6f677aa5c40cd5dd452e1b35f8d1c2af0dfd9ada9978e4b"},
+    {file = "numba-0.60.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:5f4fde652ea604ea3c86508a3fb31556a6157b2c76c8b51b1d45eb40c8598703"},
+    {file = "numba-0.60.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:4142d7ac0210cc86432b818338a2bc368dc773a2f5cf1e32ff7c5b378bd63ee8"},
+    {file = "numba-0.60.0-cp311-cp311-win_amd64.whl", hash = "sha256:cac02c041e9b5bc8cf8f2034ff6f0dbafccd1ae9590dc146b3a02a45e53af4e2"},
+    {file = "numba-0.60.0-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:d7da4098db31182fc5ffe4bc42c6f24cd7d1cb8a14b59fd755bfee32e34b8404"},
+    {file = "numba-0.60.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:38d6ea4c1f56417076ecf8fc327c831ae793282e0ff51080c5094cb726507b1c"},
+    {file = "numba-0.60.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:62908d29fb6a3229c242e981ca27e32a6e606cc253fc9e8faeb0e48760de241e"},
+    {file = "numba-0.60.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:0ebaa91538e996f708f1ab30ef4d3ddc344b64b5227b67a57aa74f401bb68b9d"},
+    {file = "numba-0.60.0-cp312-cp312-win_amd64.whl", hash = "sha256:f75262e8fe7fa96db1dca93d53a194a38c46da28b112b8a4aca168f0df860347"},
+    {file = "numba-0.60.0-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:01ef4cd7d83abe087d644eaa3d95831b777aa21d441a23703d649e06b8e06b74"},
+    {file = "numba-0.60.0-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:819a3dfd4630d95fd574036f99e47212a1af41cbcb019bf8afac63ff56834449"},
+    {file = "numba-0.60.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:0b983bd6ad82fe868493012487f34eae8bf7dd94654951404114f23c3466d34b"},
+    {file = "numba-0.60.0-cp39-cp39-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:c151748cd269ddeab66334bd754817ffc0cabd9433acb0f551697e5151917d25"},
+    {file = "numba-0.60.0-cp39-cp39-win_amd64.whl", hash = "sha256:3031547a015710140e8c87226b4cfe927cac199835e5bf7d4fe5cb64e814e3ab"},
+    {file = "numba-0.60.0.tar.gz", hash = "sha256:5df6158e5584eece5fc83294b949fd30b9f1125df7708862205217e068aabf16"},
+]
+
+[package.dependencies]
+llvmlite = "==0.43.*"
+numpy = ">=1.22,<2.1"
+
+[[package]]
 name = "numpy"
 version = "1.26.4"
 description = "Fundamental package for array computing in Python"
@@ -2490,7 +2474,6 @@ typing-extensions = ">=4.11,<5"
 
 [package.extras]
 datalib = ["numpy (>=1)", "pandas (>=1.2.3)", "pandas-stubs (>=1.1.0.11)"]
-realtime = ["websockets (>=13,<15)"]
 
 [[package]]
 name = "openai-whisper"
@@ -2513,20 +2496,6 @@ triton = {version = ">=2.0.0", markers = "platform_machine == \"x86_64\" and sys
 
 [package.extras]
 dev = ["black", "flake8", "isort", "pytest", "scipy"]
-
-[[package]]
-name = "openpyxl"
-version = "3.1.5"
-description = "A Python library to read/write Excel 2010 xlsx/xlsm files"
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "openpyxl-3.1.5-py2.py3-none-any.whl", hash = "sha256:5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2"},
-    {file = "openpyxl-3.1.5.tar.gz", hash = "sha256:cf0e3cf56142039133628b5acffe8ef0c12bc902d2aadd3e0fe5878dc08d1050"},
-]
-
-[package.dependencies]
-et-xmlfile = "*"
 
 [[package]]
 name = "orjson"
@@ -4537,5 +4506,5 @@ type = ["pytest-mypy"]
 
 [metadata]
 lock-version = "2.0"
-python-versions = "^3.9"
-content-hash = "69d11508026599f462ed2676059398769ca11e1e8f0754d8b516cd5ade1d6e4e"
+python-versions = "^3.10"
+content-hash = "f8ae2dd17cfe42e2c275a54a14baa71ee15cdd461d2a90e9e754862f8d30c135"
