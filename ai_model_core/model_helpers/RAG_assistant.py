@@ -104,7 +104,7 @@ class RAGAssistant:
         )
         self.retrieval_method = retrieval_method
 
-    def load_content(self, url_input: str, file_input: Union[str, List[str]]):
+    def process_content(self, url_input: str, file_input: Union[str, List[str]]):
         try:
             docs = self.content_loader.load_and_split_document(
                 file_paths=file_input, urls=url_input
