@@ -43,6 +43,12 @@ def get_model(choice: str, **kwargs):
             model="llama3.2",
             base_url="http://localhost:11434",
             **kwargs)
+    elif choice.startswith("Whisper"):
+        whisper_size = choice.split()[-1].lower()
+        valid_sizes = ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]
+        if whisper_size not in valid_sizes:
+            raise ValueError(f"Invalid Whisper model size. Choose from {', '.join(valid_sizes)}")
+        return whisper.load_model(whisper_size)
     elif choice == "Ollama (phi3.5)":
         return ChatOllama(
             model="phi3.5",
