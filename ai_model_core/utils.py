@@ -122,6 +122,32 @@ class EnhancedContentLoader:
         
         return docs
     
+    def load_multimedia_file(self, file_path: str) -> Document:
+        """
+        Load a media file (video or audio) into memory.
+        """
+        try:
+            with open(file_path, 'rb') as file:
+                content = file.read()
+            
+            return Document(
+                page_content=f"Media file content (binary data, length: {len(content)} bytes)",
+                metadata={
+                    "source": file_path,
+                    "file_type": Path(file_path).suffix.lower()[1:],  # Remove the leading dot
+                    "file_size": len(content),
+                }
+            )
+        except Exception as e:
+            print(f"Error loading media file {file_path}: {str(e)}")
+            return Document(
+                page_content="Error loading media file",
+                metadata={
+                    "source": file_path,
+                    "error": str(e)
+                }
+            )
+    
     def split_documents(self, docs: List[Document], chunk_size: int, chunk_overlap: int) -> List[Document]:
         text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
             chunk_size=chunk_size, 

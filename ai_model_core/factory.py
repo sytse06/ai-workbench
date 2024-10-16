@@ -1,6 +1,7 @@
 # ai_model_interface/factory.py
 import openai
 import torch
+import whisper
 from transformers import AutoTokenizer, AutoModel
 from langchain_openai import ChatOpenAI
 from langchain_community.chat_models import ChatOllama, ChatAnthropic
