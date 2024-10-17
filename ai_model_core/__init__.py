@@ -11,7 +11,7 @@ from .config.settings import (
 )
 from .model_helpers import (
     ChatAssistant, RAGAssistant, VisionAssistant, PromptAssistant,
-    SummarizationAssistant
+    SummarizationAssistant, TranscriptionAssistant
 )
 from ai_model_core.model_helpers.RAG_assistant import (
     CustomHuggingFaceEmbeddings
@@ -22,6 +22,6 @@ __all__ = [
     'get_prompt_template', '_format_history', 'load_credentials', 'get_api_key',
     'load_config', 'get_directory', 'get_prompt', 'EnhancedContentLoader',
     'get_prompt_list', 'update_prompt_list', 'ChatAssistant', 'VisionAssistant',
-    'PromptAssistant', 'RAGAssistant', 'SummarizationAssistant',
+    'PromptAssistant', 'RAGAssistant', 'SummarizationAssistant', 'TranscriptionAssistant',
     'CustomHuggingFaceEmbeddings'
 ]
