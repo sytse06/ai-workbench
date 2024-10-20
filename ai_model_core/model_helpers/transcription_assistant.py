@@ -28,24 +28,23 @@ class TranscriptionState(TypedDict):
 class TranscriptionAssistant:
     def __init__(
         self,
-        model_size="base",
+        model=None
+        model_size="large",
         language="auto",
         task_type="transcribe",
         vocal_extracter=True,
         vad=True,
-        precision="medium",
         device="cpu",
         temperature=0.0,
         max_tokens=None,
         output_dir="./output"
     ):
         self.model_size = model_size
-        self.model = whisper.load_model(model_size)
+        self.model = model if model is not None else whisper.load_model(model_size)
         self.language = "auto" if language == "Auto" else language
         self.task_type = task_type
         self.vocal_extracter = vocal_extracter
         self.vad = vad
-        self.precision = precision
         self.device = device
         self.temperature = temperature
         self.max_tokens = max_tokens

@@ -45,37 +45,89 @@ logger.addHandler(c_handler)
 logger.addHandler(f_handler)
 logger.propagate = False
 
-# Initialize assistants with default models
-transcription_assistant = TranscriptionAssistant("Whisper")
-
-# Wrapper function for loading documents (RAG and summarization)
-def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
+# Initialize the assistant with the model from get_model
+def initialize_transcription_assistant(model_choice):
     try:
-        loader = EnhancedContentLoader(chunk_size, chunk_overlap)
-        file_paths = file_input if isinstance(file_input, list) else [file_input] if file_input else None
-        docs = loader.load_and_split_document(file_paths=file_paths, urls=url_input, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-        return f"Successfully loaded {len(docs)} chunks of text.", docs
+        # Get the model using the general get_model function
+        model = get_model(model_choice)
+        
+        # Initialize the assistant with the loaded model
+        return TranscriptionAssistant(
+            model=model,
+            model_size=model_choice.split()[-1].lower(),  # Keep track of size for reference
+            language="auto",
+            task_type="transcribe",
+            output_dir="./output"
+        )
     except Exception as e:
-        logger.error(f"Error in load_documents: {str(e)}")
-        return f"An error occurred while loading documents: {str(e)}", None
+        logger.error(f"Error initializing transcription assistant: {str(e)}")
+        raise
 
-def handle_transcription(file_input, url_input, transcribe_model, language, vocal_extracter, vad, precision, device, task):
-    # Process the input (file or URL) to get the audio path
-    audio_path = process_input(file_input, url_input)
-    
-    # Update the transcription assistant with new settings
-    transcription_assistant.transcribe_model = get_model(transcribe_model)
-    transcription_assistant.language = language
-    transcription_assistant.vocal_extracter = vocal_extracter
-    transcription_assistant.vad = vad
-    transcription_assistant.precision = precision
-    transcription_assistant.device = device
-    transcription_assistant.task_type = task
-    # Process the audio
-    result = await transcription_assistant.process_audio(audio_path)
-    # Save subtitles
-    subtitle_paths = transcription_assistant.save_subtitles(result['subtitles'], audio_path)
-    return result['transcription'], subtitle_paths, result['answer']
+# Initialize the assistant when the app starts
+transcription_assistant = initialize_transcription_assistant("Whisper base")
+
+# Add model change handler
+def handle_model_change(new_model_choice):
+    global transcription_assistant
+    try:
+        transcription_assistant = initialize_transcription_assistant(new_model_choice)
+        return f"Successfully loaded {new_model_choice}"
+    except Exception as e:
+        return f"Error loading model: {str(e)}"
+
+# Connect model change handler to dropdown
+model_choice.change(
+    fn=handle_model_change,
+    inputs=[model_choice],
+    outputs=[gr.Textbox(label="Model Status")]
+)
+
+# Wrapper function for handling audio files for transcription
+async def load_audio_wrapper(url_input, file_input):
+    """
+    Wrapper function to load and preprocess audio files for transcription.
+    Returns the processed audio path and any error messages.
+    """
+    try:
+        loader = EnhancedContentLoader()
+        docs = loader.preprocess_audio(file_paths=file_input, urls=url_input)
+        
+        if not docs:
+            return None, "No audio files were successfully processed."
+            
+        # For now, just handle the first audio file
+        processed_path = docs[0].metadata["processed_path"]
+        return processed_path, f"Successfully processed audio file: {Path(file_input).name}"
+        
+    except Exception as e:
+        logger.error(f"Error in load_audio_wrapper: {str(e)}")
+        return None, f"Error processing audio: {str(e)}"
+
+async def handle_transcription(file_input, url_input, model_choice, language, vad, device, task_type, output_format):
+    try:
+        # First, load and preprocess the audio
+        audio_path, message = await load_audio_wrapper(url_input, file_input)
+        if not audio_path:
+            return None, message
+            
+        # Update settings
+        transcription_assistant.language = language
+        transcription_assistant.vad = vad
+        transcription_assistant.device = device
+        transcription_assistant.task_type = task_type
+        
+        # Process the audio
+        result = await transcription_assistant.process_audio(audio_path)
+        
+        # Clean up temporary files
+        if Path(audio_path).exists():
+            Path(audio_path).unlink()
+            
+        return result['transcription'], result['answer']
+        
+    except Exception as e:
+        logger.error(f"Transcription error: {str(e)}")
+        return None, f"Error: {str(e)}"
 
 # Second attempt to process audio
 async def process_audio(
@@ -116,11 +168,6 @@ async def process_audio(
                 
     except Exception as e:
         return None, None, f"Error: {str(e)}"
-            
-# Variables and helper functions for Gradio interface
-WHISPER_SIZES = ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]
-TASK_TYPES = ["transcribe", "translate"]
-SUPPORTED_FORMATS = ["txt", "srt", "vtt", "tsv", "json"]
 
 def clear_chat():
     return None
@@ -128,7 +175,6 @@ def clear_chat():
 
 def clear_vision_chat():
     return None, None, gr.update(value=None)
-
 
 flagging_callback = gr.CSVLogger()
 
@@ -154,14 +200,14 @@ with gr.Blocks() as demo:
                     with gr.Row():
                     # Model selection
                     model_choice = gr.Dropdown(
-                        choices=WHISPER_SIZES,
-                        value="base",
+                        choices=[f"Whisper {size}" for size in ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]],
+                        value="Whisper large",
                         label="Whisper Model Size",
                         info="Larger models are more accurate but slower"
                     )                    
                     # Task type selection
                     task_type = gr.Radio(
-                        choices=TASK_TYPES,
+                        choices=["transcribe", "translate"],
                         value="transcribe",
                         label="Task Type",
                         info="'Transcribe' keeps original language, 'Translate' converts to English"
@@ -176,7 +222,7 @@ with gr.Blocks() as demo:
                     )                    
                     # Output format selection
                     output_format = gr.Dropdown(
-                        choices=SUPPORTED_FORMATS,
+                        choices=["txt", "srt", "vtt", "tsv", "json", "all"],
                         value="txt",
                         label="Output Format",
                         info="Select output file format"
@@ -204,40 +250,10 @@ with gr.Blocks() as demo:
                 process_btn = gr.Button("Process Audio", variant="primary")
                         language_input = gr.Dropdown(
                             value="Auto",
-                            choices=[x[1] for x in LANGUAGE_CODES],
+                            choices=[x[1] for x in ["nl", "de", "fr"]],
                             type="index",
                             label="Language",
-                            info="Select the desired audio language to improve speed."
-                        )
-                        vocal_extracter_checkbox = gr.Checkbox(
-                            value=True,
-                            label="Vocal extracter",
-                            info="Mute non-vocal background music"
-                        )
-                        vad_checkbox = gr.Checkbox(
-                            value=True,
-                            label="Voice activity detection",
-                            info="Should fix the issue of subtitle repetition"
-                        )
-                        precision_input = gr.Dropdown(
-                            choices=[
-                                "Low",
-                                "Medium-Low",
-                                "Medium",
-                                "Medium-High (Recommend)",
-                                "High"
-                            ],
-                            type="index",
-                            value="Medium-High (Recommend)",
-                            label="Precision",
-                            info="Higher precision requires more time."
-                        )
-                        device_input = gr.Radio(
-                            value="CPU",
-                            choices=["CPU", "GPU"],
-                            type="index",
-                            label="Device",
-                            info="GPU support requires additional setup."
+                            info="Select the audio language to improve speed."
                         )
                         task_type = gr.Radio(
                             choices=["Transcribe", "Translate"],
@@ -246,7 +262,23 @@ with gr.Blocks() as demo:
                             label="Task",
                             info="Translation is built-in but may be less accurate than specialized tools."
                         )
-                    
+                        vad_checkbox = gr.Checkbox(
+                            value=True,
+                            label="Voice activity detection",
+                            info="Should fix the issue of subtitle repetition"
+                        )
+                        vocal_extracter_checkbox = gr.Checkbox(
+                            value=True,
+                            label="Vocal extracter",
+                            info="Mute non-vocal background noise"
+                        )
+                        device_input = gr.Radio(
+                            value="CPU",
+                            choices=["CPU", "GPU"],
+                            type="index",
+                            label="Device",
+                            info="GPU support requires additional setup."
+                        )                    
                     transcribe_button = gr.Button("Start Transcription")
 
                 with gr.Column(scale=2):
@@ -254,9 +286,10 @@ with gr.Blocks() as demo:
                     audio_output = gr.Audio(label="Transcribed Audio", visible=False)
                     
                     with gr.Accordion("Subtitle Downloads", open=False):
+                        txt_download = gr.File(label="TXT Download")
                         srt_download = gr.File(label="SRT Download")
                         vtt_download = gr.File(label="VTT Download")
-                        ass_download = gr.File(label="ASS Download")
+                        tsv_download = gr.File(label="TSV Download")
                         json_download = gr.File(label="JSON Download")
                     
                     subtitle_preview = gr.TextArea(label="Subtitle Preview", interactive=False)
