@@ -136,10 +136,12 @@ class TranscriptionContext:
 class TranscriptionAssistant:
     def __init__(
         self,
-        model=None,
+        model=None
         model_size="large",
         language="auto",
         task_type="transcribe",
+        vocal_extracter=True,
+        vad=True,
         device="cpu",
         temperature=0.0,
         output_dir="./output",
@@ -149,25 +151,11 @@ class TranscriptionAssistant:
     ):
         self.context = context or TranscriptionContext()
         self.model_size = model_size
-        self.progress = progress
-        # Set up model (use provided or load new)
-        try:
-            if model is not None:
-                self.model = model
-            else:
-                # Use get_model with full model choice string
-                model_choice = f"Whisper {model_size}"
-                self.model = get_model(model_choice)
-            if self.model is None:
-                raise ModelError("Failed to initialize the model")
-        except Exception as e:
-            raise ModelError(f"Model initialization failed: {str(e)}")
-            
-        self.language = (
-            None if language in ["auto", "Auto"]
-            else language
-        )
+        self.model = model if model is not None else whisper.load_model(model_size)
+        self.language = "auto" if language == "Auto" else language
         self.task_type = task_type
+        self.vocal_extracter = vocal_extracter
+        self.vad = vad
         self.device = device
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
