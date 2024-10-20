@@ -28,7 +28,7 @@ class TranscriptionState(TypedDict):
 class TranscriptionAssistant:
     def __init__(
         self,
-        model=None
+        model=None,
         model_size="large",
         language="auto",
         task_type="transcribe",

@@ -169,6 +169,8 @@ async def process_audio(
     except Exception as e:
         return None, None, f"Error: {str(e)}"
 
+flagging_callback = gr.CSVLogger()
+
 def clear_chat():
     return None
 
@@ -198,37 +200,37 @@ with gr.Blocks() as demo:
                         placeholder="Enter video URL here"
                     )
                     with gr.Row():
-                    # Model selection
-                    model_choice = gr.Dropdown(
-                        choices=[f"Whisper {size}" for size in ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]],
-                        value="Whisper large",
-                        label="Whisper Model Size",
-                        info="Larger models are more accurate but slower"
-                    )                    
-                    # Task type selection
-                    task_type = gr.Radio(
-                        choices=["transcribe", "translate"],
-                        value="transcribe",
-                        label="Task Type",
-                        info="'Transcribe' keeps original language, 'Translate' converts to English"
+                        # Model selection
+                        model_choice = gr.Dropdown(
+                            choices=[f"Whisper {size}" for size in ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]],
+                            value="Whisper large",
+                            label="Whisper Model Size",
+                            info="Larger models are more accurate but slower"
+                        )                    
+                        # Task type selection
+                        task_type = gr.Radio(
+                            choices=["transcribe", "translate"],
+                            value="transcribe",
+                            label="Task Type",
+                            info="'Transcribe' keeps original language, 'Translate' converts to English"
                     )
                     with gr.Row():
                     # Language selection (important for both transcribe and translate)
-                    language = gr.Dropdown(
-                        choices=["Auto"] + sorted(whisper.tokenizer.LANGUAGES.keys()),
-                        value="Auto",
-                        label="Source Language",
-                        info="Specifying the source language improves speed and accuracy"
-                    )                    
-                    # Output format selection
-                    output_format = gr.Dropdown(
-                        choices=["txt", "srt", "vtt", "tsv", "json", "all"],
-                        value="txt",
-                        label="Output Format",
-                        info="Select output file format"
-                    )                
-                # Language helper text that updates based on selection
-                language_info = gr.Markdown(visible=False)
+                        language = gr.Dropdown(
+                            choices=["Auto"] + sorted(whisper.tokenizer.LANGUAGES.keys()),
+                            value="Auto",
+                            label="Source Language",
+                            info="Specifying the source language improves speed and accuracy"
+                        )                    
+                        # Output format selection
+                        output_format = gr.Dropdown(
+                            choices=["txt", "srt", "vtt", "tsv", "json", "all"],
+                            value="txt",
+                            label="Output Format",
+                            info="Select output file format"
+                        )                
+                    # Language helper text that updates based on selection
+                    language_info = gr.Markdown(visible=False)
                                     
                     with gr.Accordion("Transcription Options", open=False):
                         temperature = gr.Slider(
@@ -240,52 +242,31 @@ with gr.Blocks() as demo:
                             info="Higher values = more random output"
                         )
                         
-                        vad = gr.Checkbox(
+                        vad_checkbox = gr.Checkbox(
                             value=True,
                             label="Voice Activity Detection",
                             info="Filter out non-speech segments"
                         )
-                
-                # Process button
-                process_btn = gr.Button("Process Audio", variant="primary")
-                        language_input = gr.Dropdown(
-                            value="Auto",
-                            choices=[x[1] for x in ["nl", "de", "fr"]],
-                            type="index",
-                            label="Language",
-                            info="Select the audio language to improve speed."
-                        )
-                        task_type = gr.Radio(
-                            choices=["Transcribe", "Translate"],
-                            type="index",
-                            value="Transcribe",
-                            label="Task",
-                            info="Translation is built-in but may be less accurate than specialized tools."
-                        )
-                        vad_checkbox = gr.Checkbox(
-                            value=True,
-                            label="Voice activity detection",
-                            info="Should fix the issue of subtitle repetition"
-                        )
+                        
                         vocal_extracter_checkbox = gr.Checkbox(
                             value=True,
-                            label="Vocal extracter",
+                            label="Vocal Extracter",
                             info="Mute non-vocal background noise"
                         )
+                        
                         device_input = gr.Radio(
-                            value="CPU",
                             choices=["CPU", "GPU"],
-                            type="index",
+                            value="CPU",
                             label="Device",
-                            info="GPU support requires additional setup."
-                        )                    
-                    transcribe_button = gr.Button("Start Transcription")
+                            info="GPU support requires additional setup"
+                        )                
+                    transcribe_button = gr.Button("Process Audio", variant="primary")
 
                 with gr.Column(scale=2):
                     video_output = gr.Video(label="Transcribed Video", visible=False)
                     audio_output = gr.Audio(label="Transcribed Audio", visible=False)
                     
-                    with gr.Accordion("Subtitle Downloads", open=False):
+                    with gr.Accordion("Transcription and Subtitle Downloads", open=False):
                         txt_download = gr.File(label="TXT Download")
                         srt_download = gr.File(label="SRT Download")
                         vtt_download = gr.File(label="VTT Download")
@@ -293,34 +274,62 @@ with gr.Blocks() as demo:
                         json_download = gr.File(label="JSON Download")
                     
                     subtitle_preview = gr.TextArea(label="Subtitle Preview", interactive=False)
-
+                    
+            # Connect the transcribe button to the handling function
             transcribe_button.click(
                 fn=handle_transcription,
-                inputs=[file_input, url_input, transcribe_model_input, language_input,
-                        vocal_extracter_checkbox, vad_checkbox, precision_input,
-                        device_input, task_type],
-                outputs=[transcription_output, subtitle_output, status_output]
-                    )
-    # Set up the flagging callback
-    flagging_callback.setup(
-        [rag_text_box, rag_chat_bot] + chat_interface.additional_inputs,
-        "flagged_rag_data"
-    )
+                inputs=[
+                    audio_input,
+                    url_input,
+                    model_choice,
+                    language,
+                    vocal_extracter_checkbox,
+                    vad_checkbox,
+                    device_input,
+                    task_type
+                ],
+                outputs=[
+                    video_output,
+                    audio_output,
+                    txt_download,
+                    srt_download,
+                    vtt_download,
+                    tsv_download,
+                    json_download,
+                    subtitle_preview
+                ]
+            )
+            
+            # Set up flagging callback
+            flagging_callback.setup(
+                [
+                    audio_input,
+                    url_input,
+                    model_choice,
+                    language,
+                    task_type,
+                    subtitle_preview, 
+                    flag_options,
+                    flag_description
+                ],
+                "transcription_flags" 
+            )
 
-    # Connect the flagging button to the callback
-    flag_btn.click(
-        lambda *args: flagging_callback.flag(args[:-1] + (args[-1],)),
-        [rag_text_box, rag_chat_bot] + chat_interface.additional_inputs +
-        [flag_options],
-        None,
-        preprocess=False
-    )
-
-    language_choice.change(
-        fn=update_prompt_list,
-        inputs=[language_choice],
-        outputs=[prompt_info]
-    )
+            # Connect the flag button
+            flag_button.click(
+                lambda *args: flagging_callback.flag(args),
+                inputs=[
+                    audio_input,
+                    url_input,
+                    model_choice,
+                    language,
+                    task_type,
+                    subtitle_preview,
+                    flag_options,
+                    flag_description
+                ],
+                outputs=[] 
+            )
 
 if __name__ == "__main__":
     logger.info("Starting the Gradio interface")

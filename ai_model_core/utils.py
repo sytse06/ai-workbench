@@ -2,8 +2,10 @@
 from pathlib import Path
 from typing import List, Union, Any, Optional
 from langchain.schema import Document
-from langchain.document_loaders import TextLoader, WebBaseLoader, Docx2txtLoader
+from langchain_community.document_loaders import TextLoader, WebBaseLoader, Docx2txtLoader
+from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.prompts import ChatPromptTemplate
 from pydub import AudioSegment
 import fitz  # PyMuPDF
 import logging
