@@ -3,10 +3,14 @@ import os
 import yaml
 import logging
 import platform
+import torch
 from typing import List
 import gradio as gr
 
 logger = logging.getLogger(__name__)
+
+#security recommendation pytorch, fp = filepath and should be defined
+#checkpoint = torch.load(fp, map_location=device, weights_only=True)
 
 # Function to determine the base directory based on the OS
 def get_base_directory():

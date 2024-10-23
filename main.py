@@ -15,7 +15,7 @@ from ai_model_core.model_helpers import (
 from ai_model_core.model_helpers.RAG_assistant import (
     CustomHuggingFaceEmbeddings
 )
-from ai_model_core import get_embedding_model
+from ai_model_core import get_model, get_embedding_model
 from ai_model_core.utils import EnhancedContentLoader
 
 # Set environment variables
@@ -132,7 +132,7 @@ def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
     try:
         loader = EnhancedContentLoader(chunk_size, chunk_overlap)
         file_paths = file_input if isinstance(file_input, list) else [file_input] if file_input else None
-        docs = loader.load_and_split_document(file_paths=file_paths, urls=url_input, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        docs = loader.load_and_split_documents(file_paths=file_paths, urls=url_input, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         return f"Successfully loaded {len(docs)} chunks of text.", docs
     except Exception as e:
         logger.error(f"Error in load_documents: {str(e)}")
@@ -171,7 +171,7 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
             logger.debug(f"Type of first file: {type(files[0])}")
             logger.debug(f"Attributes of first file: {dir(files[0])}")
             
-        docs = content_loader.load_and_split_document(file_paths=files, urls=urls, chunk_size=chunk_size, chunk_overlap=chunk_overlap)        
+        docs = content_loader.load_and_split_documents(file_paths=files, urls=urls, chunk_size=chunk_size, chunk_overlap=chunk_overlap)        
         rag_assistant.setup_vectorstore(docs)
         rag_assistant.prompt_template = prompt_info
         rag_assistant.use_history = history_flag
