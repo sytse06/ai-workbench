@@ -2,7 +2,7 @@
 from pathlib import Path
 from typing import List, Union, Any, Optional
 from langchain.schema import Document
-from langchain_community.document_loaders import TextLoader, WebBaseLoader, Docx2txtLoader
+from langchain_community.document_loaders import TextLoader, WebBaseLoader, Docx2txtLoader, UnstructuredMarkdownLoader
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
@@ -36,7 +36,7 @@ class EnhancedContentLoader:
         self.temp_dir = Path(temp_dir)
         self.audio_sample_rate = audio_sample_rate
         self.supported_audio_formats = {'.mp4', '.mp3', '.wav', '.m4a', '.ogg', '.flac'}
-        self.supported_text_formats = {'.txt', '.pdf', '.docx'}
+        self.supported_text_formats = {'.txt', '.pdf', '.docx', '.md', '.py'}
         
         # Create temporary directory if it doesn't exist
         self.temp_dir.mkdir(parents=True, exist_ok=True)
@@ -122,6 +122,10 @@ class EnhancedContentLoader:
         try:
             if file_extension == '.txt':
                 return TextLoader(file_path).load()
+            elif file_extension == '.py':
+                return TextLoader(file_path).load()
+            elif file_extension == '.md':
+                return UnstructuredMarkdownLoader(file_path).load()
             elif file_extension == '.pdf':
                 return self._load_pdf(file_path)
             elif file_extension == '.docx':
