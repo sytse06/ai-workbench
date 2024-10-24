@@ -5,6 +5,8 @@ import logging
 import sys
 from typing import List, Union
 from PIL import Image
+from pathlib import Path
+import traceback
 import gradio as gr
 from ai_model_core.config.settings import (
     load_config, get_prompt_list, update_prompt_list
@@ -52,37 +54,51 @@ logger.propagate = False
 
 
 # Initialize assistants with default models
-chat_assistant = ChatAssistant("Ollama (LLama3.2)")
-prompt_assistant = PromptAssistant("Ollama (LLama3.2)")
+chat_assistant = ChatAssistant(
+            model_choice="Ollama (LLama3.1)",
+            temperature=0.1,
+            max_tokens=1000
+        )
+prompt_assistant = PromptAssistant("Ollama (LLama3.1)")
 vision_assistant = VisionAssistant("Ollama (LLaVA)")
 rag_assistant = RAGAssistant("Ollama (LLama3.1)")
 summarization_assistant = SummarizationAssistant("Ollama (LLama3.1)")
 
-
-# Wrapper function for Gradio interface chat_assistant:
-async def chat_wrapper(message, history, model_choice, history_flag,
-                       temperature, max_tokens):
-    global chat_assistant
+# Wrapper function for Gradio implementation chat_assistant:
+async def chat_wrapper(
+    message: str,
+    history: List[Tuple[str, str]],
+    model_choice: str,
+    temperature: float,
+    max_tokens: int,
+    files: List[gr.File],
+    history_flag: bool,
+    chat_assistant: ChatAssistant,
+    use_context: bool = True
+) -> str:
+    # Update model parameters if needed
     chat_assistant.update_model(model_choice)
-    chat_assistant.temperature = temperature
-    chat_assistant.max_tokens = max_tokens
+    chat_assistant.set_temperature(temperature)
+    chat_assistant.set_max_tokens(max_tokens)
+    
+    # Generate response
+    async for response in chat_assistant.chat(
+        message=message,
+        history=history,
+        history_flag=history_flag,
+        stream=True,
+        use_context=use_context
+    ):
+        yield response
 
-    try:
-        result = []
-        async for chunk in chat_assistant.chat(
-            message, history, history_flag, stream=True
-        ):
-        async for chunk in chat_assistant.chat(
-            message, history, history_flag, stream=True
-        ):
-            result.append(chunk)
-            yield ''.join(result)
-    except Exception as e:
-        logger.error(f"Error in chat function: {str(e)}")
-        yield f"An error occurred: {str(e)}"
+# File processing handler
+async def process_files(
+    files: List[gr.File],
+    chat_assistant: ChatAssistant
+) -> Tuple[str, bool]:
+    return await chat_assistant.process_chat_context_files(files)
 
-
-# Wrapper function for Gradio interface vision_assistant:
+# Wrapper function for Gradio interface prompt_assistant:
 async def prompt_wrapper(
     message: str,
     history: List[tuple[str, str]],
@@ -225,8 +241,6 @@ async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
 # Helper functions for Gradio interface
 def clear_chat():
     return None
-
-
 
 def clear_vision_chat():
     return None, None, gr.update(value=None)
@@ -384,25 +398,30 @@ with gr.Blocks() as demo:
                          "Ollama (LLama3.2)",
                          "Ollama (YI-coder)", "OpenAI GPT-4o-mini"],
                         label="Choose Model",
-                        value="Ollama (LLama3.2)"
+                        value="Ollama (LLama3.1)"
                     )
-                    history_flag = gr.Checkbox(
-                        label="Include conversation history", value=True
-                    )
-                    history_flag = gr.Checkbox(
-                        label="Include conversation history", value=True
-                    )
+                    # File upload section
+                    with gr.Group():
+                        file_input = gr.File(
+                            label="Upload Context Content",
+                            file_count="multiple",
+                            file_types=[".txt", ".md", ".py"]
+                            )
+                        load_button = gr.Button("Load in chat context")
+                        load_output = gr.Textbox(
+                        label="Load Status", interactive=False
+                        )
+                        use_context = gr.Checkbox(
+                            label="Use uploaded files as context",
+                            value=True
+                            )
+                        
                     with gr.Accordion("Model parameters", open=False):
+                        history_flag = gr.Checkbox(
+                        label="Include conversation history", value=True
+                    )
                         temperature = gr.Slider(
-                            minimum=0, maximum=1, value=0.7, step=0.1,
-                            label="Temperature"
-                        )
-                        max_tokens = gr.Slider(
-                            minimum=150, maximum=4000, value=500, step=50,
-                            label="Max Tokens"
-                        )
-                        temperature = gr.Slider(
-                            minimum=0, maximum=1, value=0.7, step=0.1,
+                            minimum=0, maximum=1, value=0.1, step=0.1,
                             label="Temperature"
                         )
                         max_tokens = gr.Slider(
@@ -411,34 +430,25 @@ with gr.Blocks() as demo:
                         )
                 with gr.Column(scale=4):
                     chat_bot = gr.Chatbot(
-                        height=600, show_copy_button=True,
+                        height=600,
+                        show_copy_button=True,
                         show_copy_all_button=True
                     )
                     chat_text_box = gr.Textbox(
-                        label="Chat input",
-                        placeholder="Type your message here..."
+                        label="User input",
+                        placeholder="Type your question here..."
                     )
-                    chat_bot = gr.Chatbot(
-                        height=600, show_copy_button=True,
-                        show_copy_all_button=True
-                    )
-                    chat_text_box = gr.Textbox(
-                        label="Chat input",
-                        placeholder="Type your message here..."
-                    )
-                    gr.ChatInterface(
+                    chat_interface = gr.ChatInterface(
                         fn=chat_wrapper,
                         chatbot=chat_bot,
                         textbox=chat_text_box,
                         additional_inputs=[
-                            model_choice, history_flag, temperature, max_tokens
-                        ],
-                        additional_inputs=[
-                            model_choice, history_flag, temperature, max_tokens
+                            model_choice, temperature, max_tokens, file_input,
+                            history_flag
                         ],
                         additional_inputs=[
                             model_choice, temperature, max_tokens, file_input,
-                            use_context, history_flag
+                            history_flag
                         ],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",
@@ -446,7 +456,14 @@ with gr.Blocks() as demo:
                         clear_btn="🗑️ Clear",
                     )
 
-        # Prompting Tab
+            # Connect the load_button to the process_chat_context_files
+            loaded_docs = gr.State()
+            load_button.click(
+                fn=process_chat_context_files,
+                inputs=[file_input],
+                outputs=[load_output, loaded_docs]
+            )
+            
         # Prompting Tab
         with gr.Tab("Prompting"):
             with gr.Row():
