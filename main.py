@@ -429,6 +429,7 @@ with gr.Blocks() as demo:
                         embedding_choice = gr.Dropdown(
                             [
                                     "nomic-embed-text",
+                                    "e5-base",
                                     "bge-large",
                                     "bge-m3",
                                     "e5-large",

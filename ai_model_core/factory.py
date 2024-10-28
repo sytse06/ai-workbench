@@ -110,6 +110,11 @@ def get_embedding_model(choice: str, **kwargs):
             model_name="intfloat/multilingual-e5-large",
             **kwargs
         )
+    if choice == "e5-base":
+        return E5Embeddings(
+            model_name="intfloat/multilingual-e5-large",
+            **kwargs
+        )
     elif choice == "text-embedding-ada-002":
         api_key = get_api_key('openai')
         return OpenAIEmbeddings(
