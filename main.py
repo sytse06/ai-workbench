@@ -633,5 +633,5 @@ with gr.Blocks() as demo:
     )
 
 if __name__ == "__main__":
-    logger.info("Starting the Gradio interface")
-    demo.launch(debug=True, share=False)
+    logger.info("Starting the Gradio interface of the ai-workbench")
+    demo.launch(server_port=7860, debug=True, share=False)

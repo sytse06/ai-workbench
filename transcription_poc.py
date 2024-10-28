@@ -1,21 +1,33 @@
-import os
+# Standard library imports
 import logging
+import os
 import sys
-from typing import List, Union
-from PIL import Image
 import traceback
+from typing import List, Union
+
+# Third-party imports
 import gradio as gr
+from PIL import Image
+
+# Local imports
 from ai_model_core.config.settings import (
-    load_config, get_prompt_list, update_prompt_list
+    load_config,
+    get_prompt_list,
+    update_prompt_list
+)
+from ai_model_core.factory import (  # Direct import from factory
+    get_model,
+    get_embedding_model
 )
 from ai_model_core.model_helpers import (
-    ChatAssistant, PromptAssistant, VisionAssistant,
-    RAGAssistant, SummarizationAssistant, TranscriptionAssistant
+    ChatAssistant,
+    PromptAssistant,
+    RAGAssistant,
+    SummarizationAssistant,
+    TranscriptionAssistant,
+    VisionAssistant
 )
-from ai_model_core.model_helpers.RAG_assistant import (
-    CustomHuggingFaceEmbeddings
-)
-from ai_model_core import get_model, get_embedding_model
+from ai_model_core.model_helpers.RAG_assistant import E5Embeddings  # Single import for E5Embeddings
 from ai_model_core.utils import EnhancedContentLoader
 
 # Set environment variables
@@ -124,7 +136,7 @@ async def transcription_wrapper(
         logger.error(f"Transcription error: {str(e)}")
         return {"error": f"Error during transcription: {str(e)}"}
 
-# Updated Gradio interface setup
+# Gradio interface setup
 with gr.Blocks() as demo:
     gr.Markdown("# AI WorkBench")
     gr.Markdown("### Chat with LLM's of choice and reuse prompts to get work done.")
@@ -246,5 +258,5 @@ with gr.Blocks() as demo:
             )
 
 if __name__ == "__main__":
-    logger.info("Starting the Gradio interface")
-    demo.launch(debug=True, share=False)
+    logger.info("Starting the Gradio interface for transcription")
+    demo.launch(server_port=7861, debug=True, share=False)
