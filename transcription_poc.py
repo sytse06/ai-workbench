@@ -1,26 +1,35 @@
-# Transcription gradio experiment
 # Standard library imports
 import logging
 import os
+import os
 import sys
-import asyncio
-from pathlib import Path
+import traceback
+from typing import List, Union
 
 # Third-party imports
 import gradio as gr
+from PIL import Image
 
 # Local imports
-from ai_model_core.config.settings import load_config
-from ai_model_core.shared_utils.utils import EnhancedContentLoader
-from ai_model_core.model_helpers import TranscriptionAssistant
-from ai_model_core.model_helpers.transcription_assistant import (
-    TranscriptionContext,
-    TranscriptionError,
-    FileError,
-    ModelError,
-    OutputError,
-    AudioProcessingError
+from ai_model_core.config.settings import (
+    load_config,
+    get_prompt_list,
+    update_prompt_list
 )
+from ai_model_core.factory import (  # Direct import from factory
+    get_model,
+    get_embedding_model
+)
+from ai_model_core.model_helpers import (
+    ChatAssistant,
+    PromptAssistant,
+    RAGAssistant,
+    SummarizationAssistant,
+    TranscriptionAssistant,
+    VisionAssistant
+)
+from ai_model_core.model_helpers.RAG_assistant import E5Embeddings  # Single import for E5Embeddings
+from ai_model_core.utils import EnhancedContentLoader
 
 # Set environment variables
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
@@ -131,56 +140,7 @@ async def handle_transcription(file_input, url_input, model_choice, language, va
         
     except Exception as e:
         logger.error(f"Transcription error: {str(e)}")
-        return None, f"Error: {str(e)}"
-
-# Second attempt to process audio
-async def process_audio(
-    audio_path, model_size, task_type, language, 
-    output_format, temperature, vad
-    ):
-    try:
-        if not audio_path:
-            return None, None, "Please upload an audio file"
-                
-        # Initialize TranscriptionAssistant with selected parameters
-        assistant = TranscriptionAssistant(
-                    model_size=model_size,
-                    language=language,
-                    task_type=task_type,
-                    vad=vad,
-                    temperature=temperature,
-                    output_dir="./output"
-                )
-                
-        # Process the audio
-        result = await assistant.process_audio(audio_path)
-                
-        # Get the output file path
-        base_filename = Path(audio_path).stem
-        output_path = f"./output/{base_filename}.{output_format}"
-                
-        # Generate status message
-        lang_name = whisper.tokenizer.LANGUAGES.get(language, "detected language") if language == "Auto" else whisper.tokenizer.LANGUAGES.get(language)
-        task_msg = "Translated to English from" if task_type == "translate" else "Transcribed"
-        status_msg = f"{task_msg} {lang_name}. Output saved as {output_format}"
-                
-        return (
-                result["transcription"],
-                    output_path,
-                    status_msg
-                )
-                
-    except Exception as e:
-        return None, None, f"Error: {str(e)}"
-
-def clear_chat():
-    return None
-
-
-def clear_vision_chat():
-    return None, None, gr.update(value=None)
-
-flagging_callback = gr.CSVLogger()
+        return {"error": f"Error during transcription: {str(e)}"}
 
 # Gradio interface setup
 with gr.Blocks() as demo:
@@ -330,8 +290,4 @@ with gr.Blocks() as demo:
 
 if __name__ == "__main__":
     logger.info("Starting the Gradio interface for transcription")
-    demo.launch(
-        server_port=7861,
-        debug=True,
-        share=False
-    )
+    demo.launch(server_port=7861, debug=True, share=False)
