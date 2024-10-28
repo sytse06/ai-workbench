@@ -1,22 +1,24 @@
 # model_helpers/chat_assistant.py
 # Standard library imports
 import logging
-from typing import List, Generator, Any, Optional, Union, Tuple
 from pathlib import Path
+from typing import List, Generator, Any, Optional, Union, Tuple
 
 # Third-party imports
 from langchain.schema import HumanMessage, AIMessage, Document
 import gradio as gr
 
 # Local imports
-from ai_model_core import (
+from ai_model_core.factory import (
     get_model,
-    get_embedding_model,
+    get_embedding_model
+)
+from ai_model_core.config.settings import load_config
+from ai_model_core.utils import (
+    EnhancedContentLoader,
     get_prompt_template,
     _format_history
 )
-from ai_model_core.config.settings import load_config
-from ai_model_core.utils import EnhancedContentLoader
 
 logger = logging.getLogger(__name__)
 

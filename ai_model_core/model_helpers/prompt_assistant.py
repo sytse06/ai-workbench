@@ -1,12 +1,29 @@
 # model_helpers/prompt_assistant.py
+# Standard library imports
+import logging
+from typing import Dict, List, Any
+
+# Third-party imports
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
-from typing import List, Dict, Any
-from ai_model_core.config.credentials import get_api_key, load_credentials
-from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
-from ai_model_core import get_model, get_prompt_template, get_system_prompt, _format_history
 from langchain.schema.runnable import RunnableParallel
-import logging
+
+# Local imports
+from ai_model_core.config.credentials import (
+    get_api_key,
+    load_credentials
+)
+from ai_model_core.config.settings import (
+    load_config,
+    get_prompt_list,
+    update_prompt_list
+)
+from ai_model_core.factory import get_model
+from ai_model_core.utils import (
+    get_prompt_template,
+    get_system_prompt,
+    _format_history
+)
 
 logger = logging.getLogger(__name__)
 

@@ -20,6 +20,8 @@ ai_workbench/
 │   │   ├── chat_assistant_.py
 │   │   ├── prompt_assistant.py
 │   │   ├── RAG_assistant.py
+│   │   ├── summarize_assistant.py
+│   │   ├── transcription_assistant.py
 │   │   └── vision_assistant.py
 │   └── config/
 │       ├── __init__.py
