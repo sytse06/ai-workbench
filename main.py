@@ -1,7 +1,8 @@
 import os
 import logging
 import sys
-from typing import List, Union
+import asyncio
+from typing import List, Union, Tuple
 from PIL import Image
 from pathlib import Path
 import traceback
@@ -48,11 +49,7 @@ logger.propagate = False
 
 
 # Initialize assistants with default models
-chat_assistant = ChatAssistant(
-            model_choice="Ollama (LLama3.1)",
-            temperature=0.1,
-            max_tokens=1000
-        )
+chat_assistant = ChatAssistant("Ollama (LLama3.1)")
 prompt_assistant = PromptAssistant("Ollama (LLama3.1)")
 vision_assistant = VisionAssistant("Ollama (LLaVA)")
 rag_assistant = RAGAssistant("Ollama (LLama3.1)")
@@ -67,29 +64,26 @@ async def chat_wrapper(
     max_tokens: int,
     files: List[gr.File],
     history_flag: bool,
-    chat_assistant: ChatAssistant,
     use_context: bool = True
 ) -> str:
-    # Update model parameters if needed
+    
+    global chat_assistant
     chat_assistant.update_model(model_choice)
-    chat_assistant.set_temperature(temperature)
-    chat_assistant.set_max_tokens(max_tokens)
     
     # Generate response
-    async for response in chat_assistant.chat(
+    result = []
+    async for chunk in chat_assistant.chat(
         message=message,
         history=history,
         history_flag=history_flag,
         stream=True,
         use_context=use_context
     ):
-        yield response
+        result.append(chunk)
+        yield ''.join(result)
 
 # File processing handler
-async def process_files(
-    files: List[gr.File],
-    chat_assistant: ChatAssistant
-) -> Tuple[str, bool]:
+async def process_files_wrapper(files: List[gr.File]) -> Tuple[str, bool]:  
     return await chat_assistant.process_chat_context_files(files)
 
 # Wrapper function for Gradio interface prompt_assistant:
@@ -296,13 +290,14 @@ with gr.Blocks() as demo:
                         label="User input",
                         placeholder="Type your question here..."
                     )
+                    
                     chat_interface = gr.ChatInterface(
                         fn=chat_wrapper,
                         chatbot=chat_bot,
                         textbox=chat_text_box,
                         additional_inputs=[
                             model_choice, temperature, max_tokens, file_input,
-                            history_flag
+                            use_context, history_flag
                         ],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",
@@ -313,7 +308,7 @@ with gr.Blocks() as demo:
             # Connect the load_button to the process_chat_context_files
             loaded_docs = gr.State()
             load_button.click(
-                fn=process_chat_context_files,
+                fn=lambda files: asyncio.run(process_files_wrapper(files)),
                 inputs=[file_input],
                 outputs=[load_output, loaded_docs]
             )
