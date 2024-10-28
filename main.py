@@ -17,7 +17,7 @@ from ai_model_core.model_helpers import (
     RAGAssistant, SummarizationAssistant
 )
 from ai_model_core.model_helpers.RAG_assistant import (
-    CustomHuggingFaceEmbeddings
+    E5Embeddings
 )
 from ai_model_core import get_embedding_model
 from ai_model_core.utils import EnhancedContentLoader
@@ -165,12 +165,12 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
                       chunk_size, chunk_overlap, temperature, num_similar_docs,
                       max_tokens, urls, files, language, prompt_info,
                       history_flag, retrieval_method):
-    # Note: embedding_model is not used in this function, but might be needed
-    # in the RAGAssistant initialization. If not needed, consider removing it.
-    _ = (CustomHuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    ) if embedding_choice == "all-MiniLM-L6-v2"
-       else get_embedding_model(embedding_choice))
+
+    # Create the embedding model based on the choice
+    if embedding_choice == "e5-large":
+        embedding_model = get_embedding_model(embedding_choice)
+    else:
+        embedding_model = get_embedding_model(embedding_choice)
 
     rag_assistant = RAGAssistant(
         model_name=model_choice,
@@ -615,7 +615,6 @@ with gr.Blocks() as demo:
                         embedding_choice = gr.Dropdown(
                             [
                                     "nomic-embed-text",
-                                    "e5-base",
                                     "bge-large",
                                     "bge-m3",
                                     "e5-large",

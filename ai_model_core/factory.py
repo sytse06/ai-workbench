@@ -10,7 +10,7 @@ from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from ai_model_core.config.credentials import get_api_key, load_credentials
-#from ai_model_core.model_helpers.RAG_assistant import CustomHuggingFaceEmbeddings
+from ai_model_core.model_helpers.RAG_assistant import E5Embeddings
 from langchain.prompts import PromptTemplate
 
 def get_model(choice: str, **kwargs):
@@ -92,9 +92,22 @@ def get_embedding_model(choice: str, **kwargs):
             base_url="http://localhost:11434",
             **kwargs
         )
-    elif choice == "all-MiniLM-L6-v2":
-        return CustomHuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
+    elif choice == "bge-large":
+        return OllamaEmbeddings(
+            model="bge-large",
+            base_url="http://localhost:11434",
+            **kwargs
+        )
+    elif choice == "bge-m3":
+        return OllamaEmbeddings(
+            model="bge-m3",
+            base_url="http://localhost:11434",
+            **kwargs
+        )
+    if choice == "e5-large":
+        return E5Embeddings(
+            model_name="intfloat/multilingual-e5-large",
+            **kwargs
         )
     elif choice == "text-embedding-ada-002":
         api_key = get_api_key('openai')

@@ -12,12 +12,14 @@ from operator import add
 
 # Third-party imports
 import torch
+from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModel
 from langgraph.graph import StateGraph, END
 from langchain.schema import Document
 from langchain_community.vectorstores import FAISS
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.embeddings import Embeddings
 
 # Local imports
 from ai_model_core import (
@@ -38,51 +40,49 @@ class State(TypedDict):
     all_actions: Annotated[List[str], add]
 
 
-class CustomHuggingFaceEmbeddings:
+class E5Embeddings(Embeddings):
     def __init__(
         self,
-        model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+        model_name: str = "intfloat/multilingual-e5-large",
+        normalize_embeddings: bool = True
     ):
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_name, clean_up_tokenization_spaces=True
-        )
-    def __init__(
-        self,
-        model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
-    ):
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_name, clean_up_tokenization_spaces=True
-        )
-        self.model = AutoModel.from_pretrained(model_name)
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.model.to(self.device)
+        """
+        Initialize E5 embeddings for retrieval tasks.
+        
+        Args:
+            model_name: The name of the E5 model to use
+            normalize_embeddings: Whether to normalize the embeddings
+        """
+        self.model = SentenceTransformer(model_name)
+        self.normalize_embeddings = normalize_embeddings
+
+    def _format_text(self, text: str, is_query: bool = False) -> str:
+        """
+        Format text according to E5 rules for retrieval:
+        - "query: " for questions
+        - "passage: " for documents
+        """
+        prefix = "query: " if is_query else "passage: "
+        return prefix + text
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        encoded_input = self.tokenizer(
-            texts, padding=True, truncation=True, return_tensors='pt'
+        """Embed documents using 'passage:' prefix."""
+        formatted_texts = [self._format_text(text, is_query=False) for text in texts]
+        embeddings = self.model.encode(
+            formatted_texts,
+            normalize_embeddings=self.normalize_embeddings
         )
-        encoded_input = {
-            k: v.to(self.device) for k, v in encoded_input.items()
-        }
-        with torch.no_grad():
-            model_output = self.model(**encoded_input)
-        attention_mask = encoded_input['attention_mask']
-        token_embeddings = model_output.last_hidden_state
-        input_mask_expanded = attention_mask.unsqueeze(-1).expand(
-            token_embeddings.size()
-        ).float()
-        sum_embeddings = torch.sum(
-            token_embeddings * input_mask_expanded, 1
-        )
-        sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
-        embeddings = (sum_embeddings / sum_mask).cpu().numpy()
         return embeddings.tolist()
 
     def embed_query(self, text: str) -> List[float]:
-        return self.embed_documents([text])[0]
-
-
-
+        """Embed query using 'query:' prefix."""
+        formatted_text = self._format_text(text, is_query=True)
+        embedding = self.model.encode(
+            formatted_text,
+            normalize_embeddings=self.normalize_embeddings
+        )
+        return embedding.tolist()
+    
 class RAGAssistant:
     def __init__(
         self,
@@ -145,7 +145,7 @@ class RAGAssistant:
             raise ValueError("No documents were loaded.")
 
         # If using the custom embedding function for E5 embedding models
-        if self.embedding_model_name.startswith("e5-"):
+        if isinstance(self.embedding_model, E5Embeddings):
             texts = [doc.page_content for doc in docs]
             embeddings = self.embedding_model.embed_documents(texts)
             text_embeddings = list(zip(texts, embeddings))
