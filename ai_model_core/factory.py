@@ -24,14 +24,22 @@ def get_model(choice: str, **kwargs):
             verbose=True)
     elif choice == "Claude Sonnet":
         api_key = get_api_key('openrouter')
-        model_kwargs = {}
+        model_kwargs = {"headers": {}}
+        
+        # Set tracking headers for experimental usage
+        if AI_Workbench:
+            experiment_id = f"experiment:{AI_Workbench}"
+            model_kwargs["headers"].update({
+                "HTTP-Referer": f"localhost:{AI_Workbench}",
+                "X-Title": AI_Workbench
+            })
+        
+        # Allow override of headers through kwargs if needed
         if 'http_referer' in kwargs:
-            model_kwargs["headers"] = model_kwargs.get("headers", {})
             model_kwargs["headers"]["HTTP-Referer"] = kwargs.pop('http_referer')
         if 'x_title' in kwargs:
-            model_kwargs["headers"] = model_kwargs.get("headers", {})
-            model_kwargs["headers"]["X-Title"] = kwargs.pop('ai-workbench')
-        
+            model_kwargs["headers"]["X-Title"] = kwargs.pop('x_title')
+            
         return ChatOpenAI(
             model="anthropic/claude-3.5-sonnet",
             api_key=api_key,

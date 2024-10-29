@@ -1,9 +1,10 @@
 # model_helpers/transcription_assistant.py
-from typing import TypedDict, List, Annotated, Union
+from typing import TypedDict, List, Annotated, Union, Optional, Dict
 from pathlib import Path
 import asyncio
 import numpy as np
 from pydub import AudioSegment
+from dataclasses import dataclass, field
 import whisper
 from whisper.utils import get_writer
 
@@ -24,6 +25,36 @@ class TranscriptionState(TypedDict):
     results: dict  # Store full whisper results for different output formats
     answer: str
     all_actions: Annotated[List[str], lambda x, y: x + [y]]
+    
+@dataclass
+class TranscriptionContext:
+    """Container for transcription context information"""
+    speakers: List[str] = field(default_factory=list)
+    terms: Dict[str, str] = field(default_factory=dict)  # term: description
+    context: str = ""
+    
+    def generate_prompt(self) -> str:
+        """Generate formatted initial prompt from context information"""
+        prompt_parts = []
+        
+        # Add speakers information
+        if self.speakers:
+            speakers_str = "Speakers in the conversation: " + ", ".join(self.speakers)
+            prompt_parts.append(speakers_str)
+        
+        # Add specialized terms/vocabulary
+        if self.terms:
+            terms_str = "Specialized terms:\n" + "\n".join(
+                f"- {term}: {description}" 
+                for term, description in self.terms.items()
+            )
+            prompt_parts.append(terms_str)
+        
+        # Add additional context
+        if self.context:
+            prompt_parts.append(self.context)
+            
+        return "\n\n".join(prompt_parts)
 
 class TranscriptionAssistant:
     def __init__(
@@ -37,8 +68,10 @@ class TranscriptionAssistant:
         device="cpu",
         temperature=0.0,
         max_tokens=None,
-        output_dir="./output"
+        output_dir="./output",
+        context: Optional[TranscriptionContext] = None
     ):
+        self.context = context or TranscriptionContext()
         self.model_size = model_size
         self.model = model if model is not None else whisper.load_model(model_size)
         self.language = "auto" if language == "Auto" else language
@@ -53,6 +86,7 @@ class TranscriptionAssistant:
         self.graph = StateGraph(TranscriptionState)
         self.config = load_config()
         self.content_loader = EnhancedContentLoader()
+        self.setup_graph()
 
     def setup_graph(self):
         self.graph.add_node("preprocess_audio", self.preprocess_audio)
@@ -67,79 +101,140 @@ class TranscriptionAssistant:
 
         self.graph_runnable = self.graph.compile()
 
-    def preprocess_audio(self, audio_path: str) -> np.ndarray:
-        """Preprocess audio file to mono 16kHz format using pydub."""
-        audio = AudioSegment.from_file(audio_path)
-        audio = audio.set_channels(1).set_frame_rate(16000)
-        
-        # Convert to numpy array and normalize
-        audio_np = np.array(audio.get_array_of_samples(), dtype=np.float32) / 32767.0
-        return audio_np
+    async def preprocess_audio(self, state: TranscriptionState) -> TranscriptionState:
+        """Preprocess audio node in workflow"""
+        try:
+            # Handle vocal extraction if enabled
+            audio_path = state['audio_path']
+            if self.vocal_extracter:
+                audio_path = await self._extract_vocals(audio_path)
+
+            audio_np = await self._preprocess_audio_file(audio_path)
+            state['audio_data'] = audio_np
+            state['all_actions'].append("audio_preprocessed")
+            return state
+        except Exception as e:
+            raise AudioProcessingError(f"Preprocessing failed: {str(e)}")
+                                       
+    async def _preprocess_audio_file(self, audio_path: str) -> np.ndarray:
+        """Internal method for audio preprocessing"""
+        try:
+            audio = await asyncio.to_thread(AudioSegment.from_file, audio_path)
+            audio = await asyncio.to_thread(
+                lambda: audio.set_channels(1).set_frame_rate(16000)
+            )
+            return await asyncio.to_thread(
+                lambda: np.array(audio.get_array_of_samples(), dtype=np.float32) / 32767.0
+            )
+        except Exception as e:
+            raise AudioProcessingError(f"Failed to preprocess audio: {str(e)}")
+                                       
+    async def _extract_vocals(self, audio_path: str) -> str:
+        """Extract vocals from audio if enabled"""
+        try:
+            # Implement vocal extraction logic here
+            # Return path to processed audio
+            pass
+        except Exception as e:
+            raise AudioProcessingError(f"Vocal extraction failed: {str(e)}")
+    
+    async def process_audio(
+        self, 
+        audio_path: Union[str, Path],
+        context: Optional[TranscriptionContext] = None
+    ) -> dict:
+        """Main entry point with context support"""
+        try:
+            audio_path = Path(audio_path)
+            if not audio_path.exists():
+                raise FileNotFoundError(f"Audio file not found: {audio_path}")
+
+            # Use provided context or fall back to default
+            current_context = context or self.context
+
+            initial_state = TranscriptionState(
+                audio_path=str(audio_path),
+                audio_data=None,
+                transcription="",
+                results={},
+                all_actions=[],
+                initial_prompt=current_context.generate_prompt()
+            )
+
+            async with asyncio.timeout(self.config.get('timeout', 300)):
+                final_state = await self.graph_runnable.ainvoke(initial_state)
+
+            return self._prepare_response(final_state)
+
+        except Exception as e:
+            logger.error(f"Processing failed: {str(e)}")
+            raise TranscriptionError(f"Processing failed: {str(e)}")
 
     async def transcribe_audio(self, state: TranscriptionState) -> TranscriptionState:
-        """Transcribe audio using Whisper model with support for translation."""
-        audio_path = state['audio_path']
-        audio_np = self.preprocess_audio(audio_path)
-        
-        # Determine whether to transcribe or translate
-        transcribe_func = self.model.translate if self.task_type == 'translate' else self.model.transcribe
-        
-        results = transcribe_func(
-            audio_np,
-            language=self.language,
-            task=self.task_type,
-            vad_filter=self.vad,
-            temperature=self.temperature
-        )
-        
-        return {
-            "transcription": results["text"],
-            "results": results,
-            "all_actions": ["audio_transcribed"]
-        }
+        """Transcribe audio with context support"""
+        try:
+            transcribe_func = self.model.translate if self.task_type == 'translate' else self.model.transcribe
+            
+            results = await asyncio.to_thread(
+                transcribe_func,
+                state['audio_data'],
+                language=self.language,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                vad_filter=self.vad,
+                initial_prompt=state.get('initial_prompt', '')  # Add initial prompt
+            )
+
+            state['transcription'] = results["text"]
+            state['results'] = results
+            state['all_actions'].append("audio_transcribed")
+            return state
+
+        except Exception as e:
+            raise ModelError(f"Transcription failed: {str(e)}")
 
     async def save_outputs(self, state: TranscriptionState) -> TranscriptionState:
-        """Save transcription results in multiple formats using Whisper's get_writer."""
-        base_filename = Path(state['audio_path']).stem
-        
-        # Save plain transcription text
-        txt_path = self.output_dir / f"{base_filename}.txt"
-        with open(txt_path, 'w', encoding='utf-8') as f:
-            f.write(state['transcription'])
+        """Save outputs node in workflow"""
+        try:
+            base_filename = Path(state['audio_path']).stem
+            result = TranscriptionResult(
+                text=state['transcription'],
+                segments=state['results'].get('segments', []),
+                language=state['results'].get('language', ''),
+                raw_output=state['results']
+            )
 
-        # Save in different formats using Whisper's get_writer
-        supported_formats = ['tsv', 'vtt', 'srt', 'json']
-        for format_name in supported_formats:
-            writer = get_writer(format_name, str(self.output_dir))
-            writer(state['results'], f"{base_filename}.{format_name}")
+            # Save in all supported formats using Whisper's writers directly
+            formats = ['txt', 'srt', 'vtt', 'tsv', 'json', 'all']
+            for fmt in formats:
+                writer = get_writer(fmt, str(self.output_dir))
+                await asyncio.to_thread(
+                    writer,
+                    state['results'],  # Use raw results directly
+                    f"{base_filename}.{fmt}"
+                )
 
-        return {"all_actions": ["outputs_saved"]}
+            state['all_actions'].append("outputs_saved")
+            return state
+
+        except Exception as e:
+            raise OutputError(f"Failed to save outputs: {str(e)}")
 
     async def post_process(self, state: TranscriptionState) -> TranscriptionState:
+        """Post-processing node in workflow"""
+        # Implement any post-processing logic here
+        state['all_actions'].append("post_processed")
+        return state
+        
+    def _prepare_response(self, state: TranscriptionState) -> dict:
+        """Prepare final response from workflow state"""
         return {
-            "answer": "Transcription complete. Files saved to output directory.",
-            "all_actions": ["post_processing_completed"]
+            "transcription": state['transcription'],
+            "language": state['results'].get('language', ''),
+            "actions": state['all_actions'],
+            "output_dir": str(self.output_dir)
         }
-
-    async def process_audio(self, audio_path: str) -> dict:
-        """Main method to process an audio file."""
-        if not Path(audio_path).exists():
-            raise FileNotFoundError(f"Audio file not found: {audio_path}")
-
-        initial_state = {
-            "audio_path": audio_path,
-            "transcription": "",
-            "results": {},
-            "answer": "",
-            "all_actions": []
-        }
-
-        final_state = await self.graph_runnable.ainvoke(initial_state)
-        return {
-            "transcription": final_state["transcription"],
-            "answer": final_state["answer"]
-        }
-
+        
     async def query(self, question: str, history: List[tuple] = None, prompt_template: str = None) -> str:
         """Method to answer questions about the transcription."""
         if not history:
