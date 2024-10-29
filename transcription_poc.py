@@ -4,6 +4,9 @@ import os
 import sys
 import traceback
 from typing import List, Union
+from transcription_assistant import TranscriptionAssistant, TranscriptionContext
+from enhanced_content_loader import EnhancedContentLoader
+from pathlib import Path
 
 # Third-party imports
 import gradio as gr
@@ -91,13 +94,21 @@ async def transcription_wrapper(
                 audio_path = docs[0].metadata["processed_path"]
                 
         if not audio_path:
-            return {
-                "error": "Please provide either an audio file or a valid URL."
-            }
+            return (
+                "Please provide either an audio file or a valid URL.",
+                None, None, None, None, None, None, None
+            )
             
+        # Create a basic TranscriptionContext
+        # This can be expanded later when adding UI controls
+        context = TranscriptionContext(
+            speakers=[],  # Could be populated from UI in future
+            terms={},     # Could be populated from UI in future
+            context=""    # Could be populated from UI in future
+        )
+        
         # Initialize transcription assistant with selected parameters
         transcription_assistant = TranscriptionAssistant(
-            model=get_model(model_choice),
             model_size=model_choice.split()[-1].lower(),
             language=language,
             task_type=task_type,
@@ -105,36 +116,44 @@ async def transcription_wrapper(
             vocal_extracter=vocal_extracter_checkbox,
             device=device_input.lower(),
             temperature=temperature,
-            output_dir="./output"
+            output_dir="./output",
+            context=context  # Pass the context object
         )
         
-        # Process the audio
-        result = await transcription_assistant.process_audio(audio_path)
+        # Process the audio with context
+        result = await transcription_assistant.process_audio(
+            audio_path,
+            context=context  # Pass context to process_audio
+        )
         
-        # Generate output files based on selected format
-        outputs = {
-            "transcription": result["transcription"],
-            "audio_output": audio_path if task_type == "transcribe" else None,
-            "video_output": None  # Set this if you implement video processing
-        }
+        # Prepare file paths for outputs
+        base_filename = Path(audio_path).stem
+        output_dir = Path("./output")
         
-        # Generate requested subtitle formats
-        if output_format in ["txt", "all"]:
-            outputs["txt_download"] = transcription_assistant.save_as_txt(result["transcription"])
-        if output_format in ["srt", "all"]:
-            outputs["srt_download"] = transcription_assistant.save_as_srt(result["transcription"])
-        if output_format in ["vtt", "all"]:
-            outputs["vtt_download"] = transcription_assistant.save_as_vtt(result["transcription"])
-        if output_format in ["tsv", "all"]:
-            outputs["tsv_download"] = transcription_assistant.save_as_tsv(result["transcription"])
-        if output_format in ["json", "all"]:
-            outputs["json_download"] = transcription_assistant.save_as_json(result["transcription"])
-            
-        return outputs
+        # Initialize output file paths based on format
+        txt_file = str(output_dir / f"{base_filename}.txt") if output_format in ["txt", "all"] else None
+        srt_file = str(output_dir / f"{base_filename}.srt") if output_format in ["srt", "all"] else None
+        vtt_file = str(output_dir / f"{base_filename}.vtt") if output_format in ["vtt", "all"] else None
+        tsv_file = str(output_dir / f"{base_filename}.tsv") if output_format in ["tsv", "all"] else None
+        json_file = str(output_dir / f"{base_filename}.json") if output_format in ["json", "all"] else None
+        
+        return (
+            result["transcription"],  # subtitle_preview
+            audio_path if task_type == "transcribe" else None,  # audio_output
+            None,  # video_output
+            txt_file,  # txt_download
+            srt_file,  # srt_download
+            vtt_file,  # vtt_download
+            tsv_file,  # tsv_download
+            json_file  # json_download
+        )
         
     except Exception as e:
         logger.error(f"Transcription error: {str(e)}")
-        return {"error": f"Error during transcription: {str(e)}"}
+        return (
+            f"Error during transcription: {str(e)}",
+            None, None, None, None, None, None, None
+        )
 
 # Gradio interface setup
 with gr.Blocks() as demo:
