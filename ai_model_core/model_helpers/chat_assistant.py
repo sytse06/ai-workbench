@@ -1,8 +1,12 @@
 # model_helpers/chat_assistant.py
 import logging
-from typing import List, Generator
-from langchain.schema import HumanMessage, AIMessage
+import os
+from typing import List, Generator, Union, Tuple
+from langchain.schema import HumanMessage, AIMessage, BaseMessage
 from ai_model_core import get_model
+
+# Set USER_AGENT environment variable
+os.environ["USER_AGENT"] = "AI-Workbench/1.0"
 
 logger = logging.getLogger(__name__)
 
@@ -18,14 +22,20 @@ class ChatAssistant:
             self.model = get_model(model_choice)
             self.model_choice = model_choice
 
-    def _format_history(self, history: List[tuple[str, str]]) -> List[HumanMessage | AIMessage]:
+    def _format_history(self, history: List[Tuple[str, str]]) -> List[BaseMessage]:
         formatted_history = []
         for human, ai in history:
             formatted_history.append(HumanMessage(content=human))
             formatted_history.append(AIMessage(content=ai))
         return formatted_history
 
-    async def chat(self, message: str, history: List[tuple[str, str]], history_flag: bool, stream: bool = False) -> Generator[str, None, None]:
+    async def chat(
+        self, 
+        message: str, 
+        history: List[Tuple[str, str]], 
+        history_flag: bool, 
+        stream: bool = False
+    ) -> Generator[str, None, None]:
         logger.info(f"Chat function called with message: {message}, history_flag: {history_flag}, model_choice: {self.model_choice}")
         logger.info(f"Temperature: {self.temperature}, Max tokens: {self.max_tokens}")
         
@@ -45,8 +55,8 @@ class ChatAssistant:
                 yield chunk.content
         else:
             result = await self.model.agenerate([messages])
-            yield result.generations[0][0].text
-
+            yield result.generations[0][0].text    
+            
     def set_temperature(self, temperature: float):
         self.temperature = temperature
 

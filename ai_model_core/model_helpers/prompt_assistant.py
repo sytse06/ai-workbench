@@ -1,12 +1,16 @@
 # model_helpers/prompt_assistant.py
+import os
 from langchain.prompts import ChatPromptTemplate
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
-from typing import List, Dict, Any
+from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
+from typing import List, Dict, Any, Generator, Union, Tuple
 from ai_model_core.config.credentials import get_api_key, load_credentials
 from ai_model_core.config.settings import load_config, get_prompt_list, update_prompt_list
 from ai_model_core import get_model, get_prompt_template, get_system_prompt, _format_history
 from langchain.schema.runnable import RunnableParallel
 import logging
+
+# Set USER_AGENT environment variable
+os.environ["USER_AGENT"] = "AI-Workbench/1.0"
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +25,7 @@ class PromptAssistant:
             self.model = get_model(model_choice, **kwargs)
             self.model_choice = model_choice
     
-    def _format_history(self, history: List[tuple[str, str]]) -> List[HumanMessage | AIMessage]:
+    def _format_history(self, history: List[Tuple[str, str]]) -> List[BaseMessage]:
         formatted_history = []
         for user_msg, ai_msg in history:
             formatted_history.append(HumanMessage(content=user_msg))

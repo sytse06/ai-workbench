@@ -1,16 +1,19 @@
 from langchain_community.chat_models import ChatOllama, ChatAnthropic
 from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
 from ai_model_core.factory import get_model
 from ai_model_core.config.settings import load_config
 from ai_model_core.config.credentials import get_api_key, load_credentials
-from typing import List, AsyncGenerator, Union
+from typing import List, AsyncGenerator, Union, Tuple
 from PIL import Image
 import base64
 from io import BytesIO
 import os
 import logging
 import asyncio
+
+# Set USER_AGENT environment variable
+os.environ["USER_AGENT"] = "AI-Workbench/1.0"
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +29,11 @@ class VisionAssistant:
             self.model = get_model(model_choice, **kwargs)
             self.model_choice = model_choice
     
-    def _format_history(self, history: List[tuple[str, str]]) -> List[HumanMessage | AIMessage]:
+    def _format_history(self, history: List[Tuple[str, str]]) -> List[BaseMessage]:
         formatted_history = []
         for user_msg, ai_msg in history:
-            formatted_history.append(HumanMessage(content=user_msg))
-            formatted_history.append(AIMessage(content=ai_msg))
+            formatted_history.append(HumanMessage(content=human))
+            formatted_history.append(AIMessage(content=ai))
         return formatted_history
 
     def _convert_to_base64(self, image: Image.Image, format: str = "PNG") -> str:
