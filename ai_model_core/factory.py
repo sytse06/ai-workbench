@@ -120,7 +120,7 @@ def get_embedding_model(choice: str, **kwargs):
         )
     if choice == "e5-base":
         return E5Embeddings(
-            model_name="intfloat/multilingual-e5-large",
+            model_name="intfloat/multilingual-e5-base",
             **kwargs
         )
     elif choice == "text-embedding-ada-002":

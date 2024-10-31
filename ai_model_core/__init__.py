@@ -58,7 +58,7 @@ def load_assistants():
     from .model_helpers.RAG_assistant import E5Embeddings
     
     global ChatAssistant, RAGAssistant, VisionAssistant, PromptAssistant
-    global SummarizationAssistant, TranscriptionAssistant, E5Embeddings
+    global SummarizationAssistant, TranscriptionAssistant, TranscriptionContext, E5Embeddings
     
     # Add assistants to __all__
     __all__.extend([
@@ -68,6 +68,7 @@ def load_assistants():
         'PromptAssistant',
         'SummarizationAssistant',
         'TranscriptionAssistant',
+        'TranscriptionContext',
         'E5Embeddings'
     ])
 
