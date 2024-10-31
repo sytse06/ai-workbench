@@ -43,6 +43,33 @@ def get_model(choice: str, **kwargs):
             model="llama3.2",
             base_url="http://localhost:11434",
             **kwargs)
+    elif choice == "Mistral (large)":
+        api_key = get_api_key('mistral')
+
+        return ChatOpenAI(
+            model="mistral-large-latest",
+            api_key=api_key,
+            base_url="https://api.mistral.ai/v1",
+            **kwargs
+        )
+    elif choice == "Mistral (pixtral)":
+        api_key = get_api_key('mistral')
+
+        return ChatOpenAI(
+            model="pixtral-12b-2409",
+            api_key=api_key,
+            base_url="https://api.mistral.ai/v1",
+            **kwargs
+        )
+    elif choice == "Mistral (small)":
+        api_key = get_api_key('mistral')
+
+        return ChatOpenAI(
+            model="mistral-small-latest",
+            api_key=api_key,
+            base_url="https://api.mistral.ai/v1",
+            **kwargs
+        )
     elif choice == "Ollama (phi3.5)":
         return ChatOllama(
             model="phi3.5",
