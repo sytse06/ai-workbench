@@ -4,7 +4,7 @@ import os
 import sys
 import traceback
 from typing import List, Union
-from ai_model_core.model_helpers import TranscriptionAssistant
+from ai_model_core.model_helpers import TranscriptionAssistant, TranscriptionContext
 from ai_model_core.utils import EnhancedContentLoader
 from pathlib import Path
 

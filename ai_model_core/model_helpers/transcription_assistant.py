@@ -12,7 +12,7 @@ from langchain.schema import Document
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langgraph.graph import StateGraph, END
+from langgraph.graph import START, StateGraph, END
 
 from ai_model_core import get_prompt_template, _format_history
 from ai_model_core.config.settings import load_config
@@ -25,7 +25,7 @@ class TranscriptionState(TypedDict):
     results: dict  # Store full whisper results for different output formats
     answer: str
     all_actions: Annotated[List[str], lambda x, y: x + [y]]
-    
+    initial_prompt: str    
 @dataclass
 class TranscriptionContext:
     """Container for transcription context information"""
@@ -89,11 +89,17 @@ class TranscriptionAssistant:
         self.setup_graph()
 
     def setup_graph(self):
+        # Initialize state graph
+        self.graph = StateGraph(TranscriptionState)
+        
+        #Add nodes
         self.graph.add_node("preprocess_audio", self.preprocess_audio)
         self.graph.add_node("transcribe_audio", self.transcribe_audio)
         self.graph.add_node("save_outputs", self.save_outputs)
         self.graph.add_node("post_process", self.post_process)
 
+        # Build graph
+        self.graph.add_edge(START, "preprocess_audio")
         self.graph.add_edge("preprocess_audio", "transcribe_audio")
         self.graph.add_edge("transcribe_audio", "save_outputs")
         self.graph.add_edge("save_outputs", "post_process")
