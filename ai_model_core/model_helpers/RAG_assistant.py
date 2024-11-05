@@ -247,17 +247,15 @@ class RAGAssistant:
         relevant_docs = await self.retrieve_context(question)
         context = "\n\n".join(doc.page_content for doc in relevant_docs)
 
-        base_rag_template = self._get_base_rag_template()
-        base_rag_prompt = ChatPromptTemplate.from_template(base_rag_template)
-
         if prompt_template:
             # Use only the custom prompt template
             custom_prompt = get_prompt_template(prompt_template, self.config)
-            rag_chain = self._create_custom_chain(
-                base_rag_prompt, custom_prompt
-            )
+            rag_chain = custom_prompt | self._get_model_chain()
         else:
-            rag_chain = self._create_base_chain(base_rag_prompt)
+            # Use the base template only if no custom template is provided
+            base_rag_template = self._get_base_rag_template()
+            base_rag_prompt = ChatPromptTemplate.from_template(base_rag_template)
+            rag_chain = base_rag_prompt | self._get_model_chain()
 
         input_dict = {"question": question, "context": context}
         if self.use_history and history:

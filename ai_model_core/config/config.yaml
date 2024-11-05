@@ -315,6 +315,20 @@ prompts:
 
 # language_specific:
   dutch:
+    RAG-Prompt: |
+      Context informatie:
+      {context}
+
+      Vraag: {question}
+
+      Instructies:
+      1. Gebruik alleen de informatie uit de bovenstaande context om je antwoord te formuleren
+      2. Formuleer je antwoord duidelijk, goed leesbaar en beknopt
+      3. Houd een vriendelijke, professionele toon aan die past bij marketingdoeleinden
+      4. Verwijs bij het delen van informatie naar specifieke delen uit de context
+      5. Als de context onvoldoende informatie bevat om de vraag te beantwoorden, geef dit duidelijk aan en specificeer welke aanvullende informatie nodig zou zijn
+
+      Antwoord:
     summarize_stuff: |
       Schrijf een beknopte samenvatting van de volgende tekst in 4 zinnen:
       "{text}"
