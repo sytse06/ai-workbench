@@ -60,6 +60,33 @@ def get_model(choice: str, **kwargs):
         if whisper_size not in valid_sizes:
             raise ValueError(f"Invalid Whisper model size. Choose from {', '.join(valid_sizes)}")
         return whisper.load_model(whisper_size)
+    elif choice == "Mistral (large)":
+        api_key = get_api_key('mistral')
+
+        return ChatOpenAI(
+            model="mistral-large-latest",
+            api_key=api_key,
+            base_url="https://api.mistral.ai/v1",
+            **kwargs
+        )
+    elif choice == "Mistral (pixtral)":
+        api_key = get_api_key('mistral')
+
+        return ChatOpenAI(
+            model="pixtral-12b-2409",
+            api_key=api_key,
+            base_url="https://api.mistral.ai/v1",
+            **kwargs
+        )
+    elif choice == "Mistral (small)":
+        api_key = get_api_key('mistral')
+
+        return ChatOpenAI(
+            model="mistral-small-latest",
+            api_key=api_key,
+            base_url="https://api.mistral.ai/v1",
+            **kwargs
+        )
     elif choice == "Ollama (phi3.5)":
         return ChatOllama(
             model="phi3.5",

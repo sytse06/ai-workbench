@@ -4,6 +4,7 @@ import logging
 from typing import Dict, List, Any
 
 # Third-party imports
+import os
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain.schema.runnable import RunnableParallel
@@ -38,7 +39,7 @@ class PromptAssistant:
             self.model = get_model(model_choice, **kwargs)
             self.model_choice = model_choice
     
-    def _format_history(self, history: List[tuple[str, str]]) -> List[HumanMessage | AIMessage]:
+    def _format_history(self, history: List[Tuple[str, str]]) -> List[BaseMessage]:
         formatted_history = []
         for user_msg, ai_msg in history:
             formatted_history.append(HumanMessage(content=user_msg))

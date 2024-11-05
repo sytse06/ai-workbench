@@ -2,13 +2,14 @@
 # Standard library imports
 import logging
 from pathlib import Path
+import os
 from typing import List, Generator, Any, Optional, Union, Tuple
 
-# Third-party imports
+# Third-party imports, Union, Tuple
 from langchain.schema import HumanMessage, AIMessage, Document
 import gradio as gr
 
-# Local imports
+# Local imports, BaseMessage
 from ai_model_core.factory import (
     get_model,
     get_embedding_model
@@ -19,6 +20,9 @@ from ai_model_core.utils import (
     get_prompt_template,
     _format_history
 )
+
+# Set USER_AGENT environment variable
+os.environ["USER_AGENT"] = "AI-Workbench/1.0"
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +122,7 @@ class ChatAssistant:
             self.model = get_model(model_choice)
             self.model_choice = model_choice
 
-    def _format_history(self, history: List[tuple[str, str]]) -> List[HumanMessage | AIMessage]:
+    def _format_history(self, history: List[Tuple[str, str]]) -> List[BaseMessage]:
         formatted_history = []
         for human, ai in history:
             formatted_history.append(HumanMessage(content=human))

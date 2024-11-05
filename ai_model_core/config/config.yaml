@@ -16,6 +16,11 @@ system_prompt_settings:
 # Language specific prompts
 prompts:
   english:
+    RAG-Prompt: |
+      Use the information in the context to formulate a clear, well-readable, and concise answer.
+      Keep the response relevant, informative, and in a friendly, professional tone suited for marketing purposes.
+      Refer to specific sources or examples to indicate the origin of the information, ensuring the text is easy to verify.
+      If the answer cannot be deduced from the context, indicate that more information is needed to answer the question accurately.
     Python Code Optimizer and Debugger: |
       Analyze the following Python code:
       [Paste existing code here]
@@ -137,6 +142,11 @@ prompts:
 
 # language_specific:
   dutch:
+    RAG-Prompt: |
+      Gebruik de informatie in de context om een duidelijk, goed leesbaar en beknopt antwoord te formuleren.
+      Houd de reactie relevant, informatief en in een vriendelijke, professionele toon die past bij marketingdoeleinden.
+      Verwijs naar specifieke bronnen of voorbeelden om de herkomst van de informatie aan te geven, zodat de tekst eenvoudig te controleren is.
+      Als het antwoord niet uit de context kan worden afgeleid, geef dan aan dat er meer informatie nodig is om de vraag nauwkeurig te beantwoorden.
     summarize_stuff: |
       Schrijf een beknopte samenvatting van de volgende tekst in 4 zinnen:
       "{text}"
