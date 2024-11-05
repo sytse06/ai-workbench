@@ -1,4 +1,5 @@
 # model_helpers/transcription_assistant.py
+import logging
 from typing import TypedDict, List, Annotated, Union, Optional, Dict
 from pathlib import Path
 import asyncio
@@ -18,6 +19,28 @@ from ai_model_core import get_prompt_template, _format_history
 from ai_model_core.config.settings import load_config
 from ai_model_core.utils import EnhancedContentLoader
 
+logger = logging.getLogger(__name__)
+
+# Custom Exceptions for TranscriptionAssistant
+class TranscriptionError(Exception):
+    """Raised when there's an error during the transcription process"""
+    pass
+
+class OutputError(Exception):
+    """Raised when there's an error with the output format or processing"""
+    pass
+
+class AudioProcessingError(Exception):
+    """Raised when there's an error processing the audio file"""
+    pass
+
+class ModelError(Exception):
+    """Raised when there's an error with the transcription model"""
+    pass
+
+class FileError(Exception):
+    """Raised when there's an error handling input/output files"""
+    pass
 class TranscriptionState(TypedDict):
     input: str
     audio_path: str

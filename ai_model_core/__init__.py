@@ -14,6 +14,13 @@ from .config.settings import (
     get_prompt_list,
     update_prompt_list
 )
+from ai_model_core.model_helpers.transcription_assistant import (
+    TranscriptionError,
+    FileError,
+    ModelError,
+    OutputError,
+    AudioProcessingError
+)
 
 # Define what's available for import
 __all__ = [
@@ -31,6 +38,13 @@ __all__ = [
     'get_prompt',
     'get_prompt_list',
     'update_prompt_list',
+    
+    # Error handling
+    'TranscriptionError',
+    'FileError',
+    'ModelError',
+    'OutputError',
+    'AudioProcessingError'
 ]
 
 # Lazy loading for model-related components
@@ -56,6 +70,7 @@ def load_assistants():
         TranscriptionAssistant
     )
     from .model_helpers.RAG_assistant import E5Embeddings
+    from .model_helpers.transcription_assistant import TranscriptionContext
     
     global ChatAssistant, RAGAssistant, VisionAssistant, PromptAssistant
     global SummarizationAssistant, TranscriptionAssistant, TranscriptionContext, E5Embeddings

@@ -3,8 +3,8 @@ import logging
 import os
 import sys
 import traceback
-from typing import List, Union
-from ai_model_core.model_helpers import TranscriptionAssistant, TranscriptionContext
+from typing import List, Union, Tuple
+from ai_model_core.model_helpers import TranscriptionAssistant
 from ai_model_core.utils import EnhancedContentLoader
 from pathlib import Path
 
@@ -31,6 +31,15 @@ from ai_model_core.model_helpers import (
     VisionAssistant
 )
 from ai_model_core.model_helpers.RAG_assistant import E5Embeddings  # Single import for E5Embeddings
+from ai_model_core.model_helpers.transcription_assistant import TranscriptionContext
+from ai_model_core.model_helpers.transcription_assistant import (
+    TranscriptionError,
+    FileError,
+    ModelError,
+    OutputError,
+    AudioProcessingError,
+    TranscriptionContext
+)
 from ai_model_core.utils import EnhancedContentLoader
 
 # Set environment variables
@@ -84,77 +93,91 @@ async def transcription_wrapper(
         # First, load and preprocess the audio
         loader = EnhancedContentLoader()
         audio_path = None
-        
-        if audio_input:
-            audio_path = audio_input
-        elif url_input:
-            # Assume the loader can handle URL downloads
-            docs = loader.preprocess_audio(urls=url_input)
-            if docs:
-                audio_path = docs[0].metadata["processed_path"]
+    
+        try:    
+            if audio_input:
+                audio_path = audio_input
+            elif url_input:
+                # Assume the loader can handle URL downloads
+                docs = loader.preprocess_audio(urls=url_input)
+                if docs:
+                    audio_path = docs[0].metadata["processed_path"]
+                    
+            if not audio_path:
+                return (
+                    "Please provide either an audio file or a valid URL.",
+                    None, None, None, None, None, None, None
+                )
                 
-        if not audio_path:
-            return (
-                "Please provide either an audio file or a valid URL.",
-                None, None, None, None, None, None, None
+            # Create a basic TranscriptionContext
+            # This can be expanded later when adding UI controls
+            context = TranscriptionContext(
+                speakers=[],  # Could be populated from UI in future
+                terms={},     # Could be populated from UI in future
+                context=""    # Could be populated from UI in future
             )
             
-        # Create a basic TranscriptionContext
-        # This can be expanded later when adding UI controls
-        context = TranscriptionContext(
-            speakers=[],  # Could be populated from UI in future
-            terms={},     # Could be populated from UI in future
-            context=""    # Could be populated from UI in future
-        )
+            # Initialize transcription assistant with selected parameters
+            transcription_assistant = TranscriptionAssistant(
+                model_size=model_choice.split()[-1].lower(),
+                language=language,
+                task_type=task_type,
+                vad=vad_checkbox,
+                vocal_extracter=vocal_extracter_checkbox,
+                device=device_input.lower(),
+                temperature=temperature,
+                output_dir="./output",
+                context=context  # Pass the context object
+            )
+            
+            # Process the audio with context
+            result = await transcription_assistant.process_audio(
+                audio_path,
+                context=context  # Pass context to process_audio
+            )
+            
+            # Prepare file paths for outputs
+            base_filename = Path(audio_path).stem
+            output_dir = Path("./output")
+            
+            # Initialize output file paths based on format
+            txt_file = str(output_dir / f"{base_filename}.txt") if output_format in ["txt", "all"] else None
+            srt_file = str(output_dir / f"{base_filename}.srt") if output_format in ["srt", "all"] else None
+            vtt_file = str(output_dir / f"{base_filename}.vtt") if output_format in ["vtt", "all"] else None
+            tsv_file = str(output_dir / f"{base_filename}.tsv") if output_format in ["tsv", "all"] else None
+            json_file = str(output_dir / f"{base_filename}.json") if output_format in ["json", "all"] else None
+            
+            return (
+                result["transcription"],  # subtitle_preview
+                audio_path if task_type == "transcribe" else None,  # audio_output
+                None,  # video_output
+                txt_file,  # txt_download
+                srt_file,  # srt_download
+                vtt_file,  # vtt_download
+                tsv_file,  # tsv_download
+                json_file  # json_download
+            )
         
-        # Initialize transcription assistant with selected parameters
-        transcription_assistant = TranscriptionAssistant(
-            model_size=model_choice.split()[-1].lower(),
-            language=language,
-            task_type=task_type,
-            vad=vad_checkbox,
-            vocal_extracter=vocal_extracter_checkbox,
-            device=device_input.lower(),
-            temperature=temperature,
-            output_dir="./output",
-            context=context  # Pass the context object
-        )
-        
-        # Process the audio with context
-        result = await transcription_assistant.process_audio(
-            audio_path,
-            context=context  # Pass context to process_audio
-        )
-        
-        # Prepare file paths for outputs
-        base_filename = Path(audio_path).stem
-        output_dir = Path("./output")
-        
-        # Initialize output file paths based on format
-        txt_file = str(output_dir / f"{base_filename}.txt") if output_format in ["txt", "all"] else None
-        srt_file = str(output_dir / f"{base_filename}.srt") if output_format in ["srt", "all"] else None
-        vtt_file = str(output_dir / f"{base_filename}.vtt") if output_format in ["vtt", "all"] else None
-        tsv_file = str(output_dir / f"{base_filename}.tsv") if output_format in ["tsv", "all"] else None
-        json_file = str(output_dir / f"{base_filename}.json") if output_format in ["json", "all"] else None
-        
-        return (
-            result["transcription"],  # subtitle_preview
-            audio_path if task_type == "transcribe" else None,  # audio_output
-            None,  # video_output
-            txt_file,  # txt_download
-            srt_file,  # srt_download
-            vtt_file,  # vtt_download
-            tsv_file,  # tsv_download
-            json_file  # json_download
-        )
-        
+        except TranscriptionError as e:
+            logger.error(f"Transcription failed: {e}")
+            return (f"Transcription error: {str(e)}", *empty_return[1:])
+        except FileError as e:
+            logger.error(f"File error: {e}")
+            return (f"File error: {str(e)}", *empty_return[1:])
+        except ModelError as e:
+            logger.error(f"Model error: {e}")
+            return (f"Model error: {str(e)}", *empty_return[1:])
+        except OutputError as e:
+            logger.error(f"Output error: {e}")
+            return (f"Output error: {str(e)}", *empty_return[1:])
+        except AudioProcessingError as e:
+            logger.error(f"Audio processing error: {e}")
+            return (f"Audio processing error: {str(e)}", *empty_return[1:])
+            
     except Exception as e:
-        logger.error(f"Transcription error: {str(e)}")
-        return (
-            f"Error during transcription: {str(e)}",
-            None, None, None, None, None, None, None
-        )
-
+        logger.error(f"Unexpected error in transcription wrapper: {str(e)}")
+        return (f"Unexpected error: {str(e)}", *empty_return[1:])
+    
 # Gradio interface setup
 with gr.Blocks() as demo:
     gr.Markdown("# AI WorkBench")
