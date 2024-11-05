@@ -6,7 +6,7 @@ import os
 from typing import List, Generator, Any, Optional, Union, Tuple
 
 # Third-party imports, Union, Tuple
-from langchain.schema import HumanMessage, AIMessage, Document
+from langchain.schema import HumanMessage, AIMessage, Document, BaseMessage
 import gradio as gr
 
 # Local imports, BaseMessage

@@ -1,12 +1,12 @@
 # model_helpers/prompt_assistant.py
 # Standard library imports
 import logging
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 
 # Third-party imports
 import os
 from langchain.prompts import ChatPromptTemplate
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
 from langchain.schema.runnable import RunnableParallel
 
 # Local imports

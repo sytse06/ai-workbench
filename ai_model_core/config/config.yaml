@@ -17,10 +17,19 @@ system_prompt_settings:
 prompts:
   english:
     RAG-Prompt: |
-      Use the information in the context to formulate a clear, well-readable, and concise answer.
-      Keep the response relevant, informative, and in a friendly, professional tone suited for marketing purposes.
-      Refer to specific sources or examples to indicate the origin of the information, ensuring the text is easy to verify.
-      If the answer cannot be deduced from the context, indicate that more information is needed to answer the question accurately.
+      Context information:
+      {context}
+
+      Question: {question}
+
+      Instructions:
+      1. Use only the information provided in the context above to formulate your answer
+      2. Format your response to be clear, well-readable, and concise
+      3. Maintain a friendly, professional tone suitable for marketing purposes
+      4. When referencing information, cite specific parts from the context
+      5. If the context doesn't contain sufficient information to answer the question, clearly state this and specify what additional information would be needed
+      
+      Answer:
     Python Code Optimizer and Debugger: |
       Analyze the following Python code:
       [Paste existing code here]
@@ -143,10 +152,19 @@ prompts:
 # language_specific:
   dutch:
     RAG-Prompt: |
-      Gebruik de informatie in de context om een duidelijk, goed leesbaar en beknopt antwoord te formuleren.
-      Houd de reactie relevant, informatief en in een vriendelijke, professionele toon die past bij marketingdoeleinden.
-      Verwijs naar specifieke bronnen of voorbeelden om de herkomst van de informatie aan te geven, zodat de tekst eenvoudig te controleren is.
-      Als het antwoord niet uit de context kan worden afgeleid, geef dan aan dat er meer informatie nodig is om de vraag nauwkeurig te beantwoorden.
+      Context informatie:
+      {context}
+
+      Vraag: {question}
+
+      Instructies:
+      1. Gebruik alleen de informatie uit de bovenstaande context om je antwoord te formuleren
+      2. Formuleer je antwoord duidelijk, goed leesbaar en beknopt
+      3. Houd een vriendelijke, professionele toon aan die past bij marketingdoeleinden
+      4. Verwijs bij het delen van informatie naar specifieke delen uit de context
+      5. Als de context onvoldoende informatie bevat om de vraag te beantwoorden, geef dit duidelijk aan en specificeer welke aanvullende informatie nodig zou zijn
+
+      Antwoord:
     summarize_stuff: |
       Schrijf een beknopte samenvatting van de volgende tekst in 4 zinnen:
       "{text}"
