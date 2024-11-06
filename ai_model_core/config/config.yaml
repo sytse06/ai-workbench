@@ -41,6 +41,92 @@ prompts:
       5. Propose a testing strategy to validate the improved code.
 
       Focus on [specific aspect or functionality] and consider [any limitations or requirements].
+    messaging_house_campaign: |
+      {intention}
+        Develop a messaging house for a campaign, ensuring the messaging is compelling
+        and aligned with the target audience's needs. Each section should be clear, consistent,
+        and supported by proof points to reinforce the core message.
+
+      {main_instruction}
+        "Develop a messaging house for our campaign by going through the following sections step-by-step.
+        Make sure the messaging is compelling and engaging for our target audience, with each section
+        clearly and consistently articulated. As you move through each section, incorporate proof points
+        to reinforce the messaging."
+
+      {Brand promise}
+        "Craft a powerful one-liner that captures the brand's promise to the target audience.
+        This should inspire trust and differentiate us from competitors. Describe how this
+        promise addresses a core challenge or pain point faced by the audience. Ensure the promise
+        is both practical and inspiring, highlighting the tangible benefits the audience will experience."
+
+      {Mission}
+        "Write a brief, inspiring mission statement that encapsulates our brand values and goals.
+        Show how this mission aligns with the values, needs, and aspirations of our target audience.
+        Make it clear how our mission reflects an understanding of the audience's unique challenges
+        and our commitment to addressing them."
+
+      {Target Audience}
+        "Describe the primary target audience for this campaign, including key characteristics, needs,
+        and specific pain points. Consider demographic information, industry needs, and purchase motivations.
+        Identify any secondary audiences or influencers that this campaign should also engage and explain
+        how they are involved in the process. Explain how the campaign addresses the motivations of the
+        audience and how we can help them overcome unique challenges or achieve their goals."
+
+      {Primary Message}
+        "Develop a core message that summarizes the unique value of our solution in a single, compelling
+        sentence. This message should resonate emotionally and position our solution as essential and
+        transformative for the audience. Describe the specific benefits and distinctive features of our
+        solution that support this message and emphasize the value we provide. Make the message inspiring
+        and appealing, showcasing the brand's flexibility and commitment to innovation."
+
+      {Brand pillars}
+        "Identify the three to five main brand aspects (pillars) that form the foundation of our messaging.
+        Provide a brief description of each pillar, explaining how it helps address specific challenges
+        faced by the audience. Back up each pillar with relevant proof points, such as customer success
+        stories, statistics, or features that demonstrate the practical value for the audience. Ensure each
+        pillar feels recognizable and credible, with a clear connection to the core message."
+
+      {Proof Points and Real-World Examples}
+        "Provide one or more examples for each brand pillar that illustrate the success or impact of our
+        solution. Consider customer stories or examples of how specific features of our platform have made
+        a difference. Include facts or figures that showcase the value of our solution in practice, such as
+        improved efficiency, cost savings, or increased customer satisfaction. Make these proof points
+        persuasive and relatable, helping the audience envision the success they could experience."
+    case_description: |
+      "Write a case description based on the following five main topics and associated questions. Use the context of the messaging house to enrich answers with brand values, goals, and brand pillars."
+
+      {Business_Challenge_and_Background}
+        "Describe the initial problem or challenge that motivated the organization to seek a new solution. What strategic goals were not being met as a result?"
+      {Brand_Promise}
+        "Brand Promise: {brand_promise}"
+      {Mission}
+        "Mission: {mission}"
+      {Solution_Requirements_and_Selection_Process}
+        "Indicate the specific requirements the solution needed to fulfill. Discuss the decision-making process and the stakeholders involved in the selection."
+      {Target_Audience}
+        "Target Audience: {target_audience}"
+      {Brand_Pillars}
+        "Brand Pillars: {brand_pillars}"
+      {Implementation_and_Development}
+        "What steps were taken during the implementation? Describe the structure of the teams and the roles they played, and discuss any challenges or risks encountered."
+      {Brand_Pillars}
+        "Brand Pillars: {brand_pillars}"
+      {Proof_Points_and_Examples}
+        "Proof Points and Examples: {proof_points_and_examples}"
+      {Results_and_Benefits}
+        "Describe the key results after implementation. How did the solution impact efficiency, customer satisfaction, or revenue, and what long-term benefits were achieved?"
+      {Primary_Message}
+        "Primary Message: {primary_message}"
+      {Proof_Points_and_Examples}
+        "Proof Points and Examples: {proof_points_and_examples}"
+      {Future_Plans_and_Scalability}
+        "Describe future plans for further utilization or expansion of the solution and how this aligns with the organization's growth ambitions or market changes."
+      {Mission}
+        "Mission: {mission}"
+      {Brand_Promise}
+        "Brand Promise: {brand_promise}"
+      {Brand_Pillars}
+        "Brand Pillars: {brand_pillars}"
     summarize_stuff: |
       Write a concise summary of the following text in 4 sentences:
       "{text}"
@@ -165,6 +251,85 @@ prompts:
       5. Als de context onvoldoende informatie bevat om de vraag te beantwoorden, geef dit duidelijk aan en specificeer welke aanvullende informatie nodig zou zijn
 
       Antwoord:
+    messaging_house_campagne: |
+      {intentie}
+        "Ontwikkel een messaging house voor een campagne en zorg ervoor dat de boodschap
+        overtuigend is en aansluit bij de behoeften van de doelgroep. Elke sectie moet duidelijk,
+        consistent en ondersteund zijn door bewijspunten om de kernboodschap te versterken."
+      {instructie}
+        "Schrijf een messaging house uit voor een marketing campagne door de volgende onderdelen stap-voor-stap
+        te doorlopen. Zorg dat de boodschap overtuigend en inspirerend is voor de beoogde doelgroep,
+        met elke sectie duidelijk en consistent geformuleerd. Voeg waar mogelijk bewijsvoering toe
+        om de boodschap te versterken."
+      {Merkbelofte}
+        "Beschrijf in één krachtige zin de belofte die het merk doet aan de doelgroep.
+        Deze belofte moet vertrouwen wekken en het merk onderscheiden van concurrenten. Geef aan
+        hoe deze belofte een centrale uitdaging of pijnpunt van de doelgroep oplost. Zorg dat
+        de belofte zowel praktisch als inspirerend is en benadruk de tastbare voordelen die
+        de beoogde doelgroep zal ervaren."
+      {Missie}
+        "Schrijf een korte, inspirerende missie die de merkwaarden en doelen samenvat.
+        Toon hoe deze missie aansluit bij de waarden, behoeften en aspiraties van de beoogde doelgroep.
+        Maak duidelijk hoe de missie inzicht toont in de unieke uitdagingen van de doelgroep
+        en de inzet van het merk om deze vraag adequaat te adresseren."
+      {Doelgroep}
+        "Beschrijf de primaire doelgroep van deze campagne, inclusief kenmerken, behoeften en specifieke pijnpunten.
+        Overweeg demografische informatie, sectorbehoeften en aankoopmotivaties. Benoem eventuele secundaire
+        doelgroepen of beïnvloeders die deze campagne ook aanspreekt en leg uit hoe zij bij het proces betrokken zijn.
+        Leg uit hoe de campagne aansluit op de motivaties van de doelgroep en hoe het merk hen kan helpen hun unieke
+        uitdagingen te overwinnen of doelen te bereiken."
+      {Primaire boodschap}
+        "Ontwikkel een kernboodschap die de unieke waarde van de oplossing in één overtuigende zin samenvat.
+        Deze boodschap moet emotioneel resoneren en onze oplossing neerzetten als essentieel en transformerend
+        voor de doelgroep. Beschrijf de specifieke voordelen en onderscheidende kenmerken van de oplossing
+        die deze boodschap ondersteunen en benadruk de waarde die het merk biedt. Maak de boodschap inspirerend
+        en aansprekend, waarbij de flexibiliteit en innovatiekracht van het merk duidelijk naar voren komen."
+      {Merkpijlers}
+        "Identificeer de drie tot vijf belangrijkste merkaspecten (merkpijlers) die de basis vormen van de boodschap.
+        Geef een korte beschrijving van elke pijler en leg uit hoe het helpt bij het oplossen van specifieke uitdagingen
+        waarmee de doelgroep te maken heeft. Onderbouw elke pijler met relevante bewijspunten, zoals klantcases,
+        statistieken of kenmerken die de praktische waarde voor de doelgroep aantonen. Zorg dat elke pijler herkenbaar
+        en geloofwaardig overkomt, met een duidelijk verband naar de kernboodschap."
+      {Bewijspunten en Praktijkvoorbeelden}
+        "Geef per merkpijler één of meerdere voorbeelden die het succes of de impact van onze oplossing illustreren.
+        Denk aan klantcases of voorbeelden van hoe specifieke functies van ons platform een verschil hebben gemaakt.
+        Voeg feiten of cijfers toe die de waarde van onze oplossing in de praktijk aantonen, zoals verbeterde efficiëntie,
+        kostenbesparing of klanttevredenheid. Zorg dat deze bewijspunten overtuigend en toegankelijk zijn, zodat de doelgroep
+        zich kan inleven in het succes dat ze zelf kunnen ervaren."
+    casebeschrijving: |
+      "Schrijf een casebeschrijving gebaseerd op de volgende vijf hoofdonderwerpen en de bijbehorende vragen. Gebruik de context van het messaging house om antwoorden te verrijken met merkwaarden, doelen, en merkpijlers."
+      {Zakelijke_Uitdaging_en_Achtergrond}
+        "Beschrijf het initiële probleem of de uitdaging die de organisatie motiveerde om een nieuwe oplossing te zoeken. Welke strategische doelen werden hierdoor niet bereikt?"
+      {Merkbelofte}
+        "Merkbelofte: {merkbelofte}"
+      {Missie}
+        "Missie: {missie}"
+      {Oplossingsvereisten_en_Selectieproces}
+        "Geef aan welke specifieke eisen de oplossing moest vervullen. Bespreek het besluitvormingsproces en de belanghebbenden die betrokken waren bij de keuze."
+      {Doelgroep}
+        "Doelgroep: {doelgroep}"
+      {Merkpijlers}
+        "Merkpijlers: {merkpijlers}"
+      {Implementatie_en_Ontwikkeling}
+        "Welke stappen zijn ondernomen tijdens de implementatie? Omschrijf de structuur van de teams en de rollen die ze speelden, en bespreek eventuele uitdagingen of risico’s."
+      {Merkpijlers}
+        "Merkpijlers: {merkpijlers}"
+      {Bewijspunten_en_Praktijkvoorbeelden}
+        "Bewijspunten en praktijkvoorbeelden: {bewijspunten_en_praktijkvoorbeelden}"
+      {Resultaten_en_Voordelen}
+        "Beschrijf de belangrijkste resultaten na implementatie. Hoe heeft de oplossing de efficiëntie, klanttevredenheid, of omzet beïnvloed, en welke langetermijnvoordelen zijn behaald?"
+      {Primaire_Boodschap}
+        "Primaire boodschap: {primaire_boodschap}"
+      {Bewijspunten_en_Praktijkvoorbeelden}
+        "Bewijspunten en praktijkvoorbeelden: {bewijspunten_en_praktijkvoorbeelden}"
+      {Toekomstplannen_en_Schaalbaarheid}
+        "Omschrijf de toekomstplannen voor verdere benutting of uitbreiding van de oplossing en hoe deze past in de groeiambities of marktveranderingen van de organisatie."
+      {Missie}
+        "Missie: {missie}"
+      {Merkbelofte}
+        "Merkbelofte: {merkbelofte}"
+      {Merkpijlers}
+        "Merkpijlers: {merkpijlers}"
     summarize_stuff: |
       Schrijf een beknopte samenvatting van de volgende tekst in 4 zinnen:
       "{text}"
