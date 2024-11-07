@@ -10,17 +10,17 @@ from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
 from langchain.schema.runnable import RunnableParallel
 
 # Local imports
-from ai_model_core.config.credentials import (
+from ..config.credentials import (
     get_api_key,
     load_credentials
 )
-from ai_model_core.config.settings import (
+from ..config.settings import (
     load_config,
     get_prompt_list,
     update_prompt_list
 )
-from ai_model_core.factory import get_model
-from ai_model_core.utils import (
+from ..shared_utils.factory import get_model
+from ..shared_utils.utils import (
     get_prompt_template,
     get_system_prompt,
     _format_history

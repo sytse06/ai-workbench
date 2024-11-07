@@ -13,14 +13,15 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 # Local imports
-from ai_model_core import (
+from ..shared_utils import (
     get_model,
     get_embedding_model,
     get_prompt_template,
     _format_history
 )
-from ai_model_core.config.settings import load_config
-from ai_model_core.utils import EnhancedContentLoader
+from ..config.settings import load_config
+from ..shared_utils.utils import EnhancedContentLoader
+
 logger = logging.getLogger(__name__)
 
 class OverallState(TypedDict):

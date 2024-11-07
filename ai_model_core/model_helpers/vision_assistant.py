@@ -1,16 +1,22 @@
-from langchain_community.chat_models import ChatOllama, ChatAnthropic
-from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
-from ai_model_core.factory import get_model
-from ai_model_core.config.settings import load_config
-from ai_model_core.config.credentials import get_api_key, load_credentials
+# model_helpers/vision_assistant.py
+# Standard library imports
 from typing import List, AsyncGenerator, Union, Tuple
-from PIL import Image
 import base64
 from io import BytesIO
 import os
 import logging
 import asyncio
+
+# Third-party imports
+from langchain_community.chat_models import ChatOllama, ChatAnthropic
+from langchain_openai import ChatOpenAI
+from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
+from PIL import Image
+
+# Local imports
+from ..shared_utils.factory import get_model
+from ..config.settings import load_config
+from ..config.credentials import get_api_key, load_credentials
 
 # Set USER_AGENT environment variable
 os.environ["USER_AGENT"] = "AI-Workbench/1.0"

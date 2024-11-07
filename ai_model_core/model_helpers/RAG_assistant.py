@@ -1,30 +1,24 @@
-# model_helpers/RAG_assistant.py
 # Standard library imports
 import asyncio
 from typing import TypedDict, List, Annotated, Union
 from operator import add
 
 # Third-party imports
-import torch
-from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModel
 from langgraph.graph import StateGraph, END
 from langchain.schema import Document
 from langchain_community.vectorstores import FAISS
-from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.embeddings import Embeddings
 
 # Local imports
-from ai_model_core import (
+from ..shared_utils import (
     get_model,
     get_embedding_model,
     get_prompt_template,
     _format_history
 )
-from ai_model_core.config.settings import load_config
-from ai_model_core.utils import EnhancedContentLoader
+from ..config.settings import load_config
+from ..shared_utils.utils import EnhancedContentLoader
 
 
 class State(TypedDict):
@@ -35,49 +29,6 @@ class State(TypedDict):
     all_actions: Annotated[List[str], add]
 
 
-class E5Embeddings(Embeddings):
-    def __init__(
-        self,
-        model_name: str = "intfloat/multilingual-e5-large",
-        normalize_embeddings: bool = True
-    ):
-        """
-        Initialize E5 embeddings for retrieval tasks.
-        
-        Args:
-            model_name: The name of the E5 model to use
-            normalize_embeddings: Whether to normalize the embeddings
-        """
-        self.model = SentenceTransformer(model_name)
-        self.normalize_embeddings = normalize_embeddings
-
-    def _format_text(self, text: str, is_query: bool = False) -> str:
-        """
-        Format text according to E5 rules for retrieval:
-        - "query: " for questions
-        - "passage: " for documents
-        """
-        prefix = "query: " if is_query else "passage: "
-        return prefix + text
-
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """Embed documents using 'passage:' prefix."""
-        formatted_texts = [self._format_text(text, is_query=False) for text in texts]
-        embeddings = self.model.encode(
-            formatted_texts,
-            normalize_embeddings=self.normalize_embeddings
-        )
-        return embeddings.tolist()
-
-    def embed_query(self, text: str) -> List[float]:
-        """Embed query using 'query:' prefix."""
-        formatted_text = self._format_text(text, is_query=True)
-        embedding = self.model.encode(
-            formatted_text,
-            normalize_embeddings=self.normalize_embeddings
-        )
-        return embedding.tolist()
-    
 class RAGAssistant:
     def __init__(
         self,
@@ -112,7 +63,11 @@ class RAGAssistant:
         )
         self.retrieval_method = retrieval_method
 
-    def process_content(self, url_input: str, file_input: Union[str, List[str]]):
+    def process_content(
+        self,
+        url_input: str,
+        file_input: Union[str, List[str]]
+    ):
         try:
             docs = self.content_loader.load_and_split_document(
                 file_paths=file_input, urls=url_input
@@ -127,7 +82,7 @@ class RAGAssistant:
             raise ValueError("No documents were loaded.")
 
         # If using the custom embedding function for E5 embedding models
-        if isinstance(self.embedding_model, E5Embeddings):
+        if self.embedding_model_name.startswith("e5-"):
             texts = [doc.page_content for doc in docs]
             embeddings = self.embedding_model.embed_documents(texts)
             text_embeddings = list(zip(texts, embeddings))
@@ -157,17 +112,26 @@ class RAGAssistant:
                 search_kwargs=mmr_kwargs
             )
         elif method == "similarity_threshold":
-            threshold_kwargs = {**base_kwargs, "score_threshold": 0.8}
+            threshold_kwargs = {
+                **base_kwargs,
+                "score_threshold": 0.8
+            }
+            search_kwargs = threshold_kwargs
+            search_type = "similarity_score_threshold"
             return self.vectorstore.as_retriever(
-                search_type="similarity_score_threshold",
-                search_kwargs=threshold_kwargs
+                search_type=search_type,
+                search_kwargs=search_kwargs
             )
         else:
             raise ValueError(f"Unknown retrieval method: {method}")
 
     async def retrieve_context(self, query: str) -> List[Document]:
         loop = asyncio.get_event_loop()
-        docs = await loop.run_in_executor(None, self.retriever.invoke, query)
+        docs = await loop.run_in_executor(
+            None,
+            self.retriever.invoke,
+            query
+        )
         return docs
 
     def generate_answer(self, state):
@@ -203,13 +167,15 @@ class RAGAssistant:
 
     async def query(self, question, history=None, prompt_template=None):
         if not self.vectorstore or not self.retriever:
-            raise ValueError(
+            msg = (
                 "Vector store or retriever not set up. "
                 "Call setup_vectorstore() first."
             )
+            raise ValueError(msg)
 
         relevant_docs = await self.retrieve_context(question)
-        context = "\n\n".join(doc.page_content for doc in relevant_docs)
+        docs_content = [doc.page_content for doc in relevant_docs]
+        context = "\n\n".join(docs_content)
 
         if prompt_template:
             # Use only the custom prompt template

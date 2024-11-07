@@ -13,8 +13,10 @@ This Langchain based AI workbench enables users to interact with various languag
 ai_workbench/
 ├── ai_model_core/
 │   ├── __init__.py
-│   ├── factory.py
-│   ├── utils.py
+│   ├── shared_utils/
+│   │   ├── __init__.py
+│   │   ├── factory.py
+│   │   ├── utils.py
 │   ├── model_helpers/
 │   │   ├── __init__.py
 │   │   ├── chat_assistant_.py
@@ -38,7 +40,7 @@ ai_workbench/
 Contents __init.py
 from .factory import get_model, get_embedding_model
 from .config.credentials import load_credentials, get_api_key
-from .utils import format_prompt, get_system_prompt, get_prompt_template, format_history
+from .shared_utils.utils import format_prompt, get_system_prompt, get_prompt_template, format_history
 from .config.settings import load_config, get_directory, get_prompt, get_prompt_list, update_prompt_list
 ```
 utils.py

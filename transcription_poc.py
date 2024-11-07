@@ -1,46 +1,25 @@
+# Transcription gradio experiment
 # Standard library imports
 import logging
 import os
 import sys
-import traceback
-from typing import List, Union, Tuple
-from ai_model_core.model_helpers import TranscriptionAssistant
-from ai_model_core.utils import EnhancedContentLoader
 from pathlib import Path
 
 # Third-party imports
 import gradio as gr
-from PIL import Image
 
 # Local imports
-from ai_model_core.config.settings import (
-    load_config,
-    get_prompt_list,
-    update_prompt_list
-)
-from ai_model_core.factory import (  # Direct import from factory
-    get_model,
-    get_embedding_model
-)
-from ai_model_core.model_helpers import (
-    ChatAssistant,
-    PromptAssistant,
-    RAGAssistant,
-    SummarizationAssistant,
-    TranscriptionAssistant,
-    VisionAssistant
-)
-from ai_model_core.model_helpers.RAG_assistant import E5Embeddings  # Single import for E5Embeddings
-from ai_model_core.model_helpers.transcription_assistant import TranscriptionContext
+from ai_model_core.config.settings import load_config
+from ai_model_core.shared_utils.utils import EnhancedContentLoader
+from ai_model_core.model_helpers import TranscriptionAssistant
 from ai_model_core.model_helpers.transcription_assistant import (
+    TranscriptionContext,
     TranscriptionError,
     FileError,
     ModelError,
     OutputError,
-    AudioProcessingError,
-    TranscriptionContext
+    AudioProcessingError
 )
-from ai_model_core.utils import EnhancedContentLoader
 
 # Set environment variables
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
@@ -69,8 +48,13 @@ logger.addHandler(c_handler)
 logger.addHandler(f_handler)
 logger.propagate = False
 
+
 # Initialize the assistant when the app starts
 transcription_assistant = TranscriptionAssistant("Whisper base")
+
+# Define empty return tuple for error cases
+empty_return = (None,) * 7  # 7 None values for the 7 output fields
+
 
 # Wrapper function for Gradio interface transcription_assistant:
 async def transcription_wrapper(
@@ -110,7 +94,6 @@ async def transcription_wrapper(
                 )
                 
             # Create a basic TranscriptionContext
-            # This can be expanded later when adding UI controls
             context = TranscriptionContext(
                 speakers=[],  # Could be populated from UI in future
                 terms={},     # Could be populated from UI in future
@@ -127,13 +110,13 @@ async def transcription_wrapper(
                 device=device_input.lower(),
                 temperature=temperature,
                 output_dir="./output",
-                context=context  # Pass the context object
+                context=context
             )
             
             # Process the audio with context
             result = await transcription_assistant.process_audio(
                 audio_path,
-                context=context  # Pass context to process_audio
+                context=context
             )
             
             # Prepare file paths for outputs
@@ -141,47 +124,64 @@ async def transcription_wrapper(
             output_dir = Path("./output")
             
             # Initialize output file paths based on format
-            txt_file = str(output_dir / f"{base_filename}.txt") if output_format in ["txt", "all"] else None
-            srt_file = str(output_dir / f"{base_filename}.srt") if output_format in ["srt", "all"] else None
-            vtt_file = str(output_dir / f"{base_filename}.vtt") if output_format in ["vtt", "all"] else None
-            tsv_file = str(output_dir / f"{base_filename}.tsv") if output_format in ["tsv", "all"] else None
-            json_file = str(output_dir / f"{base_filename}.json") if output_format in ["json", "all"] else None
+            txt_file = (
+                str(output_dir / f"{base_filename}.txt")
+                if output_format in ["txt", "all"] else None
+            )
+            srt_file = (
+                str(output_dir / f"{base_filename}.srt")
+                if output_format in ["srt", "all"] else None
+            )
+            vtt_file = (
+                str(output_dir / f"{base_filename}.vtt")
+                if output_format in ["vtt", "all"] else None
+            )
+            tsv_file = (
+                str(output_dir / f"{base_filename}.tsv")
+                if output_format in ["tsv", "all"] else None
+            )
+            json_file = (
+                str(output_dir / f"{base_filename}.json")
+                if output_format in ["json", "all"] else None
+            )
             
             return (
-                result["transcription"],  # subtitle_preview
-                audio_path if task_type == "transcribe" else None,  # audio_output
+                result["transcription"],
+                audio_path if task_type == "transcribe" else None,
                 None,  # video_output
-                txt_file,  # txt_download
-                srt_file,  # srt_download
-                vtt_file,  # vtt_download
-                tsv_file,  # tsv_download
-                json_file  # json_download
+                txt_file,
+                srt_file,
+                vtt_file,
+                tsv_file,
+                json_file
             )
         
         except TranscriptionError as e:
             logger.error(f"Transcription failed: {e}")
-            return (f"Transcription error: {str(e)}", *empty_return[1:])
+            return (f"Transcription error: {str(e)}", *empty_return)
         except FileError as e:
             logger.error(f"File error: {e}")
-            return (f"File error: {str(e)}", *empty_return[1:])
+            return (f"File error: {str(e)}", *empty_return)
         except ModelError as e:
             logger.error(f"Model error: {e}")
-            return (f"Model error: {str(e)}", *empty_return[1:])
+            return (f"Model error: {str(e)}", *empty_return)
         except OutputError as e:
             logger.error(f"Output error: {e}")
-            return (f"Output error: {str(e)}", *empty_return[1:])
+            return (f"Output error: {str(e)}", *empty_return)
         except AudioProcessingError as e:
             logger.error(f"Audio processing error: {e}")
-            return (f"Audio processing error: {str(e)}", *empty_return[1:])
+            return (f"Audio processing error: {str(e)}", *empty_return)
             
     except Exception as e:
-        logger.error(f"Unexpected error in transcription wrapper: {str(e)}")
-        return (f"Unexpected error: {str(e)}", *empty_return[1:])
+        err_msg = "Unexpected error in transcription wrapper: "
+        logger.error(f"{err_msg}{str(e)}")
+        return (f"{err_msg}{str(e)}", *empty_return)
     
+
 # Gradio interface setup
 with gr.Blocks() as demo:
     gr.Markdown("# AI WorkBench")
-    gr.Markdown("### Chat with LLM's of choice and reuse prompts to get work done.")
+    gr.Markdown("### Get work done with LLM's of choice")
 
     with gr.Tabs():
         # Transcription Tab
@@ -199,7 +199,12 @@ with gr.Blocks() as demo:
                     
                     with gr.Row():
                         model_choice = gr.Dropdown(
-                            choices=[f"Whisper {size}" for size in ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]],
+                            choices=[
+                                f"Whisper {size}" for size in [
+                                    "tiny", "base", "small", "medium",
+                                    "large", "large-v2", "large-v3"
+                                ]
+                            ],
                             value="Whisper large",
                             label="Whisper Model Size",
                             info="Larger models are more accurate but slower"
@@ -208,7 +213,10 @@ with gr.Blocks() as demo:
                             choices=["transcribe", "translate"],
                             value="transcribe",
                             label="Task Type",
-                            info="'Transcribe' keeps original language, 'Translate' converts to English"
+                            info=(
+                                "'Transcribe' keeps original language, "
+                                "'Translate' converts to English"
+                            )
                         )
                     
                     with gr.Row():
@@ -216,7 +224,10 @@ with gr.Blocks() as demo:
                             choices=["Auto", "nl", "de", "fr", "bg"],
                             value="Auto",
                             label="Source Language",
-                            info="Specifying the source language improves speed and accuracy"
+                            info=(
+                                "Specifying source language improves "
+                                "speed and accuracy"
+                            )
                         )
                         output_format = gr.Dropdown(
                             choices=["txt", "srt", "vtt", "tsv", "json", "all"],
@@ -253,8 +264,14 @@ with gr.Blocks() as demo:
 
                 with gr.Column(scale=2):
                     # Output displays
-                    video_output = gr.Video(label="Transcribed Video", visible=False)
-                    audio_output = gr.Audio(label="Transcribed Audio", visible=False)
+                    video_output = gr.Video(
+                        label="Transcribed Video",
+                        visible=False
+                    )
+                    audio_output = gr.Audio(
+                        label="Transcribed Audio",
+                        visible=False
+                    )
                     
                     with gr.Accordion("Downloads", open=False):
                         txt_download = gr.File(label="TXT Download")
@@ -270,34 +287,26 @@ with gr.Blocks() as demo:
                     )
             
             # Process button
-            transcribe_button = gr.Button("Start Transcription", variant="primary")
+            transcribe_button = gr.Button(
+                "Start Transcription",
+                variant="primary"
+            )
             
             # Connect the transcribe button to the wrapper function
             transcribe_button.click(
                 fn=transcription_wrapper,
                 inputs=[
-                    audio_input,
-                    url_input,
-                    model_choice,
-                    language,
-                    task_type,
-                    vad_checkbox,
-                    vocal_extracter_checkbox,
-                    device_input,
-                    output_format,
-                    temperature,
+                    audio_input, url_input, model_choice, language,
+                    task_type, vad_checkbox, vocal_extracter_checkbox,
+                    device_input, output_format, temperature,
                 ],
                 outputs=[
-                    subtitle_preview,
-                    audio_output,
-                    video_output,
-                    txt_download,
-                    srt_download,
-                    vtt_download,
-                    tsv_download,
-                    json_download,
+                    subtitle_preview, audio_output, video_output,
+                    txt_download, srt_download, vtt_download,
+                    tsv_download, json_download,
                 ]
             )
+
 
 if __name__ == "__main__":
     logger.info("Starting the Gradio interface for transcription")
