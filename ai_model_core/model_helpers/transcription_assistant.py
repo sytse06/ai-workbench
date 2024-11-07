@@ -87,7 +87,9 @@ class TranscriptionContext:
         # Add speakers information
         if self.speakers:
             speakers_list = ", ".join(self.speakers)
-            speakers_str = f"Speakers in the conversation: {speakers_list}"
+            speakers_str = (
+                f"Speakers in the conversation: {speakers_list}"
+            )
             prompt_parts.append(speakers_str)
         
         # Add specialized terms/vocabulary
@@ -117,23 +119,25 @@ class TranscriptionAssistant:
         vad=True,
         device="cpu",
         temperature=0.0,
-        max_tokens=None,
         output_dir="./output",
         context: Optional[TranscriptionContext] = None
     ):
         self.context = context or TranscriptionContext()
         self.model_size = model_size
-        self.model = (
-            model if model is not None
-            else whisper.load_model(model_size)
+        # Set up model (use provided or load new)
+        if model is not None:
+            self.model = model
+        else:
+            self.model = whisper.load_model(model_size)
+        self.language = (
+            None if language in ["auto", "Auto"]
+            else language
         )
-        self.language = "auto" if language == "Auto" else language
         self.task_type = task_type
         self.vocal_extracter = vocal_extracter
         self.vad = vad
         self.device = device
         self.temperature = temperature
-        self.max_tokens = max_tokens
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.graph = StateGraph(TranscriptionState)
@@ -270,7 +274,6 @@ class TranscriptionAssistant:
                 state['input'],
                 language=self.language,
                 temperature=self.temperature,
-                max_tokens=self.max_tokens,
                 vad_filter=self.vad,
                 initial_prompt=state.get('initial_prompt', '')
             )
