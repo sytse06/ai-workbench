@@ -1,12 +1,18 @@
 # ai_model_core/__init__.py
-# Base utilities and configurations
-from .utils import (
+from .shared_utils.utils import (
     get_system_prompt,
     get_prompt_template,
     _format_history,
     EnhancedContentLoader
 )
-from .config.credentials import load_credentials, get_api_key
+from .shared_utils.factory import (
+    get_model, 
+    get_embedding_model
+)
+from .config.credentials import (
+    load_credentials, 
+    get_api_key
+)
 from .config.settings import (
     load_config,
     get_directory,
@@ -14,14 +20,33 @@ from .config.settings import (
     get_prompt_list,
     update_prompt_list
 )
+from .model_helpers import (
+    ChatAssistant,
+    RAGAssistant,
+    VisionAssistant,
+    PromptAssistant,
+    SummarizationAssistant,
+    TranscriptionAssistant,
+    TranscriptionContext,
+    E5Embeddings
+)
+from .model_helpers.transcription_assistant import (
+    TranscriptionError,
+    FileError,
+    ModelError,
+    OutputError,
+    AudioProcessingError
+)
 
 # Define what's available for import
 __all__ = [
-    # Utils
+    # Shared Utils
     'get_system_prompt',
     'get_prompt_template',
     'format_history',
     'EnhancedContentLoader',
+    'get_model', 
+    'get_embedding_model',
     
     # Config
     'load_credentials',
@@ -31,45 +56,21 @@ __all__ = [
     'get_prompt',
     'get_prompt_list',
     'update_prompt_list',
+    
+    # Model helpers
+    'ChatAssistant',
+    'RAGAssistant',
+    'VisionAssistant',
+    'PromptAssistant',
+    'SummarizationAssistant',
+    'TranscriptionAssistant',
+    'TranscriptionContext',
+    'E5Embeddings',
+    
+    # Error handling
+    'TranscriptionError',
+    'FileError',
+    'ModelError',
+    'OutputError',
+    'AudioProcessingError'
 ]
-
-# Lazy loading for model-related components
-def get_model(*args, **kwargs):
-    from .factory import get_model
-    return get_model(*args, **kwargs)
-
-def get_embedding_model(*args, **kwargs):
-    from .factory import get_embedding_model
-    return get_embedding_model(*args, **kwargs)
-
-# Add factory functions to __all__
-__all__ += ['get_model', 'get_embedding_model']
-
-# Lazy loading for assistants
-def load_assistants():
-    from .model_helpers import (
-        ChatAssistant,
-        RAGAssistant,
-        VisionAssistant,
-        PromptAssistant,
-        SummarizationAssistant,
-        TranscriptionAssistant
-    )
-    from .model_helpers.RAG_assistant import E5Embeddings
-    
-    global ChatAssistant, RAGAssistant, VisionAssistant, PromptAssistant
-    global SummarizationAssistant, TranscriptionAssistant, E5Embeddings
-    
-    # Add assistants to __all__
-    __all__.extend([
-        'ChatAssistant',
-        'RAGAssistant',
-        'VisionAssistant',
-        'PromptAssistant',
-        'SummarizationAssistant',
-        'TranscriptionAssistant',
-        'E5Embeddings'
-    ])
-
-# Load assistants when needed
-load_assistants()

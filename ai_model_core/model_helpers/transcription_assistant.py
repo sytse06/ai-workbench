@@ -3,20 +3,6 @@
 import logging
 from pathlib import Path
 import asyncio
-import traceback
-import os
-import aiofiles
-from typing import (
-   TypedDict, 
-   List, 
-   Annotated, 
-   Union, 
-   Optional, 
-   Dict,
-   Callable, 
-   AsyncGenerator
-)
-import time
 
 # Third-party imports
 import numpy as np
@@ -26,6 +12,7 @@ from pydub import AudioSegment
 from moviepy.editor import VideoFileClip
 from dataclasses import dataclass, field
 
+import whisper
 from whisper.utils import get_writer
 
 from langchain_core.output_parsers import StrOutputParser
@@ -39,7 +26,6 @@ from ..shared_utils.utils import (
     get_prompt_template,
     _format_history
 )
-from ..shared_utils.factory import get_model
 
 logger = logging.getLogger(__name__)
 
@@ -88,16 +74,6 @@ class TranscriptionResult:
     language: str
     raw_output: dict
 
-class TranscriptionStages:
-    PREPROCESS_FILE = (0, 10)    # 0-10%
-    PREPROCESS_AUDIO = (10, 15)  # 10-15%
-    TRANSCRIBE = (15, 100)       # 15-100%
-    
-    @staticmethod
-    def scale_progress(progress: float, stage: tuple) -> float:
-        """Scale progress within a stage to overall progress"""
-        start, end = stage
-        return start + (progress * (end - start) / 100)
 
 @dataclass
 class TranscriptionContext:
@@ -113,10 +89,18 @@ class TranscriptionContext:
         # Add speakers information
         if self.speakers:
             speakers_list = ", ".join(self.speakers)
-            prefix = "Speakers in the conversation: "
-            speakers_str = f"{prefix}{speakers_list}"
+            speakers_str = f"Speakers in the conversation: {speakers_list}"
             prompt_parts.append(speakers_str)
-                
+        
+        # Add specialized terms/vocabulary
+        if self.terms:
+            terms_list = [
+                f"- {term}: {desc}" 
+                for term, desc in self.terms.items()
+            ]
+            terms_str = "Specialized terms:\n" + "\n".join(terms_list)
+            prompt_parts.append(terms_str)
+        
         # Add additional context
         if self.context:
             prompt_parts.append(self.context)
@@ -151,7 +135,10 @@ class TranscriptionAssistant:
     ):
         self.context = context or TranscriptionContext()
         self.model_size = model_size
-        self.model = model if model is not None else whisper.load_model(model_size)
+        self.model = (
+            model if model is not None
+            else whisper.load_model(model_size)
+        )
         self.language = "auto" if language == "Auto" else language
         self.task_type = task_type
         self.vocal_extracter = vocal_extracter
@@ -188,80 +175,21 @@ class TranscriptionAssistant:
 
         self.graph_runnable = self.graph.compile()
 
-    async def _stream_extract_audio_from_video(self, file_path: str) -> AsyncGenerator[np.ndarray, None]:
-        """Stream audio extraction from video file"""
-        try:
-            video_path = Path(file_path)
-            
-            if video_path.suffix.lower() in ['.mp4', '.avi', '.mov', '.mkv']:
-                logger.info(f"Streaming audio from video file: {file_path}")
-                
-                # Open video file
-                with VideoFileClip(str(video_path)) as video:
-                    if video.audio is None:
-                        raise AudioProcessingError("No audio stream found in video file")
-                    
-                    # Define chunk size
-                    chunk_duration = 30  # 30 seconds
-                    
-                    # Process audio in chunks
-                    for t in range(0, int(video.duration), chunk_duration):
-                        end_t = min(t + chunk_duration, video.duration)
-                        
-                        # Extract audio chunk
-                        chunk = video.audio.subclip(t, end_t)
-                        
-                        # Convert to numpy array
-                        chunk_array = np.array(chunk.to_soundarray(fps=16000))
-                        
-                        # Ensure mono
-                        if len(chunk_array.shape) > 1:
-                            chunk_array = chunk_array.mean(axis=1)
-                        
-                        yield chunk_array
-                        
-        except Exception as e:
-            logger.error(f"Error streaming audio from video: {str(e)}")
-            raise AudioProcessingError(f"Failed to stream audio from video: {str(e)}")
-
-    async def _extract_audio_from_video(self, file_path: str) -> str:
-        """Extract audio from video file asynchronously"""
-        try:
-            video_path = Path(file_path)
-            temp_audio_path = video_path.with_suffix('.wav')
-            
-            # Only extract if it's a video file
-            if video_path.suffix.lower() in ['.mp4', '.avi', '.mov', '.mkv']:
-                logger.info(f"Extracting audio from video file: {file_path}")
-                await asyncio.to_thread(
-                    lambda: VideoFileClip(str(video_path)).audio.write_audiofile(str(temp_audio_path))
-                )
-                return str(temp_audio_path)
-            return file_path
-        
-        except Exception as e:
-            logger.error(f"Error extracting audio from video: {str(e)}")
-            raise AudioProcessingError(f"Failed to extract audio from video: {str(e)}")
-        
-    async def preprocess_audio(self, state: TranscriptionState) -> TranscriptionState:
+    async def preprocess_audio(
+        self,
+        state: TranscriptionState
+    ) -> TranscriptionState:
+        """Preprocess audio node in workflow"""
         try:
             if self.progress:
                 self.progress(0.1, desc="Preprocessing audio...")
                 
             audio_path = state['audio_path']
-            logger.info(f"Preprocessing audio file: {audio_path}")
-            
-            audio_path = await self._extract_audio_from_video(audio_path)
-            state['audio_path'] = audio_path
-            
-            if self.progress:
-                self.progress(0.2, desc="Audio extraction complete")
-            
-            audio_chunks = []
-            async for chunk in self._preprocess_audio_file(audio_path):
-                audio_chunks.append(chunk)
-            
-            state['input'] = np.concatenate(audio_chunks) if audio_chunks else np.array([])
+            if self.vocal_extracter:
+                audio_path = await self._extract_vocals(audio_path)
+
+            audio_np = await self._preprocess_audio_file(audio_path)
+            state['input'] = audio_np  # Store the audio data in the 'input' field
             state['all_actions'].append("audio_preprocessed")
             
             if audio_path != state['audio_path']:
@@ -286,38 +214,43 @@ class TranscriptionAssistant:
     ) -> AsyncGenerator[np.ndarray, None]:
         # Scale progress within PREPROCESS_FILE stage (0-10%)
         try:
-            if not Path(audio_path).exists():
-                raise FileNotFoundError(f"Audio file not found: {audio_path}")
-
-            chunk_duration = 30 * 1000  # 30s chunks
+            # Convert to Path object and verify file exists
+            audio_file = Path(audio_path)
+            if not audio_file.exists():
+                msg = f"Audio file not found at path: {audio_path}"
+                raise FileNotFoundError(msg)
             
-            audio = AudioSegment.from_file(str(audio_path))
-            audio = audio.set_channels(1).set_frame_rate(16000)
-            total_duration = len(audio)
+            # Open and process the audio file
+            audio = await asyncio.to_thread(
+                lambda: AudioSegment.from_file(str(audio_file))
+            )
             
-            try:
-                for start_ms in range(0, total_duration, chunk_duration):
-                    chunk_number = start_ms // chunk_duration
-                    chunk_progress = (start_ms / total_duration) * 20
-                    
-                    await self._log_progress(
-                        f"Preprocessing chunk {chunk_number + 1}...",
-                        state,
-                        TranscriptionStages.scale_progress(chunk_progress, TranscriptionStages.PREPROCESS_FILE)
-                    )
-                    
-                    chunk = audio[start_ms:min(start_ms + chunk_duration, total_duration)]
-                    chunk_samples = np.array(chunk.get_array_of_samples(), dtype=np.float32) / 32767.0
-                    yield chunk_samples
-                    
-            finally:
-                del audio
-                
+            # Convert to mono and set sample rate
+            audio = await asyncio.to_thread(
+                lambda: audio.set_channels(1).set_frame_rate(16000)
+            )
+            
+            # Convert to numpy array
+            samples = audio.get_array_of_samples()
+            return await asyncio.to_thread(
+                lambda: np.array(samples, dtype=np.float32) / 32767.0
+            )
+        except FileNotFoundError as e:
+            raise AudioProcessingError(f"Audio file not found: {str(e)}")
         except Exception as e:
             await self._log_progress(f"Error in preprocessing: {str(e)}", state, 0)
             raise AudioProcessingError(f"Failed to preprocess audio: {str(e)}")
-            
-    async def process_audio_streaming(
+                                       
+    async def _extract_vocals(self, audio_path: str) -> str:
+        """Extract vocals from audio if enabled"""
+        try:
+            # Implement vocal extraction logic here
+            # Return path to processed audio
+            return audio_path  # Temporary return original path
+        except Exception as e:
+            raise AudioProcessingError(f"Vocal extraction failed: {str(e)}")
+    
+    async def process_audio(
         self, 
         audio_path: Union[str, Path],
         progress_callback: Optional[Callable] = None
@@ -325,15 +258,8 @@ class TranscriptionAssistant:
         try:
             audio_path = Path(audio_path)
             if not audio_path.exists():
-                logger.error(f"File not found: {audio_path}")
-                yield {
-                    "status": "Error: File not found",
-                    "current_text": "",
-                    "raw_text": "",
-                    "processed_time": "",
-                    "verbose_details": f"File not found at path: {audio_path}"
-                }
-                return
+                msg = f"Audio file not found: {audio_path}"
+                raise FileNotFoundError(msg)
 
             audio = AudioSegment.from_file(str(audio_path))
             total_duration = len(audio) / 1000.0
@@ -342,20 +268,21 @@ class TranscriptionAssistant:
             chunk_count = 0
             total_chunks = int(total_duration / 30) + 1
 
-            # Generate initial prompt once but don't pass to Whisper
-            initial_prompt = self.context.generate_prompt() if self.context else ""
-            logger.info(f"Starting transcription with context: {bool(initial_prompt)}")
-            
-            if progress_callback:
-                await progress_callback(0, f"Processing {int(total_duration)} seconds of audio...")
+            # Initialize state with empty input
+            # Will be populated during preprocessing
+            initial_state = TranscriptionState(
+                input="",
+                audio_path=str(audio_path),
+                transcription="",
+                results={},
+                answer="",
+                all_actions=[],
+                initial_prompt=current_context.generate_prompt()
+            )
 
-            yield {
-                "status": "Initializing transcription...",
-                "current_text": "",
-                "raw_text": "",
-                "processed_time": f"0:00 / {int(total_duration//60)}:{int(total_duration%60):02d}",
-                "verbose_details": f"Processing {total_chunks} chunks."
-            }
+            timeout = self.config.get('timeout', 300)
+            async with asyncio.timeout(timeout):
+                final_state = await self.graph_runnable.ainvoke(initial_state)
 
             async for chunk in self._preprocess_audio_file(str(audio_path)):
                 chunk_count += 1
@@ -504,24 +431,27 @@ class TranscriptionAssistant:
         
         return progress_info
 
-    async def transcribe_audio(self, state: TranscriptionState) -> TranscriptionState:
+    async def transcribe_audio(
+        self,
+        state: TranscriptionState
+    ) -> TranscriptionState:
+        """Transcribe audio with context support"""
         try:
-            if self.model is None:
-                raise ModelError("Model not properly initialized")
-
-            transcribe_func = self.model.translate if self.task_type == 'translate' else self.model.transcribe
-
-            audio = AudioSegment.from_file(state['audio_path'])
-            total_duration = len(audio) / 1000.0
-            processed_duration = 0
+            transcribe_func = (
+                self.model.translate if self.task_type == 'translate'
+                else self.model.transcribe
+            )
             
-            # Generate initial prompt for display only
-            initial_prompt = self.context.generate_prompt() if self.context else ""
-            
-            audio_chunks_generator = self._preprocess_audio_file(state['audio_path'], state)
-            all_segments = []
-            full_text = []
-            chunk_count = 0
+            # Use preprocessed audio data from input field
+            results = await asyncio.to_thread(
+                transcribe_func,
+                state['input'],
+                language=self.language,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                vad_filter=self.vad,
+                initial_prompt=state.get('initial_prompt', '')
+            )
 
             await self._log_progress("Starting transcription...", state, TranscriptionStages.TRANSCRIBE[0])
 
@@ -602,21 +532,12 @@ class TranscriptionAssistant:
         except Exception as e:
             await self._log_progress(f"Transcription failed: {str(e)}", state)
             raise ModelError(f"Transcription failed: {str(e)}")
-                    
-    async def _cleanup_resources(self, state: TranscriptionState):
-        """Clean up any temporary files or resources"""
-        try:
-            if 'temp_files' in state:
-                for temp_file in state['temp_files']:
-                    try:
-                        os.remove(temp_file)
-                        logger.info(f"Cleaned up temporary file: {temp_file}")
-                    except Exception as e:
-                        logger.warning(f"Failed to clean up file {temp_file}: {str(e)}")
-        except Exception as e:
-            logger.warning(f"Error during cleanup: {str(e)}")
-    
-    async def save_outputs(self, state: TranscriptionState) -> TranscriptionState:
+
+    async def save_outputs(
+        self,
+        state: TranscriptionState
+    ) -> TranscriptionState:
+        """Save outputs node in workflow"""
         try:
             selected_format = state.get('selected_format', 'none')
             if selected_format == 'none':
@@ -627,36 +548,24 @@ class TranscriptionAssistant:
             await self._log_progress("Starting to save outputs...", state, 90)
             
             base_filename = Path(state['audio_path']).stem
-            state['output_files'] = {}
-            os.makedirs(str(self.output_dir), exist_ok=True)
-            
-            formats = ['txt', 'srt', 'vtt', 'tsv', 'json'] if selected_format == 'all' else [selected_format]
-            
+
+            # Save in all supported formats
+            formats = ['txt', 'srt', 'vtt', 'tsv', 'json', 'all']
             for fmt in formats:
-                output_path = self.output_dir / f"{base_filename}.{fmt}"
-                try:
-                    if fmt == 'txt':
-                        async with aiofiles.open(str(output_path), 'w', encoding='utf-8') as f:
-                            await f.write(state['results']['text'])
-                    else:
-                        writer = get_writer(fmt, str(self.output_dir))
-                        await asyncio.to_thread(writer, state['results'], str(output_path))
-                    
-                    if os.path.exists(str(output_path)) and os.path.getsize(str(output_path)) > 0:
-                        state['output_files'][fmt] = str(output_path)
-                        await self._log_progress(f"Saved {fmt} format", state, 95)
-                except Exception as e:
-                    logger.error(f"Failed to save {fmt} format: {str(e)}")
+                writer = get_writer(fmt, str(self.output_dir))
+                await asyncio.to_thread(
+                    writer,
+                    state['results'],
+                    f"{base_filename}.{fmt}"
+                )
 
             await self._log_progress("All files saved", state, 100)
             state['all_actions'].append("outputs_saved")
             return state
 
         except Exception as e:
-            logger.error(f"Error in save_outputs: {str(e)}")
-            state['all_actions'].append("outputs_save_failed")
-            return state
-                                                 
+            raise OutputError(f"Failed to save outputs: {str(e)}")
+
     async def post_process(
         self,
         state: TranscriptionState

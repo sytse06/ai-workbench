@@ -5,22 +5,35 @@ import logging
 import sys
 import asyncio
 from typing import List, Union, Tuple
-from PIL import Image
 from pathlib import Path
 import traceback
+
+# Third-party imports
+from PIL import Image
 import gradio as gr
+
+# Local imports
 from ai_model_core.config.settings import (
-    load_config, get_prompt_list, update_prompt_list
+    load_config, 
+    get_prompt_list, 
+    update_prompt_list
+)
+from ai_model_core.shared_utils.factory import (
+    get_model,
+    get_embedding_model
+)
+from ai_model_core.shared_utils.utils import ( 
+    EnhancedContentLoader,
+    get_prompt_template,
+    _format_history
 )
 from ai_model_core.model_helpers import (
-    ChatAssistant, PromptAssistant, VisionAssistant,
-    RAGAssistant, SummarizationAssistant
+    ChatAssistant, 
+    PromptAssistant, 
+    VisionAssistant,
+    RAGAssistant, 
+    SummarizationAssistant
 )
-from ai_model_core.model_helpers.RAG_assistant import (
-    E5Embeddings
-)
-from ai_model_core import get_embedding_model
-from ai_model_core.utils import EnhancedContentLoader
 
 # Set environment variables
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
@@ -167,10 +180,7 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
                       history_flag, retrieval_method):
 
     # Create the embedding model based on the choice
-    if embedding_choice == "e5-large":
-        embedding_model = get_embedding_model(embedding_choice)
-    else:
-        embedding_model = get_embedding_model(embedding_choice)
+    embedding_model = get_embedding_model(embedding_choice)
 
     rag_assistant = RAGAssistant(
         model_name=model_choice,

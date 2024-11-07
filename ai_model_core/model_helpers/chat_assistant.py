@@ -5,17 +5,17 @@ import logging
 from pathlib import Path
 from typing import List, Generator, Any, Optional, Union, Tuple
 
-# Third-party imports, Union, Tuple
+# Third-party imports
 from langchain.schema import HumanMessage, AIMessage, Document, BaseMessage
 import gradio as gr
 
 # Local imports
-from ai_model_core.factory import (
+from ..shared_utils.factory import (
     get_model,
     get_embedding_model
 )
-from ai_model_core.config.settings import load_config
-from ai_model_core.utils import (
+from ..config.settings import load_config
+from ..shared_utils.utils import (
     EnhancedContentLoader,
     get_prompt_template,
     _format_history

@@ -1,35 +1,26 @@
+# Transcription gradio experiment
 # Standard library imports
 import logging
 import os
 import os
 import sys
-import traceback
-from typing import List, Union
+from pathlib import Path
 
 # Third-party imports
 import gradio as gr
-from PIL import Image
 
 # Local imports
-from ai_model_core.config.settings import (
-    load_config,
-    get_prompt_list,
-    update_prompt_list
+from ai_model_core.config.settings import load_config
+from ai_model_core.shared_utils.utils import EnhancedContentLoader
+from ai_model_core.model_helpers import TranscriptionAssistant
+from ai_model_core.model_helpers.transcription_assistant import (
+    TranscriptionContext,
+    TranscriptionError,
+    FileError,
+    ModelError,
+    OutputError,
+    AudioProcessingError
 )
-from ai_model_core.factory import (  # Direct import from factory
-    get_model,
-    get_embedding_model
-)
-from ai_model_core.model_helpers import (
-    ChatAssistant,
-    PromptAssistant,
-    RAGAssistant,
-    SummarizationAssistant,
-    TranscriptionAssistant,
-    VisionAssistant
-)
-from ai_model_core.model_helpers.RAG_assistant import E5Embeddings  # Single import for E5Embeddings
-from ai_model_core.utils import EnhancedContentLoader
 
 # Set environment variables
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
@@ -58,116 +49,150 @@ logger.addHandler(c_handler)
 logger.addHandler(f_handler)
 logger.propagate = False
 
-# Initialize the assistant with the model from get_model
-def initialize_transcription_assistant(model_choice):
-    try:
-        # Get the model using the general get_model function
-        model = get_model(model_choice)
-        
-        # Initialize the assistant with the loaded model
-        return TranscriptionAssistant(
-            model=model,
-            model_size=model_choice.split()[-1].lower(),  # Keep track of size for reference
-            language="auto",
-            task_type="transcribe",
-            output_dir="./output"
-        )
-    except Exception as e:
-        logger.error(f"Error initializing transcription assistant: {str(e)}")
-        raise
 
 # Initialize the assistant when the app starts
 transcription_assistant = initialize_transcription_assistant("Whisper base")
 
-# Add model change handler
-def handle_model_change(new_model_choice):
-    global transcription_assistant
-    try:
-        transcription_assistant = initialize_transcription_assistant(new_model_choice)
-        return f"Successfully loaded {new_model_choice}"
-    except Exception as e:
-        return f"Error loading model: {str(e)}"
+# Define empty return tuple for error cases
+empty_return = (None,) * 7  # 7 None values for the 7 output fields
 
-# Connect model change handler to dropdown
-model_choice.change(
-    fn=handle_model_change,
-    inputs=[model_choice],
-    outputs=[gr.Textbox(label="Model Status")]
-)
 
-# Wrapper function for handling audio files for transcription
-async def load_audio_wrapper(url_input, file_input):
+# Wrapper function for Gradio interface transcription_assistant:
+async def transcription_wrapper(
+    audio_input,
+    url_input,
+    model_choice,
+    language,
+    task_type,
+    vad_checkbox,
+    vocal_extracter_checkbox,
+    device_input,
+    output_format,
+    temperature=0.0,
+):
     """
     Wrapper function to load and preprocess audio files for transcription.
     Returns the processed audio path and any error messages.
     """
     try:
         loader = EnhancedContentLoader()
-        docs = loader.preprocess_audio(file_paths=file_input, urls=url_input)
-        
-        if not docs:
-            return None, "No audio files were successfully processed."
+        audio_path = None
+    
+        try:    
+            if audio_input:
+                audio_path = audio_input
+            elif url_input:
+                # Assume the loader can handle URL downloads
+                docs = loader.preprocess_audio(urls=url_input)
+                if docs:
+                    audio_path = docs[0].metadata["processed_path"]
+                    
+            if not audio_path:
+                return (
+                    "Please provide either an audio file or a valid URL.",
+                    None, None, None, None, None, None, None
+                )
+                
+            # Create a basic TranscriptionContext
+            context = TranscriptionContext(
+                speakers=[],  # Could be populated from UI in future
+                terms={},     # Could be populated from UI in future
+                context=""    # Could be populated from UI in future
+            )
             
-        # For now, just handle the first audio file
-        processed_path = docs[0].metadata["processed_path"]
-        return processed_path, f"Successfully processed audio file: {Path(file_input).name}"
-        
-    except Exception as e:
-        logger.error(f"Error in load_audio_wrapper: {str(e)}")
-        return None, f"Error processing audio: {str(e)}"
-
-async def handle_transcription(file_input, url_input, model_choice, language, vad, device, task_type, output_format):
-    try:
-        # First, load and preprocess the audio
-        audio_path, message = await load_audio_wrapper(url_input, file_input)
-        if not audio_path:
-            return None, message
+            # Initialize transcription assistant with selected parameters
+            transcription_assistant = TranscriptionAssistant(
+                model_size=model_choice.split()[-1].lower(),
+                language=language,
+                task_type=task_type,
+                vad=vad_checkbox,
+                vocal_extracter=vocal_extracter_checkbox,
+                device=device_input.lower(),
+                temperature=temperature,
+                output_dir="./output",
+                context=context
+            )
             
-        # Update settings
-        transcription_assistant.language = language
-        transcription_assistant.vad = vad
-        transcription_assistant.device = device
-        transcription_assistant.task_type = task_type
+            # Process the audio with context
+            result = await transcription_assistant.process_audio(
+                audio_path,
+                context=context
+            )
+            
+            # Prepare file paths for outputs
+            base_filename = Path(audio_path).stem
+            output_dir = Path("./output")
+            
+            # Initialize output file paths based on format
+            txt_file = (
+                str(output_dir / f"{base_filename}.txt")
+                if output_format in ["txt", "all"] else None
+            )
+            srt_file = (
+                str(output_dir / f"{base_filename}.srt")
+                if output_format in ["srt", "all"] else None
+            )
+            vtt_file = (
+                str(output_dir / f"{base_filename}.vtt")
+                if output_format in ["vtt", "all"] else None
+            )
+            tsv_file = (
+                str(output_dir / f"{base_filename}.tsv")
+                if output_format in ["tsv", "all"] else None
+            )
+            json_file = (
+                str(output_dir / f"{base_filename}.json")
+                if output_format in ["json", "all"] else None
+            )
+            
+            return (
+                result["transcription"],
+                audio_path if task_type == "transcribe" else None,
+                None,  # video_output
+                txt_file,
+                srt_file,
+                vtt_file,
+                tsv_file,
+                json_file
+            )
         
-        # Process the audio
-        result = await transcription_assistant.process_audio(audio_path)
-        
-        # Clean up temporary files
-        if Path(audio_path).exists():
-            Path(audio_path).unlink()
+        except TranscriptionError as e:
+            logger.error(f"Transcription failed: {e}")
+            return (f"Transcription error: {str(e)}", *empty_return)
+        except FileError as e:
+            logger.error(f"File error: {e}")
+            return (f"File error: {str(e)}", *empty_return)
+        except ModelError as e:
+            logger.error(f"Model error: {e}")
+            return (f"Model error: {str(e)}", *empty_return)
+        except OutputError as e:
+            logger.error(f"Output error: {e}")
+            return (f"Output error: {str(e)}", *empty_return)
+        except AudioProcessingError as e:
+            logger.error(f"Audio processing error: {e}")
+            return (f"Audio processing error: {str(e)}", *empty_return)
             
         return result['transcription'], result['answer']
         
     except Exception as e:
-        logger.error(f"Transcription error: {str(e)}")
-        return {"error": f"Error during transcription: {str(e)}"}
+        err_msg = "Unexpected error in transcription wrapper: "
+        logger.error(f"{err_msg}{str(e)}")
+        return (f"{err_msg}{str(e)}", *empty_return)
+    
 
 # Gradio interface setup
 with gr.Blocks() as demo:
     gr.Markdown("# AI WorkBench")
     gr.Markdown("### Get work done with LLM's of choice")
-    
-    with gr.Tab("Transcription"):
-        with gr.Row():
-            # Left Column - Input Controls
-            with gr.Column(scale=1):
-                media_input = gr.File(
-                    label="Upload Media File",
-                    file_types=["audio", "video"],
-                    file_count="single",
-                    type="filepath"
-                )
-                url_input = gr.Textbox(
-                    label="Video URL",
-                    placeholder="Enter video URL here"
-                )
-                
-                with gr.Row():
-                    language = gr.Dropdown(
-                        choices=["Auto", "en", "nl", "de", "fr", "bg"],
-                        value="Auto",
-                        label="Source Language",
-                        info="Specification improves speed"
+
+    with gr.Tabs():
+        # Transcription Tab
+        with gr.Tab("Transcription"):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    audio_input = gr.Audio(
+                        label="Upload Audio File",
+                        type="filepath"
                     )
                 
                 with gr.Accordion("Options", open=False):
@@ -177,26 +202,47 @@ with gr.Blocks() as demo:
                         label="Whisper Model Size",
                         info="Larger models are more accurate but slower"
                     )
-                    task_type = gr.Radio(
-                        choices=["transcribe", "translate"],
-                        choices=["transcribe", "translate"],
-                        value="transcribe",
-                        label="Task Type",
-                        info=(
-                            "'Transcribe' keeps original language, "
-                            "'Translate' converts to English"
+                    
+                    with gr.Row():
+                        model_choice = gr.Dropdown(
+                            choices=[
+                                f"Whisper {size}" for size in [
+                                    "tiny", "base", "small", "medium",
+                                    "large", "large-v2", "large-v3"
+                                ]
+                            ],
+                            value="Whisper large",
+                            label="Whisper Model Size",
+                            info="Larger models are more accurate but slower"
                         )
-                    )
-                    output_format = gr.Dropdown(
-                        choices=["txt", "srt", "vtt", "tsv", "json", "all"],
-                        value="txt",
-                        label="Output Format",
-                        info="Select output file format"
-                    )                
-                # Language helper text that updates based on selection
-                language_info = gr.Markdown(visible=False)
-                                    
-                    with gr.Accordion("Transcription Options", open=False):
+                        task_type = gr.Radio(
+                            choices=["transcribe", "translate"],
+                            value="transcribe",
+                            label="Task Type",
+                            info=(
+                                "'Transcribe' keeps original language, "
+                                "'Translate' converts to English"
+                            )
+                        )
+                    
+                    with gr.Row():
+                        language = gr.Dropdown(
+                            choices=["Auto", "nl", "de", "fr", "bg"],
+                            value="Auto",
+                            label="Source Language",
+                            info=(
+                                "Specifying source language improves "
+                                "speed and accuracy"
+                            )
+                        )
+                        output_format = gr.Dropdown(
+                            choices=["txt", "srt", "vtt", "tsv", "json", "all"],
+                            value="txt",
+                            label="Output Format",
+                            info="Select output file format"
+                        )
+                    
+                    with gr.Accordion("Advanced Options", open=False):
                         temperature = gr.Slider(
                             minimum=0.0,
                             maximum=1.0,
@@ -248,8 +294,15 @@ with gr.Blocks() as demo:
                     transcribe_button = gr.Button("Start Transcription")
 
                 with gr.Column(scale=2):
-                    video_output = gr.Video(label="Transcribed Video", visible=False)
-                    audio_output = gr.Audio(label="Transcribed Audio", visible=False)
+                    # Output displays
+                    video_output = gr.Video(
+                        label="Transcribed Video",
+                        visible=False
+                    )
+                    audio_output = gr.Audio(
+                        label="Transcribed Audio",
+                        visible=False
+                    )
                     
                     with gr.Accordion("Subtitle Downloads", open=False):
                         txt_download = gr.File(label="TXT Download")
@@ -258,35 +311,33 @@ with gr.Blocks() as demo:
                         tsv_download = gr.File(label="TSV Download")
                         json_download = gr.File(label="JSON Download")
                     
-                    subtitle_preview = gr.TextArea(label="Subtitle Preview", interactive=False)
-
-            transcribe_button.click(
-                fn=handle_transcription,
-                inputs=[file_input, url_input, transcribe_model_input, language_input,
-                        vocal_extracter_checkbox, vad_checkbox, precision_input,
-                        device_input, task_type],
-                outputs=[transcription_output, subtitle_output, status_output]
+                    subtitle_preview = gr.TextArea(
+                        label="Transcription Preview",
+                        interactive=False,
+                        show_copy_button=True
                     )
-    # Set up the flagging callback
-    flagging_callback.setup(
-        [rag_text_box, rag_chat_bot] + chat_interface.additional_inputs,
-        "flagged_rag_data"
-    )
+            
+            # Process button
+            transcribe_button = gr.Button(
+                "Start Transcription",
+                variant="primary"
+            )
+            
+            # Connect the transcribe button to the wrapper function
+            transcribe_button.click(
+                fn=transcription_wrapper,
+                inputs=[
+                    audio_input, url_input, model_choice, language,
+                    task_type, vad_checkbox, vocal_extracter_checkbox,
+                    device_input, output_format, temperature,
+                ],
+                outputs=[
+                    subtitle_preview, audio_output, video_output,
+                    txt_download, srt_download, vtt_download,
+                    tsv_download, json_download,
+                ]
+            )
 
-    # Connect the flagging button to the callback
-    flag_btn.click(
-        lambda *args: flagging_callback.flag(args[:-1] + (args[-1],)),
-        [rag_text_box, rag_chat_bot] + chat_interface.additional_inputs +
-        [flag_options],
-        None,
-        preprocess=False
-    )
-
-    language_choice.change(
-        fn=update_prompt_list,
-        inputs=[language_choice],
-        outputs=[prompt_info]
-    )
 
 if __name__ == "__main__":
     logger.info("Starting the Gradio interface for transcription")

@@ -2,10 +2,23 @@
 import logging
 from typing import TypedDict, List, Annotated
 from operator import add
-from langgraph.graph import StateGraph, END
-from ai_model_core import get_model, get_prompt_template
-from ai_model_core.config.settings import load_config
-from ai_model_core.utils import EnhancedContentLoader
+
+# Third-party imports
+from langgraph.graph import StateGraph, END, START
+from langchain_core.documents import Document
+from langgraph.constants import Send
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+
+# Local imports
+from ..shared_utils import (
+    get_model,
+    get_embedding_model,
+    get_prompt_template,
+    _format_history
+)
+from ..config.settings import load_config
+from ..shared_utils.utils import EnhancedContentLoader
 
 logger = logging.getLogger(__name__)
 
