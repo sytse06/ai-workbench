@@ -15,5 +15,6 @@
 # Include specific directories and their contents
 !ai_model_core/
 !model_helpers/
+!shared_utils/
 !config/
 !tests/
