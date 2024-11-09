@@ -10,7 +10,6 @@ import numpy as np
 from pydub import AudioSegment
 from dataclasses import dataclass, field
 
-import whisper
 from whisper.utils import get_writer
 
 from langchain_core.output_parsers import StrOutputParser
@@ -24,6 +23,7 @@ from ..shared_utils.utils import (
     get_prompt_template,
     _format_history
 )
+from ..shared_utils.factory import get_model
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +87,8 @@ class TranscriptionContext:
         # Add speakers information
         if self.speakers:
             speakers_list = ", ".join(self.speakers)
-            speakers_str = (
-                f"Speakers in the conversation: {speakers_list}"
-            )
+            prefix = "Speakers in the conversation: "
+            speakers_str = f"{prefix}{speakers_list}"
             prompt_parts.append(speakers_str)
         
         # Add specialized terms/vocabulary
@@ -115,28 +114,33 @@ class TranscriptionAssistant:
         model_size="large",
         language="auto",
         task_type="transcribe",
-        vocal_extracter=True,
-        vad=True,
         device="cpu",
         temperature=0.0,
         output_dir="./output",
-        context: Optional[TranscriptionContext] = None
+        context: Optional[TranscriptionContext] = None,
+        verbose=True
     ):
         self.context = context or TranscriptionContext()
         self.model_size = model_size
         # Set up model (use provided or load new)
-        if model is not None:
-            self.model = model
-        else:
-            self.model = whisper.load_model(model_size)
+        try:
+            if model is not None:
+                self.model = model
+            else:
+                # Use get_model from factory instead of direct whisper.load_model
+                self.model = get_model(model_size)
+            if self.model is None:
+                raise ModelError("Failed to initialize the model")
+        except Exception as e:
+            raise ModelError(f"Model initialization failed: {str(e)}")
+            
         self.language = (
             None if language in ["auto", "Auto"]
             else language
         )
         self.task_type = task_type
-        self.vocal_extracter = vocal_extracter
-        self.vad = vad
         self.device = device
+        self.verbose = verbose
         self.temperature = temperature
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -170,13 +174,8 @@ class TranscriptionAssistant:
     ) -> TranscriptionState:
         """Preprocess audio node in workflow"""
         try:
-            # Handle vocal extraction if enabled
-            audio_path = state['audio_path']
-            if self.vocal_extracter:
-                audio_path = await self._extract_vocals(audio_path)
-
-            audio_np = await self._preprocess_audio_file(audio_path)
-            state['input'] = audio_np  # Store the audio data in the 'input' field
+            audio_np = await self._preprocess_audio_file(state['audio_path'])
+            state['input'] = audio_np  # Store audio data in input field
             state['all_actions'].append("audio_preprocessed")
             return state
         except Exception as e:
@@ -209,17 +208,9 @@ class TranscriptionAssistant:
         except FileNotFoundError as e:
             raise AudioProcessingError(f"Audio file not found: {str(e)}")
         except Exception as e:
-            raise AudioProcessingError(f"Failed to preprocess audio: {str(e)}")
+            msg = f"Failed to preprocess audio: {str(e)}"
+            raise AudioProcessingError(msg)
                                        
-    async def _extract_vocals(self, audio_path: str) -> str:
-        """Extract vocals from audio if enabled"""
-        try:
-            # Implement vocal extraction logic here
-            # Return path to processed audio
-            return audio_path  # Temporary return original path
-        except Exception as e:
-            raise AudioProcessingError(f"Vocal extraction failed: {str(e)}")
-    
     async def process_audio(
         self, 
         audio_path: Union[str, Path],
@@ -263,6 +254,9 @@ class TranscriptionAssistant:
     ) -> TranscriptionState:
         """Transcribe audio with context support"""
         try:
+            if self.model is None:
+                raise ModelError("Model not properly initialized")
+                
             transcribe_func = (
                 self.model.translate if self.task_type == 'translate'
                 else self.model.transcribe
@@ -274,7 +268,6 @@ class TranscriptionAssistant:
                 state['input'],
                 language=self.language,
                 temperature=self.temperature,
-                vad_filter=self.vad,
                 initial_prompt=state.get('initial_prompt', '')
             )
 

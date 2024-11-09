@@ -50,10 +50,18 @@ logger.propagate = False
 
 
 # Initialize the assistant when the app starts
-transcription_assistant = TranscriptionAssistant("Whisper base")
+transcription_assistant = TranscriptionAssistant(model_size="base")
 
 # Define empty return tuple for error cases
 empty_return = (None,) * 7  # 7 None values for the 7 output fields
+
+# Define model choices
+WHISPER_SIZES = ["tiny", "base", "small", "medium"]
+WHISPER_LARGE = ["large", "large-v2", "large-v3"]
+ALL_SIZES = [*WHISPER_SIZES, *WHISPER_LARGE]
+WHISPER_MODELS = []
+for size in ALL_SIZES:
+    WHISPER_MODELS.append(f"Whisper {size}")
 
 
 # Wrapper function for Gradio interface transcription_assistant:
@@ -63,11 +71,10 @@ async def transcription_wrapper(
     model_choice,
     language,
     task_type,
-    vad_checkbox,
-    vocal_extracter_checkbox,
     device_input,
     output_format,
     temperature=0.0,
+    verbose=True,
 ):
     """
     Wrapper function to handle transcription requests through Gradio interface.
@@ -105,12 +112,11 @@ async def transcription_wrapper(
                 model_size=model_choice.split()[-1].lower(),
                 language=language,
                 task_type=task_type,
-                vad=vad_checkbox,
-                vocal_extracter=vocal_extracter_checkbox,
                 device=device_input.lower(),
                 temperature=temperature,
                 output_dir="./output",
-                context=context
+                context=context,
+                verbose=verbose
             )
             
             # Process the audio with context
@@ -199,14 +205,9 @@ with gr.Blocks() as demo:
                     
                     with gr.Row():
                         model_choice = gr.Dropdown(
-                            choices=[
-                                f"Whisper {size}" for size in [
-                                    "tiny", "base", "small", "medium",
-                                    "large", "large-v2", "large-v3"
-                                ]
-                            ],
+                            choices=WHISPER_MODELS,
                             value="Whisper large",
-                            label="Whisper Model Size",
+                            label="Model Size",
                             info="Larger models are more accurate but slower"
                         )
                         task_type = gr.Radio(
@@ -222,12 +223,9 @@ with gr.Blocks() as demo:
                     with gr.Row():
                         language = gr.Dropdown(
                             choices=["Auto", "nl", "de", "fr", "bg"],
-                            value="Auto",
+                            value="nl",
                             label="Source Language",
-                            info=(
-                                "Specifying source language improves "
-                                "speed and accuracy"
-                            )
+                            info="Specification improves speed"
                         )
                         output_format = gr.Dropdown(
                             choices=["txt", "srt", "vtt", "tsv", "json", "all"],
@@ -245,21 +243,16 @@ with gr.Blocks() as demo:
                             label="Temperature",
                             info="Higher values = more random output"
                         )
-                        vad_checkbox = gr.Checkbox(
-                            value=True,
-                            label="Voice Activity Detection",
-                            info="Filter out non-speech segments"
-                        )
-                        vocal_extracter_checkbox = gr.Checkbox(
-                            value=True,
-                            label="Vocal Extracter",
-                            info="Mute non-vocal background noise"
-                        )
                         device_input = gr.Radio(
                             choices=["CPU", "GPU"],
                             value="CPU",
                             label="Device",
                             info="GPU support requires additional setup"
+                        )
+                        verbose = gr.Checkbox(
+                            value=True,
+                            label="Verbose Output",
+                            info="Show detailed progress"
                         )
 
                 with gr.Column(scale=2):
@@ -297,8 +290,8 @@ with gr.Blocks() as demo:
                 fn=transcription_wrapper,
                 inputs=[
                     audio_input, url_input, model_choice, language,
-                    task_type, vad_checkbox, vocal_extracter_checkbox,
-                    device_input, output_format, temperature,
+                    task_type, device_input, output_format, temperature,
+                    verbose
                 ],
                 outputs=[
                     subtitle_preview, audio_output, video_output,
