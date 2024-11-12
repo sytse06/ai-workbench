@@ -66,7 +66,7 @@ for size in ALL_SIZES:
 
 # Wrapper function for Gradio interface transcription_assistant:
 async def transcription_wrapper(
-    audio_input,
+    media_input,
     url_input,
     model_choice,
     language,
@@ -86,8 +86,8 @@ async def transcription_wrapper(
         audio_path = None
     
         try:    
-            if audio_input:
-                audio_path = audio_input
+            if media_input:
+                audio_path = media_input
             elif url_input:
                 # Assume the loader can handle URL downloads
                 docs = loader.preprocess_audio(urls=url_input)
@@ -96,7 +96,7 @@ async def transcription_wrapper(
                     
             if not audio_path:
                 return (
-                    "Please provide either an audio file or a valid URL.",
+                    "Please provide either a media file (audio/video) or a valid URL.",
                     None, None, None, None, None, None, None
                 )
                 
@@ -194,8 +194,10 @@ with gr.Blocks() as demo:
         with gr.Tab("Transcription"):
             with gr.Row():
                 with gr.Column(scale=1):
-                    audio_input = gr.Audio(
-                        label="Upload Audio File",
+                    media_input = gr.File(
+                        label="Upload Media File",
+                        file_types=["audio", "video"],
+                        file_count="single",
                         type="filepath"
                     )
                     url_input = gr.Textbox(
@@ -290,7 +292,7 @@ with gr.Blocks() as demo:
             transcribe_button.click(
                 fn=transcription_wrapper,
                 inputs=[
-                    audio_input, url_input, model_choice, language,
+                    media_input, url_input, model_choice, language,
                     task_type, device_input, output_format, temperature,
                     verbose
                 ],
