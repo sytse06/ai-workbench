@@ -127,8 +127,9 @@ class TranscriptionAssistant:
             if model is not None:
                 self.model = model
             else:
-                # Use get_model from factory instead of direct whisper.load_model
-                self.model = get_model(model_size)
+                # Format the model choice to include "Whisper" prefix
+                model_choice = f"Whisper {model_size}"
+                self.model = get_model(model_choice)
             if self.model is None:
                 raise ModelError("Failed to initialize the model")
         except Exception as e:

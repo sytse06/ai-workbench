@@ -228,7 +228,8 @@ with gr.Blocks() as demo:
                             info="Specification improves speed"
                         )
                         output_format = gr.Dropdown(
-                            choices=["txt", "srt", "vtt", "tsv", "json", "all"],
+                            choices=["txt", "srt", "vtt", 
+                                     "tsv", "json", "all"],
                             value="txt",
                             label="Output Format",
                             info="Select output file format"
