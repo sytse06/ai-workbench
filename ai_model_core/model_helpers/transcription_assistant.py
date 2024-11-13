@@ -4,6 +4,7 @@ import logging
 from typing import TypedDict, List, Annotated, Union, Optional, Dict
 from pathlib import Path
 import asyncio
+import traceback
 
 # Third-party imports
 import numpy as np
@@ -175,42 +176,68 @@ class TranscriptionAssistant:
     ) -> TranscriptionState:
         """Preprocess audio node in workflow"""
         try:
-            audio_np = await self._preprocess_audio_file(state['audio_path'])
+            audio_path = state['audio_path']
+            logger.info(f"Preprocessing audio file: {audio_path}")
+            audio_np = await self._preprocess_audio_file(audio_path)
             state['input'] = audio_np  # Store audio data in input field
             state['all_actions'].append("audio_preprocessed")
             return state
         except Exception as e:
+            logger.error(f"Error in preprocess_audio: {str(e)}")
+            logger.debug(f"Traceback: {traceback.format_exc()}")
             raise AudioProcessingError(f"Preprocessing failed: {str(e)}")
                                        
     async def _preprocess_audio_file(self, audio_path: str) -> np.ndarray:
-        """Internal method for audio preprocessing"""
+        """Internal method for audio preprocessing with support for large files"""
         try:
             # Convert to Path object and verify file exists
             audio_file = Path(audio_path)
             if not audio_file.exists():
-                msg = f"Audio file not found at path: {audio_path}"
-                raise FileNotFoundError(msg)
+                raise FileNotFoundError(f"Audio file not found: {audio_path}")
             
-            # Open and process the audio file
+            logger.info("Loading audio file with pydub")
+            # Load the entire audio using pydub
             audio = await asyncio.to_thread(
                 lambda: AudioSegment.from_file(str(audio_file))
             )
             
+            logger.info("Converting audio to mono and 16kHz")
             # Convert to mono and set sample rate
             audio = await asyncio.to_thread(
                 lambda: audio.set_channels(1).set_frame_rate(16000)
             )
-            
-            # Convert to numpy array
-            samples = audio.get_array_of_samples()
-            return await asyncio.to_thread(
-                lambda: np.array(samples, dtype=np.float32) / 32767.0
-            )
+
+            # Set the maximum segment duration in milliseconds (25 minutes)
+            max_segment_duration = 25 * 60 * 1000
+
+            # If audio is longer than max_segment_duration, process in segments
+            if len(audio) > max_segment_duration:
+                logger.info("Processing large audio file in segments")
+                
+                # Convert entire audio to numpy array
+                logger.info("Converting audio to numpy array")
+                audio_np = (
+                    np.array(audio.get_array_of_samples(), dtype=np.float32) 
+                    / 32767.0
+                )
+                
+                # Return the full numpy array for segmentation in transcribe_audio
+                return audio_np
+            else:
+                # For shorter files, process normally
+                logger.info("Processing audio as single segment")
+                samples = audio.get_array_of_samples()
+                return await asyncio.to_thread(
+                    lambda: np.array(samples, dtype=np.float32) / 32767.0
+                )
+
         except FileNotFoundError as e:
+            logger.error(f"File not found error: {str(e)}")
             raise AudioProcessingError(f"Audio file not found: {str(e)}")
         except Exception as e:
-            msg = f"Failed to preprocess audio: {str(e)}"
-            raise AudioProcessingError(msg)
+            logger.error(f"Error in _preprocess_audio_file: {str(e)}")
+            logger.debug(f"Traceback: {traceback.format_exc()}")
+            raise AudioProcessingError(f"Failed to preprocess audio: {str(e)}")
                                        
     async def process_audio(
         self, 
@@ -219,10 +246,10 @@ class TranscriptionAssistant:
     ) -> dict:
         """Main entry point with context support"""
         try:
+            logger.info(f"Starting audio processing for: {audio_path}")
             audio_path = Path(audio_path)
             if not audio_path.exists():
-                msg = f"Audio file not found: {audio_path}"
-                raise FileNotFoundError(msg)
+                raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
             # Use provided context or fall back to default
             current_context = context or self.context
@@ -239,21 +266,30 @@ class TranscriptionAssistant:
                 initial_prompt=current_context.generate_prompt()
             )
 
-            timeout = self.config.get('timeout', 300)
-            async with asyncio.timeout(timeout):
-                final_state = await self.graph_runnable.ainvoke(initial_state)
-
+            logger.info("Starting graph execution")
+            final_state = await self.graph_runnable.ainvoke(initial_state)
+            logger.info("Processing completed successfully")
             return self._prepare_response(final_state)
 
+        except FileNotFoundError as e:
+            logger.error(f"File error: {str(e)}")
+            raise TranscriptionError(f"File error: {str(e)}")
+        except AudioProcessingError as e:
+            logger.error(f"Audio processing error: {str(e)}")
+            raise TranscriptionError(f"Audio processing error: {str(e)}")
+        except ModelError as e:
+            logger.error(f"Model error: {str(e)}")
+            raise TranscriptionError(f"Model error: {str(e)}")
         except Exception as e:
-            logger.error(f"Processing failed: {str(e)}")
+            logger.error(f"Unexpected error in process_audio: {str(e)}")
+            logger.debug(f"Traceback: {traceback.format_exc()}")
             raise TranscriptionError(f"Processing failed: {str(e)}")
 
     async def transcribe_audio(
         self,
         state: TranscriptionState
     ) -> TranscriptionState:
-        """Transcribe audio with context support"""
+        """Transcribe audio with context support and large file handling"""
         try:
             if self.model is None:
                 raise ModelError("Model not properly initialized")
@@ -263,21 +299,88 @@ class TranscriptionAssistant:
                 else self.model.transcribe
             )
             
-            # Use preprocessed audio data from input field
-            results = await asyncio.to_thread(
-                transcribe_func,
-                state['input'],
-                language=self.language,
-                temperature=self.temperature,
-                initial_prompt=state.get('initial_prompt', '')
-            )
+            # Get the audio data from input field
+            audio_np = state['input']
+            
+            # Set max segment duration in samples (25 minutes at 16kHz)
+            max_segment_samples = 25 * 60 * 16000
+            
+            # If audio is longer than max_segment_samples, process in segments
+            if len(audio_np) > max_segment_samples:
+                logger.info("Transcribing large audio file in segments")
+                
+                # Initialize lists for results
+                all_segments = []
+                full_text = []
+                
+                # Process segments
+                total_segments = len(audio_np) // max_segment_samples + 1
+                for i, start in enumerate(
+                    range(0, len(audio_np), max_segment_samples)
+                ):
+                    logger.info(f"Processing segment {i+1}/{total_segments}")
+                    end = min(start + max_segment_samples, len(audio_np))
+                    segment = audio_np[start:end]
+                    
+                    try:
+                        # Transcribe segment
+                        segment_result = await asyncio.to_thread(
+                            transcribe_func,
+                            segment,
+                            language=self.language,
+                            temperature=self.temperature,
+                            initial_prompt=state.get('initial_prompt', '')
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Error transcribing segment {i+1}: {str(e)}"
+                        )
+                        raise ModelError(
+                            f"Failed to transcribe segment {i+1}: {str(e)}"
+                        )
+                    
+                    # Adjust timestamps for segments after the first
+                    if start > 0:
+                        # Convert samples to seconds
+                        segment_offset = start / 16000
+                        for seg in segment_result["segments"]:
+                            seg["start"] += segment_offset
+                            seg["end"] += segment_offset
+                    
+                    # Collect results
+                    all_segments.extend(segment_result["segments"])
+                    full_text.append(segment_result["text"])
+                
+                # Combine results
+                combined_results = {
+                    "text": " ".join(full_text),
+                    "segments": all_segments,
+                    # Use language from last segment
+                    "language": segment_result["language"]
+                }
+                
+                state['transcription'] = combined_results["text"]
+                state['results'] = combined_results
+            else:
+                # For shorter files, process normally
+                logger.info("Processing audio as single segment")
+                results = await asyncio.to_thread(
+                    transcribe_func,
+                    audio_np,
+                    language=self.language,
+                    temperature=self.temperature,
+                    initial_prompt=state.get('initial_prompt', '')
+                )
+                
+                state['transcription'] = results["text"]
+                state['results'] = results
 
-            state['transcription'] = results["text"]
-            state['results'] = results
             state['all_actions'].append("audio_transcribed")
             return state
 
         except Exception as e:
+            logger.error(f"Error in transcribe_audio: {str(e)}")
+            logger.debug(f"Traceback: {traceback.format_exc()}")
             raise ModelError(f"Transcription failed: {str(e)}")
 
     async def save_outputs(
@@ -302,6 +405,8 @@ class TranscriptionAssistant:
             return state
 
         except Exception as e:
+            logger.error(f"Error in save_outputs: {str(e)}")
+            logger.debug(f"Traceback: {traceback.format_exc()}")
             raise OutputError(f"Failed to save outputs: {str(e)}")
 
     async def post_process(

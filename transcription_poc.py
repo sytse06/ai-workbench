@@ -96,7 +96,7 @@ async def transcription_wrapper(
                     
             if not audio_path:
                 return (
-                    "Please provide either a media file (audio/video) or a valid URL.",
+                    "Please provide either a media file or a valid URL.",
                     None, None, None, None, None, None, None
                 )
                 
@@ -224,7 +224,7 @@ with gr.Blocks() as demo:
                     
                     with gr.Row():
                         language = gr.Dropdown(
-                            choices=["Auto", "nl", "de", "fr", "bg"],
+                            choices=["Auto", "en", "nl", "de", "fr", "bg"],
                             value="nl",
                             label="Source Language",
                             info="Specification improves speed"
@@ -300,10 +300,15 @@ with gr.Blocks() as demo:
                     subtitle_preview, audio_output, video_output,
                     txt_download, srt_download, vtt_download,
                     tsv_download, json_download,
-                ]
+                ],
+                concurrency_limit=1  # Process one request at a time
             )
 
 
 if __name__ == "__main__":
     logger.info("Starting the Gradio interface for transcription")
-    demo.launch(server_port=7861, debug=True, share=False)
+    demo.launch(
+        server_port=7861,
+        debug=True,
+        share=False
+    )
