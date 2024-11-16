@@ -127,9 +127,9 @@ prompts:
         "Brand Promise: {brand_promise}"
       {Brand_Pillars}
         "Brand Pillars: {brand_pillars}"
-    summary_stuff: |
-      Write a concise summary of the following text in 6 sentences:
-      "{text}"
+    summarize_stuff: |
+      Write a concise summary of the following text in 4 sentences:
+      "{docs}"
       Focus on the main ideas and key points. Avoid including minor details.
       CONCISE SUMMARY:
     initial_map_reduce_summary: |
