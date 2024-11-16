@@ -129,7 +129,7 @@ prompts:
         "Brand Pillars: {brand_pillars}"
     summarize_stuff: |
       Write a concise summary of the following text in 4 sentences:
-      "{text}"
+      "{docs}"
       Focus on the main ideas and key points. Avoid including minor details.
       CONCISE SUMMARY:
     summarize_map: |

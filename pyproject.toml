@@ -28,9 +28,10 @@ pytesseract = "^0.3.13"
 openai-whisper = "^20240930"
 whisper = "^1.1.10"
 mistralai = "^1.1.0"
+pytest-asyncio = "^0.24.0"
 
 [tool.poetry.dev-dependencies]
-pytest = "^7.3.1"
+pytest = "^8.2"
 pytest-mock = "^3.10.0"
 
 [build-system]

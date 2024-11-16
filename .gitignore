@@ -17,4 +17,7 @@
 !model_helpers/
 !shared_utils/
 !config/
+
+# Include the tests directory and all its subdirectories and .py files
 !tests/
+!tests/**/*.py

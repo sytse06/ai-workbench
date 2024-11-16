@@ -217,8 +217,6 @@ async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
         return "Error: No documents loaded. Please load documents before summarizing."
 
     try:
-        # Construct method-specific prompt info (e.g., "summarize_map_reduce")
-        method_prompt_info = f"summarize_{method}"
         
         summarizer = SummarizationAssistant(
             model_name=model_choice,
@@ -227,7 +225,7 @@ async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
             method=method,
             max_tokens=max_tokens,
             temperature=temperature,
-            prompt_info=method_prompt_info,  # Use method-specific prompt
+            prompt_info=prompt_info,
             language_choice=language,
             verbose=verbose
         )
@@ -236,7 +234,7 @@ async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
         summary = await summarizer.summarize(
             loaded_docs, 
             method=method, 
-            prompt_info=method_prompt_info,  # Use same method-specific prompt
+            prompt_info=prompt_info,  # Use same method-specific prompt
             language=language
         )
         return summary['final_summary']
