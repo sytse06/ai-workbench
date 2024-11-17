@@ -33,9 +33,12 @@ ai_workbench/
 ├── input/
 ├── output/
 ├── tests/
-│    ├── summarization
-│    │   ├── conftest.py
-│    │   ├── summarization-tests.py
+│   ├── __init__.py
+│   ├── conftest.py
+│   ├── summarization
+│   │   ├── __init__.py
+│   │   ├── conftest.py
+│   │   ├── summarization-tests.py
 ├── .env
 └── main.py
 ```
