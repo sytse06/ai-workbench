@@ -5,10 +5,12 @@ from typing import TypedDict, List, Annotated, Union, Optional, Dict
 from pathlib import Path
 import asyncio
 import traceback
+import os
 
 # Third-party imports
 import numpy as np
 from pydub import AudioSegment
+from moviepy.editor import VideoFileClip
 from dataclasses import dataclass, field
 
 from whisper.utils import get_writer
@@ -170,6 +172,24 @@ class TranscriptionAssistant:
 
         self.graph_runnable = self.graph.compile()
 
+    async def _extract_audio_from_video(self, file_path: str) -> str:
+        """Extract audio from video file asynchronously"""
+        try:
+            video_path = Path(file_path)
+            temp_audio_path = video_path.with_suffix('.wav')
+            
+            # Only extract if it's a video file
+            if video_path.suffix.lower() in ['.mp4', '.avi', '.mov', '.mkv']:
+                logger.info(f"Extracting audio from video file: {file_path}")
+                await asyncio.to_thread(
+                    lambda: VideoFileClip(str(video_path)).audio.write_audiofile(str(temp_audio_path))
+                )
+                return str(temp_audio_path)
+            return file_path
+        except Exception as e:
+            logger.error(f"Error extracting audio from video: {str(e)}")
+            raise AudioProcessingError(f"Failed to extract audio from video: {str(e)}")
+    
     async def preprocess_audio(
         self,
         state: TranscriptionState
@@ -178,9 +198,22 @@ class TranscriptionAssistant:
         try:
             audio_path = state['audio_path']
             logger.info(f"Preprocessing audio file: {audio_path}")
+            # Extract audio if it's a video file
+            audio_path = await self._extract_audio_from_video(audio_path)
+            state['audio_path'] = audio_path  # Update the audio path in state            
+            # Continue with existing preprocessing                        
             audio_np = await self._preprocess_audio_file(audio_path)
-            state['input'] = audio_np  # Store audio data in input field
+            state['input'] = audio_np
             state['all_actions'].append("audio_preprocessed")
+            
+            # Clean up temporary audio file if it was created
+            if audio_path != state['audio_path']:
+                try:
+                    os.remove(audio_path)
+                    logger.info(f"Cleaned up temporary audio file: {audio_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up temporary audio file: {str(e)}")
+                    
             return state
         except Exception as e:
             logger.error(f"Error in preprocess_audio: {str(e)}")
