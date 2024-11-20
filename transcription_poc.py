@@ -65,7 +65,7 @@ for size in ALL_SIZES:
 
 
 # Wrapper function for Gradio interface transcription_assistant:
-async def transcription_wrapper(
+async def transcription_wrapper_with_progress(
     media_input,
     url_input,
     model_choice,
@@ -77,15 +77,24 @@ async def transcription_wrapper(
     verbose=True,
 ):
     """
-    Wrapper function to handle transcription requests through Gradio interface.
-    Returns transcription results and generated subtitle files.
+    Enhanced wrapper function to handle transcription requests through Gradio interface
+    with progress bar. Returns transcription results and generated subtitle files.
     """
     try:
+        async def progress_callback(progress_value, status, current_text, processed_time):
+            # Update Gradio components with normalized progress (0-1)
+            gr.Progress().update(progress_value * 0.01)  # Convert percentage to 0-1 scale
+            return {
+                status_text: status,
+                subtitle_preview: current_text,
+                time_info: processed_time
+            }
+
         # First, load and preprocess the audio
         loader = EnhancedContentLoader()
         audio_path = None
-    
-        try:    
+
+        try:
             if media_input:
                 audio_path = media_input
             elif url_input:
@@ -93,21 +102,29 @@ async def transcription_wrapper(
                 docs = loader.preprocess_audio(urls=url_input)
                 if docs:
                     audio_path = docs[0].metadata["processed_path"]
-                    
+
             if not audio_path:
+                await progress_callback(0, "Error: No input provided", "", "")
                 return (
                     "Please provide either a media file or a valid URL.",
                     None, None, None, None, None, None, None
                 )
-                
+            # Create output directory if it doesn't exist
+            output_dir = Path("./output")
+            output_dir.mkdir(exist_ok=True)
+
+            # Get the base filename without extension
+            base_filename = Path(audio_path).stem
+            output_base_path = output_dir / base_filename
+
             # Create a basic TranscriptionContext
             context = TranscriptionContext(
                 speakers=[],  # Could be populated from UI in future
                 terms={},     # Could be populated from UI in future
                 context=""    # Could be populated from UI in future
             )
-            
-            # Initialize transcription assistant with selected parameters
+
+            # Initialize transcription assistant
             transcription_assistant = TranscriptionAssistant(
                 model_size=model_choice.split()[-1].lower(),
                 language=language,
@@ -118,71 +135,37 @@ async def transcription_wrapper(
                 context=context,
                 verbose=verbose
             )
-            
-            # Process the audio with context
+
+            # Process the audio with context and progress updates
             result = await transcription_assistant.process_audio(
                 audio_path,
-                context=context
+                context=context,
+                progress_callback=progress_callback
             )
-            
-            # Prepare file paths for outputs
-            base_filename = Path(audio_path).stem
-            output_dir = Path("./output")
-            
-            # Initialize output file paths based on format
-            txt_file = (
-                str(output_dir / f"{base_filename}.txt")
-                if output_format in ["txt", "all"] else None
-            )
-            srt_file = (
-                str(output_dir / f"{base_filename}.srt")
-                if output_format in ["srt", "all"] else None
-            )
-            vtt_file = (
-                str(output_dir / f"{base_filename}.vtt")
-                if output_format in ["vtt", "all"] else None
-            )
-            tsv_file = (
-                str(output_dir / f"{base_filename}.tsv")
-                if output_format in ["tsv", "all"] else None
-            )
-            json_file = (
-                str(output_dir / f"{base_filename}.json")
-                if output_format in ["json", "all"] else None
-            )
-            
+            # Generate output paths and verify they exist
+            def get_output_path(ext):
+                path = output_base_path.with_suffix(f'.{ext}')
+                return str(path) if path.exists() else None
+
+
             return (
                 result["transcription"],
                 audio_path if task_type == "transcribe" else None,
                 None,  # video_output
-                txt_file,
-                srt_file,
-                vtt_file,
-                tsv_file,
-                json_file
+                get_output_path('txt') if 'txt' in output_format else None,
+                get_output_path('srt') if 'srt' in output_format else None,
+                get_output_path('vtt') if 'vtt' in output_format else None,
+                get_output_path('tsv') if 'tsv' in output_format else None,
+                get_output_path('json') if 'json' in output_format else None,
             )
-        
-        except TranscriptionError as e:
-            logger.error(f"Transcription failed: {e}")
-            return (f"Transcription error: {str(e)}", *empty_return)
-        except FileError as e:
-            logger.error(f"File error: {e}")
-            return (f"File error: {str(e)}", *empty_return)
-        except ModelError as e:
-            logger.error(f"Model error: {e}")
-            return (f"Model error: {str(e)}", *empty_return)
-        except OutputError as e:
-            logger.error(f"Output error: {e}")
-            return (f"Output error: {str(e)}", *empty_return)
-        except AudioProcessingError as e:
-            logger.error(f"Audio processing error: {e}")
-            return (f"Audio processing error: {str(e)}", *empty_return)
-            
+
+        except Exception as e:
+            await progress_callback(0, f"Error: {str(e)}", "", "")
+            return (str(e), *([None] * 7))
+
     except Exception as e:
-        err_msg = "Unexpected error in transcription wrapper: "
-        logger.error(f"{err_msg}{str(e)}")
-        return (f"{err_msg}{str(e)}", *empty_return)
-    
+        logger.error(f"Unexpected error in transcription wrapper: {str(e)}")
+        return (f"Error: {str(e)}", *([None] * 7)) 
 
 # Gradio interface setup
 with gr.Blocks() as demo:
@@ -259,6 +242,17 @@ with gr.Blocks() as demo:
                         )
 
                 with gr.Column(scale=2):
+                    # Add progress indicators
+                    # Progress indicators
+                    progress_bar = gr.Progress()  # Remove label parameter
+                    status_text = gr.Textbox(
+                        label="Status",
+                        interactive=False
+                    )
+                    time_info = gr.Textbox(
+                        label="Processing Time",
+                        interactive=False
+                    )
                     # Output displays
                     video_output = gr.Video(
                         label="Transcribed Video",
@@ -290,7 +284,7 @@ with gr.Blocks() as demo:
             
             # Connect the transcribe button to the wrapper function
             transcribe_button.click(
-                fn=transcription_wrapper,
+                fn=transcription_wrapper_with_progress,
                 inputs=[
                     media_input, url_input, model_choice, language,
                     task_type, device_input, output_format, temperature,

@@ -314,7 +314,8 @@ class TranscriptionAssistant:
     async def process_audio(
         self, 
         audio_path: Union[str, Path],
-        context: Optional[TranscriptionContext] = None
+        context: Optional[TranscriptionContext] = None,
+        progress_callback: Optional[Callable] = None
     ) -> dict:
         """Main entry point with context support"""
         try:
@@ -327,7 +328,6 @@ class TranscriptionAssistant:
             current_context = context or self.context
 
             # Initialize state with empty input
-            # Will be populated during preprocessing
             initial_state = TranscriptionState(
                 input="",
                 audio_path=str(audio_path),
@@ -338,25 +338,20 @@ class TranscriptionAssistant:
                 initial_prompt=current_context.generate_prompt()
             )
 
+            # Pass progress_callback to transcribe_audio through state
+            if progress_callback:
+                initial_state['progress_callback'] = progress_callback
+
             logger.info("Starting graph execution")
             final_state = await self.graph_runnable.ainvoke(initial_state)
             logger.info("Processing completed successfully")
             return self._prepare_response(final_state)
 
-        except FileNotFoundError as e:
-            logger.error(f"File error: {str(e)}")
-            raise TranscriptionError(f"File error: {str(e)}")
-        except AudioProcessingError as e:
-            logger.error(f"Audio processing error: {str(e)}")
-            raise TranscriptionError(f"Audio processing error: {str(e)}")
-        except ModelError as e:
-            logger.error(f"Model error: {str(e)}")
-            raise TranscriptionError(f"Model error: {str(e)}")
         except Exception as e:
             logger.error(f"Unexpected error in process_audio: {str(e)}")
             logger.debug(f"Traceback: {traceback.format_exc()}")
             raise TranscriptionError(f"Processing failed: {str(e)}")
-
+        
     async def transcribe_audio(
         self,
         state: TranscriptionState,
@@ -481,6 +476,19 @@ class TranscriptionAssistant:
             seconds = int(duration % 60)
             return f"Processed {progress['chunk']} chunks ({minutes}:{seconds:02d})"
         return "Processing..."
+    
+    async def _cleanup_resources(self, state: TranscriptionState):
+        """Clean up any temporary files or resources"""
+        try:
+            if 'temp_files' in state:
+                for temp_file in state['temp_files']:
+                    try:
+                        os.remove(temp_file)
+                        logger.info(f"Cleaned up temporary file: {temp_file}")
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up file {temp_file}: {str(e)}")
+        except Exception as e:
+            logger.warning(f"Error during cleanup: {str(e)}")
     
     async def save_outputs(
         self,
