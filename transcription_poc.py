@@ -75,53 +75,49 @@ async def transcription_wrapper_with_progress(
     output_format,
     temperature=0.0,
     verbose=True,
+    progress=gr.Progress()
 ):
     """
     Enhanced wrapper function to handle transcription requests through Gradio interface
     with progress bar. Returns transcription results and generated subtitle files.
     """
     try:
-        async def progress_callback(progress_value, status, current_text, processed_time):
-            # Update Gradio components with normalized progress (0-1)
-            gr.Progress().update(progress_value * 0.01)  # Convert percentage to 0-1 scale
-            return {
-                status_text: status,
-                subtitle_preview: current_text,
-                time_info: processed_time
-            }
-
-        # First, load and preprocess the audio
+        # Initialize progress
+        progress(0, desc="Starting transcription...")
+        
+        # Load and preprocess audio
         loader = EnhancedContentLoader()
         audio_path = None
 
         try:
+            progress(0.1, desc="Processing input...")
             if media_input:
                 audio_path = media_input
+                progress(0.2, desc="Media file loaded")
             elif url_input:
-                # Assume the loader can handle URL downloads
+                progress(0.15, desc="Downloading from URL...")
                 docs = loader.preprocess_audio(urls=url_input)
                 if docs:
                     audio_path = docs[0].metadata["processed_path"]
+                    progress(0.2, desc="URL content downloaded")
 
             if not audio_path:
-                await progress_callback(0, "Error: No input provided", "", "")
-                return (
-                    "Please provide either a media file or a valid URL.",
-                    None, None, None, None, None, None, None
-                )
-            # Create output directory if it doesn't exist
+                return ("Please provide either a media file or a valid URL.",
+                        *([None] * 7))
+
+            # Setup output directory
+            progress(0.25, desc="Setting up output directory...")
             output_dir = Path("./output")
             output_dir.mkdir(exist_ok=True)
-
-            # Get the base filename without extension
             base_filename = Path(audio_path).stem
             output_base_path = output_dir / base_filename
 
-            # Create a basic TranscriptionContext
+            # Initialize transcription context
+            progress(0.3, desc="Initializing transcription...")
             context = TranscriptionContext(
-                speakers=[],  # Could be populated from UI in future
-                terms={},     # Could be populated from UI in future
-                context=""    # Could be populated from UI in future
+                speakers=[],
+                terms={},
+                context=""
             )
 
             # Initialize transcription assistant
@@ -136,18 +132,32 @@ async def transcription_wrapper_with_progress(
                 verbose=verbose
             )
 
-            # Process the audio with context and progress updates
+            # Process audio with progress updates
+            progress(0.4, desc="Starting transcription process...")
+            
+            async def progress_callback(percent, status, current_text, processed_time):
+                # Map the transcription progress (40-90%) to the overall progress
+                overall_progress = 0.4 + (percent * 0.5 / 100)
+                progress(overall_progress, desc=status)
+                return {
+                    "status": status,
+                    "subtitle_preview": current_text,
+                    "time_info": processed_time
+                }
+
             result = await transcription_assistant.process_audio(
                 audio_path,
                 context=context,
                 progress_callback=progress_callback
             )
-            # Generate output paths and verify they exist
+
+            # Generate output files
+            progress(0.9, desc="Generating output files...")
             def get_output_path(ext):
                 path = output_base_path.with_suffix(f'.{ext}')
                 return str(path) if path.exists() else None
 
-
+            progress(1.0, desc="Transcription completed!")
             return (
                 result["transcription"],
                 audio_path if task_type == "transcribe" else None,
@@ -160,13 +170,13 @@ async def transcription_wrapper_with_progress(
             )
 
         except Exception as e:
-            await progress_callback(0, f"Error: {str(e)}", "", "")
+            progress(1.0, desc=f"Error: {str(e)}")
             return (str(e), *([None] * 7))
 
     except Exception as e:
         logger.error(f"Unexpected error in transcription wrapper: {str(e)}")
-        return (f"Error: {str(e)}", *([None] * 7)) 
-
+        return (f"Error: {str(e)}", *([None] * 7))
+    
 # Gradio interface setup
 with gr.Blocks() as demo:
     gr.Markdown("# AI WorkBench")

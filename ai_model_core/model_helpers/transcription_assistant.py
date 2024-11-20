@@ -132,10 +132,12 @@ class TranscriptionAssistant:
         temperature=0.0,
         output_dir="./output",
         context: Optional[TranscriptionContext] = None,
-        verbose=True
+        verbose=True,
+        progress: Optional[gr.Progress] = None
     ):
         self.context = context or TranscriptionContext()
         self.model_size = model_size
+        self.progress = progress
         # Set up model (use provided or load new)
         try:
             if model is not None:
@@ -238,44 +240,42 @@ class TranscriptionAssistant:
             logger.error(f"Error extracting audio from video: {str(e)}")
             raise AudioProcessingError(f"Failed to extract audio from video: {str(e)}")
         
-    async def preprocess_audio(
-        self,
-        state: TranscriptionState
-    ) -> TranscriptionState:
-        """Preprocess audio node in workflow"""
+    async def preprocess_audio(self, state: TranscriptionState) -> TranscriptionState:
         try:
+            if self.progress:
+                self.progress(0.1, desc="Preprocessing audio...")
+                
             audio_path = state['audio_path']
             logger.info(f"Preprocessing audio file: {audio_path}")
             
-            # Extract audio if it's a video file
             audio_path = await self._extract_audio_from_video(audio_path)
             state['audio_path'] = audio_path
             
-            # Initialize list to store chunks
-            audio_chunks = []
+            if self.progress:
+                self.progress(0.2, desc="Audio extraction complete")
             
-            # Process audio in streams
+            audio_chunks = []
             async for chunk in self._preprocess_audio_file(audio_path):
                 audio_chunks.append(chunk)
             
-            # Combine chunks if needed
             state['input'] = np.concatenate(audio_chunks) if audio_chunks else np.array([])
             state['all_actions'].append("audio_preprocessed")
             
-            # Cleanup
             if audio_path != state['audio_path']:
                 try:
                     os.remove(audio_path)
-                    logger.info(f"Cleaned up temporary audio file: {audio_path}")
                 except Exception as e:
                     logger.warning(f"Failed to clean up temporary audio file: {str(e)}")
             
+            if self.progress:
+                self.progress(0.3, desc="Preprocessing complete")
+                
             return state
             
         except Exception as e:
             logger.error(f"Error in preprocess_audio: {str(e)}")
             raise AudioProcessingError(f"Preprocessing failed: {str(e)}")
-                                           
+                                                   
     async def _preprocess_audio_file(self, audio_path: str) -> AsyncGenerator[np.ndarray, None]:
         """Internal method for audio preprocessing with support for large files"""
         try:
@@ -352,33 +352,24 @@ class TranscriptionAssistant:
             logger.debug(f"Traceback: {traceback.format_exc()}")
             raise TranscriptionError(f"Processing failed: {str(e)}")
         
-    async def transcribe_audio(
-        self,
-        state: TranscriptionState,
-        progress_callback: Callable = None
-    ) -> TranscriptionState:
-        """Transcribe audio with progress updates"""
+    async def transcribe_audio(self, state: TranscriptionState) -> TranscriptionState:
         try:
+            if self.progress:
+                self.progress(0.3, desc="Starting transcription...")
+                
             if self.model is None:
                 raise ModelError("Model not properly initialized")
                 
-            transcribe_func = (
-                self.model.translate if self.task_type == 'translate'
-                else self.model.transcribe
-            )
+            transcribe_func = self.model.translate if self.task_type == 'translate' else self.model.transcribe
             
-            # Get audio duration using pydub instead of soundfile
             audio = AudioSegment.from_file(state['audio_path'])
-            total_duration = len(audio) / 1000.0  # Convert milliseconds to seconds
+            total_duration = len(audio) / 1000.0
             
-            # Initialize progress tracking
             processed_duration = 0
-            progress = 0
+            progress_value = 0.3
             
-            # Get the audio data from input field
             audio_chunks_generator = self._preprocess_audio_file(state['audio_path'])
             
-            # Initialize results
             all_segments = []
             full_text = []
             chunk_count = 0
@@ -386,22 +377,13 @@ class TranscriptionAssistant:
             
             async for chunk in audio_chunks_generator:
                 chunk_count += 1
-                chunk_start_time = time.time()
-                
-                # Update progress
-                chunk_duration = len(chunk) / 16000  # seconds
+                chunk_duration = len(chunk) / 16000
                 processed_duration += chunk_duration
-                progress = min(100, int((processed_duration / total_duration) * 100))
                 
-                if progress_callback:
-                    await progress_callback(
-                        progress=progress,
-                        status=f"Processing chunk {chunk_count}...",
-                        current_text=' '.join(full_text),
-                        processed_time=f"{int(processed_duration)}/{int(total_duration)} seconds"
-                    )
+                if self.progress:
+                    progress_value = 0.3 + (0.6 * (processed_duration / total_duration))
+                    self.progress(progress_value, desc=f"Processing chunk {chunk_count}...")
                 
-                # Transcribe chunk
                 try:
                     chunk_result = await asyncio.to_thread(
                         transcribe_func,
@@ -411,10 +393,8 @@ class TranscriptionAssistant:
                         initial_prompt=state.get('initial_prompt', '')
                     )
                 except Exception as e:
-                    logger.error(f"Error transcribing chunk {chunk_count}: {str(e)}")
                     raise ModelError(f"Failed to transcribe chunk {chunk_count}: {str(e)}")
                 
-                # Adjust timestamps and collect results
                 if processed_duration > chunk_duration:
                     for seg in chunk_result["segments"]:
                         seg["start"] += (processed_duration - chunk_duration)
@@ -422,15 +402,7 @@ class TranscriptionAssistant:
                 
                 all_segments.extend(chunk_result["segments"])
                 full_text.append(chunk_result["text"])
-                
-                # Calculate and log chunk processing speed
-                chunk_time = time.time() - chunk_start_time
-                logger.info(
-                    f"Chunk {chunk_count} processed in {chunk_time:.2f}s "
-                    f"({chunk_duration/chunk_time:.2f}x real-time)"
-                )
             
-            # Final results
             if chunk_result is None:
                 raise ModelError("No chunks were processed successfully")
                 
@@ -444,29 +416,15 @@ class TranscriptionAssistant:
             state['results'] = combined_results
             state['all_actions'].append("audio_transcribed")
             
-            # Final progress update
-            if progress_callback:
-                await progress_callback(
-                    progress=100,
-                    status="Transcription complete!",
-                    current_text=combined_results["text"],
-                    processed_time=f"{int(total_duration)}/{int(total_duration)} seconds"
-                )
+            if self.progress:
+                self.progress(0.9, desc="Transcription complete!")
             
             return state
 
         except Exception as e:
             logger.error(f"Error in transcribe_audio: {str(e)}")
-            logger.debug(f"Traceback: {traceback.format_exc()}")
-            if progress_callback:
-                await progress_callback(
-                    progress=0,
-                    status=f"Error: {str(e)}",
-                    current_text="",
-                    processed_time=""
-                )
             raise ModelError(f"Transcription failed: {str(e)}")
-                        
+                                
     async def update_progress(self, state: TranscriptionState):
         """Update UI with transcription progress"""
         if 'progress' in state:
@@ -490,30 +448,27 @@ class TranscriptionAssistant:
         except Exception as e:
             logger.warning(f"Error during cleanup: {str(e)}")
     
-    async def save_outputs(
-        self,
-        state: TranscriptionState
-    ) -> TranscriptionState:
-        """Save outputs node in workflow"""
+    async def save_outputs(self, state: TranscriptionState) -> TranscriptionState:
         try:
+            if self.progress:
+                self.progress(0.9, desc="Saving outputs...")
+                
             base_filename = Path(state['audio_path']).stem
 
-            # Save in all supported formats
             formats = ['txt', 'srt', 'vtt', 'tsv', 'json', 'all']
             for fmt in formats:
                 writer = get_writer(fmt, str(self.output_dir))
-                await asyncio.to_thread(
-                    writer,
-                    state['results'],
-                    f"{base_filename}.{fmt}"
-                )
+                await asyncio.to_thread(writer, state['results'], f"{base_filename}.{fmt}")
 
             state['all_actions'].append("outputs_saved")
+            
+            if self.progress:
+                self.progress(1.0, desc="Processing complete!")
+                
             return state
 
         except Exception as e:
             logger.error(f"Error in save_outputs: {str(e)}")
-            logger.debug(f"Traceback: {traceback.format_exc()}")
             raise OutputError(f"Failed to save outputs: {str(e)}")
 
     async def post_process(
