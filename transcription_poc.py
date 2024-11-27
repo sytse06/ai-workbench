@@ -77,10 +77,6 @@ async def transcription_wrapper_with_progress(
     verbose=True,
     progress=gr.Progress()
 ):
-    """
-    Enhanced wrapper function to handle transcription requests through Gradio interface
-    with progress bar. Returns transcription results and generated subtitle files.
-    """
     try:
         # Initialize progress
         progress(0, desc="Starting transcription...")
@@ -90,30 +86,27 @@ async def transcription_wrapper_with_progress(
         audio_path = None
 
         try:
-            progress(0.1, desc="Processing input...")
             if media_input:
                 audio_path = media_input
-                progress(0.2, desc="Media file loaded")
             elif url_input:
-                progress(0.15, desc="Downloading from URL...")
                 docs = loader.preprocess_audio(urls=url_input)
                 if docs:
                     audio_path = docs[0].metadata["processed_path"]
-                    progress(0.2, desc="URL content downloaded")
 
             if not audio_path:
-                return ("Please provide either a media file or a valid URL.",
-                        *([None] * 7))
+                return (
+                    "Please provide either a media file or a valid URL.",
+                    None, None, None, None, None, None, None,
+                    "Error: No input provided",
+                    ""
+                )
 
             # Setup output directory
-            progress(0.25, desc="Setting up output directory...")
             output_dir = Path("./output")
             output_dir.mkdir(exist_ok=True)
             base_filename = Path(audio_path).stem
             output_base_path = output_dir / base_filename
-
-            # Initialize transcription context
-            progress(0.3, desc="Initializing transcription...")
+            
             context = TranscriptionContext(
                 speakers=[],
                 terms={},
@@ -132,18 +125,38 @@ async def transcription_wrapper_with_progress(
                 verbose=verbose
             )
 
-            # Process audio with progress updates
-            progress(0.4, desc="Starting transcription process...")
-            
+            # Create a status dictionary to store the latest updates
+            status_updates = {
+                "subtitle_preview": "",
+                "status": "",
+                "time_info": ""
+            }
+
             async def progress_callback(percent, status, current_text, processed_time):
-                # Map the transcription progress (40-90%) to the overall progress
+                nonlocal status_updates
+                # Update the progress bar
                 overall_progress = 0.4 + (percent * 0.5 / 100)
-                progress(overall_progress, desc=status)
-                return {
-                    "status": status,
-                    "subtitle_preview": current_text,
-                    "time_info": processed_time
-                }
+                progress(overall_progress, desc="Processing...")
+                
+                # Store the latest updates
+                status_updates["status"] = status
+                status_updates["time_info"] = processed_time
+                if current_text:  # Only update text when we have new content
+                    status_updates["subtitle_preview"] = current_text
+                
+                # Update Gradio components in real-time
+                return [
+                    status_updates["subtitle_preview"],  # subtitle_preview
+                    None,  # audio_output
+                    None,  # video_output
+                    None,  # txt_download
+                    None,  # srt_download
+                    None,  # vtt_download
+                    None,  # tsv_download
+                    None,  # json_download
+                    status_updates["status"],  # status_text
+                    status_updates["time_info"],  # time_info
+                ]
 
             result = await transcription_assistant.process_audio(
                 audio_path,
@@ -151,32 +164,33 @@ async def transcription_wrapper_with_progress(
                 progress_callback=progress_callback
             )
 
-            # Generate output files
-            progress(0.9, desc="Generating output files...")
+            # Generate output paths
             def get_output_path(ext):
                 path = output_base_path.with_suffix(f'.{ext}')
                 return str(path) if path.exists() else None
 
-            progress(1.0, desc="Transcription completed!")
+            # Return final results
             return (
-                result["transcription"],
-                audio_path if task_type == "transcribe" else None,
+                result["transcription"],  # subtitle_preview
+                audio_path if task_type == "transcribe" else None,  # audio_output
                 None,  # video_output
                 get_output_path('txt') if 'txt' in output_format else None,
                 get_output_path('srt') if 'srt' in output_format else None,
                 get_output_path('vtt') if 'vtt' in output_format else None,
                 get_output_path('tsv') if 'tsv' in output_format else None,
                 get_output_path('json') if 'json' in output_format else None,
+                status_updates["status"],  # status_text
+                status_updates["time_info"]  # time_info
             )
 
         except Exception as e:
-            progress(1.0, desc=f"Error: {str(e)}")
-            return (str(e), *([None] * 7))
+            error_msg = f"Error: {str(e)}"
+            return (error_msg, None, None, None, None, None, None, None, error_msg, "")
 
     except Exception as e:
-        logger.error(f"Unexpected error in transcription wrapper: {str(e)}")
-        return (f"Error: {str(e)}", *([None] * 7))
-    
+        error_msg = f"Error: {str(e)}"
+        return (error_msg, None, None, None, None, None, None, None, error_msg, "")
+            
 # Gradio interface setup
 with gr.Blocks() as demo:
     gr.Markdown("# AI WorkBench")
@@ -301,11 +315,19 @@ with gr.Blocks() as demo:
                     verbose
                 ],
                 outputs=[
-                    subtitle_preview, audio_output, video_output,
-                    txt_download, srt_download, vtt_download,
-                    tsv_download, json_download,
+                    subtitle_preview,
+                    audio_output, 
+                    video_output,
+                    txt_download, 
+                    srt_download, 
+                    vtt_download,
+                    tsv_download, 
+                    json_download,
+                    status_text,
+                    time_info
                 ],
-                concurrency_limit=1  # Process one request at a time
+                concurrency_limit=1,
+                show_progress="full"  # This ensures we see all progress updates
             )
 
 
