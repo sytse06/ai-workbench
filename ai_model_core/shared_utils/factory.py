@@ -50,6 +50,7 @@ def get_model(choice: str, **kwargs):
             base_url="http://localhost:11434",
             **kwargs)
     elif choice.startswith("Whisper"):
+        # Extract size from full model name (e.g. "Whisper base" -> "base")
         whisper_size = choice.split()[-1].lower()
         valid_sizes = [
             "tiny", "base", "small", "medium", 
@@ -58,9 +59,12 @@ def get_model(choice: str, **kwargs):
         if whisper_size not in valid_sizes:
             sizes_str = ", ".join(valid_sizes)
             raise ValueError(
-                f"Invalid Whisper model size. Choose from {sizes_str}"
+                f"Invalid Whisper model size '{whisper_size}'. Choose from: {sizes_str}"
             )
-        return whisper.load_model(whisper_size)
+        try:
+            return whisper.load_model(whisper_size)
+        except Exception as e:
+            raise ValueError(f"Failed to load Whisper model: {str(e)}")        
     elif choice == "Mistral (large)":
         api_key = get_api_key('mistral')
         return ChatOpenAI(
