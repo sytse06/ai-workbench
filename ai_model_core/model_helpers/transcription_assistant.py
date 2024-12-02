@@ -5,6 +5,7 @@ from pathlib import Path
 import asyncio
 import traceback
 import os
+import aiofiles
 from typing import (
    TypedDict, 
    List, 
@@ -483,7 +484,12 @@ class TranscriptionAssistant:
                 "processed_time": ""
             }
                         
-    async def _log_progress(self, message: str, state: TranscriptionState, progress_value: float):
+    async def _log_progress(
+        self, 
+        message: str, 
+        state: TranscriptionState, 
+        progress_value: float = None
+    ):
         """Enhanced progress logging with streaming support"""
         if self.verbose:
             self.logger.info(message)
@@ -493,7 +499,7 @@ class TranscriptionAssistant:
                 "status": message,
                 "current_text": state.get('transcription', ''),
                 "processed_time": state.get('processed_time', ''),
-                "progress": progress_value
+                "progress": progress_value if progress_value is not None else 0
             }
             try:
                 await state['progress_callback'](progress_info)
@@ -649,29 +655,46 @@ class TranscriptionAssistant:
             logger.warning(f"Error during cleanup: {str(e)}")
     
     async def save_outputs(self, state: TranscriptionState) -> TranscriptionState:
-        """Enhanced output saving with progress updates"""
         try:
-            await self._log_progress("Saving outputs...", state, 90)
+            selected_format = state.get('selected_format', 'none')
+            if selected_format == 'none':
+                state['all_actions'].append("no_output_files_requested")
+                await self._log_progress("No output files requested", state, 100)
+                return state
+                
+            await self._log_progress("Starting to save outputs...", state, 90)
             
             base_filename = Path(state['audio_path']).stem
-
-            formats = ['txt', 'srt', 'vtt', 'tsv', 'json', 'all']
-            for i, fmt in enumerate(formats):
-                progress = 90 + ((i + 1) / len(formats)) * 10
-                await self._log_progress(f"Saving {fmt} format...", state, progress)
-                
-                writer = get_writer(fmt, str(self.output_dir))
-                await asyncio.to_thread(writer, state['results'], f"{base_filename}.{fmt}")
-
-            state['all_actions'].append("outputs_saved")
-            await self._log_progress("All outputs saved successfully!", state, 100)
+            state['output_files'] = {}
+            os.makedirs(str(self.output_dir), exist_ok=True)
             
+            formats = ['txt', 'srt', 'vtt', 'tsv', 'json'] if selected_format == 'all' else [selected_format]
+            
+            for fmt in formats:
+                output_path = self.output_dir / f"{base_filename}.{fmt}"
+                try:
+                    if fmt == 'txt':
+                        async with aiofiles.open(str(output_path), 'w', encoding='utf-8') as f:
+                            await f.write(state['results']['text'])
+                    else:
+                        writer = get_writer(fmt, str(self.output_dir))
+                        await asyncio.to_thread(writer, state['results'], str(output_path))
+                    
+                    if os.path.exists(str(output_path)) and os.path.getsize(str(output_path)) > 0:
+                        state['output_files'][fmt] = str(output_path)
+                        await self._log_progress(f"Saved {fmt} format", state, 95)
+                except Exception as e:
+                    logger.error(f"Failed to save {fmt} format: {str(e)}")
+
+            await self._log_progress("All files saved", state, 100)
+            state['all_actions'].append("outputs_saved")
             return state
 
         except Exception as e:
-            await self._log_progress(f"Error saving outputs: {str(e)}", state)
-            raise OutputError(f"Failed to save outputs: {str(e)}")
-        
+            logger.error(f"Error in save_outputs: {str(e)}")
+            state['all_actions'].append("outputs_save_failed")
+            return state
+                                                 
     async def post_process(
         self,
         state: TranscriptionState

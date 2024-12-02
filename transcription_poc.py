@@ -48,12 +48,8 @@ logger.addHandler(c_handler)
 logger.addHandler(f_handler)
 logger.propagate = False
 
-
 # Initialize the assistant when the app starts
 transcription_assistant = TranscriptionAssistant(model_size="base")
-
-# Define empty return tuple for error cases
-empty_return = (None,) * 7  # 7 None values for the 7 output fields
 
 # Define model choices
 WHISPER_SIZES = ["tiny", "base", "small", "medium"]
@@ -63,22 +59,23 @@ WHISPER_MODELS = []
 for size in ALL_SIZES:
     WHISPER_MODELS.append(f"Whisper {size}")
 
+# Define output format choices with 'none' as default
+OUTPUT_FORMATS = ["none", "txt", "srt", "vtt", "tsv", "json", "all"]
+
+# Define empty return tuple for error cases
+empty_return = (None,) * 7  # 7 None values for the 7 output fields
 
 # Wrapper function for Gradio interface transcription_assistant:
 async def transcription_wrapper_streaming(
-    media_input,
-    url_input,
-    model_choice,
-    language,
-    task_type,
-    device_input,
-    output_format,
-    temperature=0.0,
-    verbose=True,
-    progress=gr.Progress()  # Add direct progress parameter
+    media_input, url_input, model_choice, language, task_type, 
+    device_input, output_format, temperature=0.0, verbose=True, 
+    progress=gr.Progress()
 ):
+    if not media_input and not url_input:
+        yield "Please provide input", None, None, None, None, None, None, None, "Error: No input", ""
+        return
+
     try:
-        # Initial progress
         progress(0, desc="Initializing...")
         
         transcription_assistant = TranscriptionAssistant(
@@ -91,42 +88,91 @@ async def transcription_wrapper_streaming(
             verbose=verbose
         )
         
-        # Pass progress updates through callback
         async def progress_callback(percent, status):
             progress(percent / 100, desc=status)
             
         audio_path = media_input or url_input
-        if not audio_path:
-            yield "Please provide input", None, None, None, None, None, None, None, "Error: No input", ""
-            return
+        all_segments = []
+        final_text = ""
+        current_language = None
+        chunk_result = None
 
-        progress(0.1, desc="Starting transcription...")
-        
-        # Process with streaming updates
         async for chunk_result in transcription_assistant.process_audio_streaming(
-            audio_path, 
-            progress_callback=progress_callback
+            audio_path, progress_callback=progress_callback
         ):
+            final_text = chunk_result.get("current_text", "")
+            if isinstance(chunk_result, dict):
+                if "segments" in chunk_result:
+                    all_segments.extend(chunk_result["segments"])
+                if "language" in chunk_result:
+                    current_language = chunk_result["language"]
+                    
             yield (
-                chunk_result.get("current_text", ""),  # subtitle_preview
-                None,                                  # audio_output
-                None,                                  # video_output
-                None,                                  # downloads
-                None,
-                None,
-                None,
-                None,
-                chunk_result.get("status", ""),        # status_text
-                chunk_result.get("processed_time", "")  # time_info
+                chunk_result.get("current_text", ""),
+                None, None,
+                None, None, None, None, None,
+                chunk_result.get("status", ""),
+                chunk_result.get("processed_time", "")
+            )
+
+        if output_format != "none" and final_text:
+            stem = Path(audio_path).stem
+            transcription_state = {
+                'audio_path': audio_path,
+                'transcription': final_text,
+                'results': {
+                    "text": final_text,
+                    "segments": all_segments,
+                    "language": current_language or (language if language != "Auto" else "en")
+                },
+                'all_actions': [],
+                'selected_format': output_format
+            }
+            
+            await transcription_assistant.save_outputs(transcription_state)
+            
+            yield (
+                final_text,
+                None, None,
+                f"./output/{stem}.txt" if output_format in ['txt', 'all'] else None,
+                f"./output/{stem}.srt" if output_format in ['srt', 'all'] else None,
+                f"./output/{stem}.vtt" if output_format in ['vtt', 'all'] else None,
+                f"./output/{stem}.tsv" if output_format in ['tsv', 'all'] else None,
+                f"./output/{stem}.json" if output_format in ['json', 'all'] else None,
+                "Processing complete",
+                chunk_result.get("processed_time", "")
+            )
+        else:
+            yield (
+                final_text,
+                None, None,
+                None, None, None, None, None,
+                "Processing complete",
+                chunk_result.get("processed_time", "")
             )
 
     except Exception as e:
+        logger.error(f"Error: {str(e)}")
         yield str(e), None, None, None, None, None, None, None, f"Error: {str(e)}", ""
-        
+                                        
+# Function to update button state
+def start_transcription(*args):
+    return {
+        transcribe_button: "Transcribing...",
+        transcribing: "true"
+    }
+
+def finish_transcription(*args):
+    return {
+        transcribe_button: "Start Transcription",
+        transcribing: "false"
+    }
+
 # Gradio interface setup
 with gr.Blocks() as demo:
     gr.Markdown("# AI WorkBench")
     gr.Markdown("### Get work done with LLM's of choice")
+    
     with gr.Tab("Transcription"):
         with gr.Row():
             # Left Column - Input Controls
@@ -167,10 +213,10 @@ with gr.Blocks() as demo:
                         )
                     )
                     output_format = gr.Dropdown(
-                        choices=["txt", "srt", "vtt", "tsv", "json", "all"],
-                        value="txt",
+                        choices=OUTPUT_FORMATS,
+                        value="none",
                         label="Output Format",
-                        info="Select output file format"
+                        info="Select output file format or 'none' for no file output"
                     )
                     temperature = gr.Slider(
                         minimum=0.0,
@@ -225,19 +271,42 @@ with gr.Blocks() as demo:
                 
                 # Downloads in separate accordion
                 with gr.Accordion("Downloads", open=False):
-                    txt_download = gr.File(label="TXT Download")
-                    srt_download = gr.File(label="SRT Download")
-                    vtt_download = gr.File(label="VTT Download")
-                    tsv_download = gr.File(label="TSV Download")
-                    json_download = gr.File(label="JSON Download")
+                    txt_download = gr.File(
+                        label="TXT Download",
+                        visible=lambda: output_format not in ["none"]
+                    )
+                    srt_download = gr.File(
+                        label="SRT Download",
+                        visible=lambda: output_format not in ["none"]
+                    )
+                    vtt_download = gr.File(
+                        label="VTT Download",
+                        visible=lambda: output_format not in ["none"]
+                    )
+                    tsv_download = gr.File(
+                        label="TSV Download",
+                        visible=lambda: output_format not in ["none"]
+                    )
+                    json_download = gr.File(
+                        label="JSON Download",
+                        visible=lambda: output_format not in ["none"]
+                    )
 
         # Process button under both columns
         transcribe_button = gr.Button(
             "Start Transcription",
-            variant="primary"
-        )            
+            variant="primary",
+            elem_classes=["primary-btn"]
+        )
+        
+        # Add interactive elements for button state
+        transcribing = gr.Textbox(value="", visible=False)
+
         # Connect the transcribe button to the wrapper function
         transcribe_button.click(
+            fn=start_transcription,
+            outputs=[transcribe_button, transcribing]
+        ).then(
             fn=transcription_wrapper_streaming,
             inputs=[
                 media_input, url_input, model_choice, language,
@@ -257,8 +326,10 @@ with gr.Blocks() as demo:
                 time_info
             ],
             show_progress="full"
+        ).then(
+            fn=finish_transcription,
+            outputs=[transcribe_button, transcribing]
         )
-
 
 if __name__ == "__main__":
     logger.info("Starting the Gradio interface for transcription")
