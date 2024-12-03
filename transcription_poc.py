@@ -3,6 +3,7 @@
 import logging
 import os
 import sys
+import asyncio
 from pathlib import Path
 
 # Third-party imports
@@ -77,24 +78,40 @@ async def transcription_wrapper_streaming(
 
     try:
         progress(0, desc="Initializing...")
+        content_loader = EnhancedContentLoader()
+        current_language = None
+        audio_path = media_input
         
+        if url_input:
+            if not url_input.startswith(('http://', 'https://')):
+                url_input = 'https://' + url_input.lstrip('/')
+            temp_path = await asyncio.to_thread(content_loader._download_audio_file, url_input)
+            if not temp_path:
+                raise ValueError(f"Failed to download audio from URL: {url_input}")
+            if not os.path.exists(temp_path):
+                wav_path = temp_path + '.wav'
+                if os.path.exists(wav_path):
+                    temp_path = wav_path
+            audio_path = temp_path
+
+        if not os.path.exists(audio_path):
+            raise FileNotFoundError(f"Audio file not found: {audio_path}")
+                    
         transcription_assistant = TranscriptionAssistant(
             model_size=model_choice.split()[-1].lower(),
-            language=language,
+            language=None if language == "Auto" else language,
             task_type=task_type,
             device=device_input.lower(),
             temperature=temperature,
             output_dir="./output",
             verbose=verbose
         )
-        
+
         async def progress_callback(percent, status):
             progress(percent / 100, desc=status)
-            
-        audio_path = media_input or url_input
+
         all_segments = []
         final_text = ""
-        current_language = None
         chunk_result = None
 
         async for chunk_result in transcription_assistant.process_audio_streaming(
@@ -151,6 +168,12 @@ async def transcription_wrapper_streaming(
                 chunk_result.get("processed_time", "")
             )
 
+        try:
+            if url_input and temp_path:
+                os.remove(temp_path)
+        except:
+            pass
+
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         yield str(e), None, None, None, None, None, None, None, f"Error: {str(e)}", ""
@@ -196,7 +219,7 @@ with gr.Blocks() as demo:
                         info="Specification improves speed"
                     )
                 
-                with gr.Accordion("Advanced Options", open=False):
+                with gr.Accordion("Options", open=False):
                     model_choice = gr.Dropdown(
                         choices=WHISPER_MODELS,
                         value="Whisper large",

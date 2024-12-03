@@ -5,6 +5,7 @@ from typing import List, Union, Any, Optional
 import os
 import logging
 import tempfile
+from urllib.parse import urlparse, parse_qs
 
 # Third-party imports
 from langchain.schema import Document
@@ -18,6 +19,7 @@ from PIL import Image
 import pytesseract
 from urllib.parse import urlparse
 import requests
+import yt_dlp
 
 logger = logging.getLogger(__name__)
 
@@ -275,8 +277,12 @@ class EnhancedContentLoader:
             raise
 
     def _download_audio_file(self, url: str) -> Optional[str]:
-        """Download audio file from URL."""
+        """Download audio file from URL with platform support."""
         try:
+            if self._is_video_platform_url(url):
+                return self._download_platform_audio(url)
+                
+            # Regular audio file download logic
             response = requests.get(url, stream=True)
             response.raise_for_status()
             
@@ -292,7 +298,41 @@ class EnhancedContentLoader:
         except Exception as e:
             logger.error(f"Error downloading audio file from {url}: {str(e)}")
             return None
+    
+    def _is_video_platform_url(self, url: str) -> bool:
+        """Check if URL is from supported video platforms."""
+        parsed = urlparse(url)
+        return any(domain in parsed.netloc for domain in [
+            'youtube.com', 'youtu.be', 'www.youtube.com',
+            'vimeo.com', 'www.vimeo.com',
+            'tiktok.com', 'www.tiktok.com', 'novulo.com' 
+        ])
 
+    def _download_platform_audio(self, url: str) -> Optional[str]:
+        """Download audio from video platforms."""
+        try:
+            output_path = self.temp_dir / f"video_{hash(url)}.wav"
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'wav',
+                }],
+                'outtmpl': str(output_path.with_suffix('')),
+                'verbose': True,  # Add verbose output for debugging
+                'no_warnings': False
+            }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                logger.info(f"Attempting to download: {url}")
+                ydl.download([url])
+                
+            return str(output_path)
+            
+        except Exception as e:
+            logger.error(f"Error downloading platform audio: {str(e)}")
+            raise
+        
     def cleanup(self):
         """Clean up temporary files."""
         try:
