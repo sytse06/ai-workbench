@@ -68,8 +68,9 @@ empty_return = (None,) * 7  # 7 None values for the 7 output fields
 
 # Wrapper function for Gradio interface transcription_assistant:
 async def transcription_wrapper_streaming(
-    media_input, url_input, model_choice, language, task_type, 
-    device_input, output_format, temperature=0.0, verbose=True, 
+    media_input, url_input, model_choice, language, task_type,
+    device_input, output_format, speakers_input, terms_input,
+    context_input, temperature=0.0, verbose=True,
     progress=gr.Progress()
 ):
     if not media_input and not url_input:
@@ -79,9 +80,8 @@ async def transcription_wrapper_streaming(
     try:
         progress(0, desc="Initializing...")
         content_loader = EnhancedContentLoader()
-        current_language = None
         audio_path = media_input
-        
+
         if url_input:
             if not url_input.startswith(('http://', 'https://')):
                 url_input = 'https://' + url_input.lstrip('/')
@@ -96,7 +96,18 @@ async def transcription_wrapper_streaming(
 
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
-                    
+
+        # Process transcription context
+        context = TranscriptionContext()
+        if speakers_input:
+            context.speakers = [s.strip() for s in speakers_input.split(',')]
+        if terms_input:
+            term_pairs = [term.strip().split(':') for term in terms_input.split(',')]
+            context.terms = {pair[0].strip(): pair[1].strip() 
+                           for pair in term_pairs if len(pair) == 2}
+        if context_input:
+            context.context = context_input
+
         transcription_assistant = TranscriptionAssistant(
             model_size=model_choice.split()[-1].lower(),
             language=None if language == "Auto" else language,
@@ -104,6 +115,7 @@ async def transcription_wrapper_streaming(
             device=device_input.lower(),
             temperature=temperature,
             output_dir="./output",
+            context=context,
             verbose=verbose
         )
 
@@ -112,35 +124,33 @@ async def transcription_wrapper_streaming(
 
         all_segments = []
         final_text = ""
-        chunk_result = None
 
         async for chunk_result in transcription_assistant.process_audio_streaming(
             audio_path, progress_callback=progress_callback
         ):
-            final_text = chunk_result.get("current_text", "")
             if isinstance(chunk_result, dict):
+                final_text = chunk_result.get("current_text", "")
+                raw_text = chunk_result.get("raw_text", final_text)
                 if "segments" in chunk_result:
                     all_segments.extend(chunk_result["segments"])
-                if "language" in chunk_result:
-                    current_language = chunk_result["language"]
-                    
-            yield (
-                chunk_result.get("current_text", ""),
-                None, None,
-                None, None, None, None, None,
-                chunk_result.get("status", ""),
-                chunk_result.get("processed_time", "")
-            )
 
-        if output_format != "none" and final_text:
+                yield (
+                    final_text,
+                    None, None,
+                    None, None, None, None, None,
+                    chunk_result.get("status", ""),
+                    chunk_result.get("processed_time", "")
+                )
+
+        if output_format != "none" and raw_text:
             stem = Path(audio_path).stem
             transcription_state = {
                 'audio_path': audio_path,
-                'transcription': final_text,
+                'transcription': raw_text,
                 'results': {
-                    "text": final_text,
+                    "text": raw_text,
                     "segments": all_segments,
-                    "language": current_language or (language if language != "Auto" else "en")
+                    "language": language if language != "Auto" else "en"
                 },
                 'all_actions': [],
                 'selected_format': output_format
@@ -168,16 +178,16 @@ async def transcription_wrapper_streaming(
                 chunk_result.get("processed_time", "")
             )
 
-        try:
-            if url_input and temp_path:
+        if url_input and temp_path:
+            try:
                 os.remove(temp_path)
-        except:
-            pass
+            except Exception as e:
+                logger.warning(f"Failed to clean up temporary file: {str(e)}")
 
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         yield str(e), None, None, None, None, None, None, None, f"Error: {str(e)}", ""
-                                        
+                                                
 # Function to update button state
 def start_transcription(*args):
     return {
@@ -263,6 +273,23 @@ with gr.Blocks() as demo:
 
             # Right Column - Output and Progress
             with gr.Column(scale=2):
+                with gr.Accordion("Transcription Context Hints", open=False):
+                    speakers_input = gr.Textbox(
+                        label="Speakers",
+                        placeholder="Geoffrey Hinton, Andrej Karpathy",
+                        info="Add speaker names for correct spelling, separated by commas"
+                    )
+                    context_input = gr.Textbox(
+                        label="Additional Context",
+                        placeholder="Meeting about customer implementation",
+                        lines=2,
+                        info="Add brief context to help with domain-specific transcription"
+                    )
+                    terms_input = gr.Textbox(
+                        label="Specialized terms",
+                        placeholder="LLM:Large Language Model, RAG:Retrieval Augmented Generation",
+                        info="Add technical terms as term:description, separated by commas"
+                    )
                 # Always visible component
                 subtitle_preview = gr.TextArea(
                     label="Transcription Preview",
@@ -333,8 +360,9 @@ with gr.Blocks() as demo:
             fn=transcription_wrapper_streaming,
             inputs=[
                 media_input, url_input, model_choice, language,
-                task_type, device_input, output_format, temperature,
-                verbose
+                task_type, device_input, output_format, 
+                speakers_input, terms_input, context_input,
+                temperature, verbose
             ],
             outputs=[
                 subtitle_preview,

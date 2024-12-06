@@ -116,7 +116,11 @@ class TranscriptionContext:
             prefix = "Speakers in the conversation: "
             speakers_str = f"{prefix}{speakers_list}"
             prompt_parts.append(speakers_str)
-        
+                
+        # Add additional context
+        if self.context:
+            prompt_parts.append(self.context)
+            
         # Add specialized terms/vocabulary
         if self.terms:
             terms_list = [
@@ -125,11 +129,7 @@ class TranscriptionContext:
             ]
             terms_str = "Specialized terms:\n" + "\n".join(terms_list)
             prompt_parts.append(terms_str)
-        
-        # Add additional context
-        if self.context:
-            prompt_parts.append(self.context)
-            
+           
         return "\n\n".join(prompt_parts)
 
 
@@ -375,7 +375,6 @@ class TranscriptionAssistant:
         audio_path: Union[str, Path],
         progress_callback: Optional[Callable] = None
     ) -> AsyncGenerator[dict, None]:
-        """Streaming processing with differentiated progress updates"""
         try:
             audio_path = Path(audio_path)
             if not audio_path.exists():
@@ -383,41 +382,49 @@ class TranscriptionAssistant:
                 yield {
                     "status": "Error: File not found",
                     "current_text": "",
-                    "processed_time": ""
+                    "raw_text": "",
+                    "processed_time": "",
+                    "verbose_details": f"File not found at path: {audio_path}"
                 }
                 return
 
-            # Get audio duration for progress tracking
             audio = AudioSegment.from_file(str(audio_path))
             total_duration = len(audio) / 1000.0
             processed_duration = 0
             full_text = []
             chunk_count = 0
-            total_chunks = int(total_duration / 30) + 1  # Assuming 30s chunks
+            total_chunks = int(total_duration / 30) + 1
 
-            logger.info(f"Starting transcription of {audio_path.name}")
+            # Generate initial prompt only once
+            initial_prompt = self.context.generate_prompt() if self.context else ""
+            logger.info(f"Starting transcription with context: {bool(initial_prompt)}")
+            
             if progress_callback:
-                await progress_callback(0, f"Preparing to process {total_chunks} chunks...")
+                await progress_callback(0, f"Processing {int(total_duration)} seconds of audio...")
 
             yield {
                 "status": "Initializing transcription...",
                 "current_text": "",
-                "processed_time": f"0:00 / {int(total_duration//60)}:{int(total_duration%60):02d}"
+                "raw_text": "",
+                "processed_time": f"0:00 / {int(total_duration//60)}:{int(total_duration%60):02d}",
+                "verbose_details": f"Processing {total_chunks} chunks with {len(initial_prompt)} characters of context."
             }
 
-            # Process audio in chunks
             async for chunk in self._preprocess_audio_file(str(audio_path)):
                 chunk_count += 1
+                chunk_start_time = time.time()
                 chunk_duration = len(chunk) / 16000
                 
                 try:
                     logger.info(f"Processing chunk {chunk_count}/{total_chunks}")
                     
+                    # Pass initial_prompt to transcribe but don't include in output
                     result = await asyncio.to_thread(
                         self.model.transcribe,
                         chunk,
                         language=self.language,
-                        temperature=self.temperature
+                        temperature=self.temperature,
+                        initial_prompt=initial_prompt
                     )
                     
                     processed_duration += chunk_duration
@@ -426,52 +433,58 @@ class TranscriptionAssistant:
                     minutes_total = int(total_duration // 60)
                     seconds_total = int(total_duration % 60)
                     
+                    chunk_time = time.time() - chunk_start_time
+                    speed_ratio = chunk_duration/chunk_time
                     progress_percent = min(95, int((processed_duration / total_duration) * 100))
                     
                     if progress_callback:
                         await progress_callback(
-                            progress_percent, 
+                            progress_percent,
                             f"Processing chunk {chunk_count}/{total_chunks}"
                         )
                     
                     full_text.append(result["text"])
+                    raw_text = " ".join(full_text)
+
+                    # Format display text with context headers only for display
+                    display_text = raw_text
+                    if self.context and (self.context.speakers or self.context.terms or self.context.context):
+                        display_text = "\n\n".join([
+                            "==============TRANSCRIPTION CONTEXT==============",
+                            initial_prompt,
+                            "==============TRANSCRIPTION RESULT===============",
+                            raw_text
+                        ])
                     
-                    # Differentiated updates for different UI components
                     yield {
                         "status": f"Processing chunk {chunk_count} of {total_chunks}",
-                        "current_text": " ".join(full_text),
-                        "processed_time": (
-                            f"{minutes_processed}:{seconds_processed:02d} / "
-                            f"{minutes_total}:{seconds_total:02d}"
-                        )
+                        "current_text": display_text,  # Formatted with context
+                        "raw_text": raw_text,         # Clean text for file output
+                        "processed_time": f"{minutes_processed}:{seconds_processed:02d} / {minutes_total}:{seconds_total:02d}",
+                        "verbose_details": f"Chunk {chunk_count}/{total_chunks} processed at {speed_ratio:.2f}x real-time speed"
                     }
-
-                    logger.info(
-                        f"Chunk {chunk_count}/{total_chunks} completed - "
-                        f"Time: {minutes_processed}:{seconds_processed:02d} / "
-                        f"{minutes_total}:{seconds_total:02d}"
-                    )
 
                 except Exception as e:
                     logger.error(f"Error processing chunk {chunk_count}: {str(e)}")
-                    if progress_callback:
-                        await progress_callback(0, f"Error in chunk {chunk_count}")
                     yield {
                         "status": f"Error in chunk {chunk_count}/{total_chunks}: {str(e)}",
                         "current_text": " ".join(full_text),
-                        "processed_time": ""
+                        "raw_text": " ".join(full_text),
+                        "processed_time": "",
+                        "verbose_details": f"Error details: {traceback.format_exc()}"
                     }
                     raise
 
-            # Final status
             logger.info("Transcription completed successfully")
             if progress_callback:
                 await progress_callback(100, "Transcription complete!")
 
             yield {
                 "status": "Transcription complete!",
-                "current_text": " ".join(full_text),
-                "processed_time": f"{minutes_total}:{seconds_total:02d} / {minutes_total}:{seconds_total:02d}"
+                "current_text": display_text,  # Final formatted text with context
+                "raw_text": raw_text,         # Final clean text for files
+                "processed_time": f"{minutes_total}:{seconds_total:02d} / {minutes_total}:{seconds_total:02d}",
+                "verbose_details": f"Processed {total_chunks} chunks in {minutes_total}:{seconds_total:02d}"
             }
 
         except Exception as e:
@@ -481,9 +494,11 @@ class TranscriptionAssistant:
             yield {
                 "status": f"Error: {str(e)}",
                 "current_text": "",
-                "processed_time": ""
+                "raw_text": "",
+                "processed_time": "",
+                "verbose_details": f"Error details: {traceback.format_exc()}"
             }
-                        
+                                
     async def _log_progress(
         self, 
         message: str, 
@@ -548,51 +563,42 @@ class TranscriptionAssistant:
             if self.model is None:
                 raise ModelError("Model not properly initialized")
 
-            transcribe_func = (
-                self.model.translate if self.task_type == 'translate'
-                else self.model.transcribe
-            )
+            transcribe_func = self.model.translate if self.task_type == 'translate' else self.model.transcribe
 
             audio = AudioSegment.from_file(state['audio_path'])
             total_duration = len(audio) / 1000.0
             processed_duration = 0
+            
+            # Generate initial prompt once
+            initial_prompt = self.context.generate_prompt() if self.context else ""
             
             audio_chunks_generator = self._preprocess_audio_file(state['audio_path'], state)
             all_segments = []
             full_text = []
             chunk_count = 0
 
-            # Initial progress at start of transcription stage
-            await self._log_progress(
-                "Starting transcription...",
-                state,
-                TranscriptionStages.TRANSCRIBE[0]  # 15%
-            )
+            await self._log_progress("Starting transcription...", state, TranscriptionStages.TRANSCRIBE[0])
 
             async for chunk in audio_chunks_generator:
                 chunk_count += 1
                 chunk_start_time = time.time()
                 chunk_duration = len(chunk) / 16000
 
-                # Scale progress between 15-95%
                 progress = TranscriptionStages.scale_progress(
                     (processed_duration / total_duration) * 100,
                     (TranscriptionStages.TRANSCRIBE[0], 95)
                 )
 
-                await self._log_progress(
-                    f"Processing chunk {chunk_count}...",
-                    state,
-                    progress
-                )
+                await self._log_progress(f"Processing chunk {chunk_count}...", state, progress)
 
                 try:
+                    # Use initial_prompt for transcription but keep raw text separate
                     chunk_result = await asyncio.to_thread(
                         transcribe_func,
                         chunk,
                         language=self.language,
                         temperature=self.temperature,
-                        initial_prompt=state.get('initial_prompt', '')
+                        initial_prompt=initial_prompt
                     )
                 except Exception as e:
                     await self._log_progress(f"Error in chunk {chunk_count}: {str(e)}", state, progress)
@@ -600,7 +606,6 @@ class TranscriptionAssistant:
 
                 processed_duration += chunk_duration
 
-                # Adjust timestamps for continuous audio
                 if processed_duration > chunk_duration:
                     for seg in chunk_result["segments"]:
                         seg["start"] += (processed_duration - chunk_duration)
@@ -608,11 +613,23 @@ class TranscriptionAssistant:
 
                 all_segments.extend(chunk_result["segments"])
                 full_text.append(chunk_result["text"])
-                state['transcription'] = " ".join(full_text)
+
+                # Store raw transcription for file output
+                state['transcription'] = " ".join(full_text)  # Clean text for files
+
+                # Store display version with context headers
+                if self.context and (self.context.speakers or self.context.terms or self.context.context):
+                    state['display_text'] = "\n".join([
+                        "==============TRANSCRIPTION CONTEXT==============",
+                        initial_prompt,
+                        "==============TRANSCRIPTION RESULT==============",
+                        state['transcription']
+                    ])
+                else:
+                    state['display_text'] = state['transcription']
 
                 chunk_time = time.time() - chunk_start_time
                 speed_ratio = chunk_duration/chunk_time
-
                 await self._log_progress(
                     f"Chunk {chunk_count} processed at {speed_ratio:.2f}x real-time speed",
                     state,
@@ -624,10 +641,10 @@ class TranscriptionAssistant:
             if not full_text:
                 raise ModelError("No chunks were processed successfully")
 
+            # Update final state
             state.update({
-                'transcription': " ".join(full_text),
                 'results': {
-                    "text": " ".join(full_text),
+                    "text": state['transcription'],  # Use clean text for file outputs
                     "segments": all_segments,
                     "language": chunk_result["language"]
                 },
@@ -638,9 +655,9 @@ class TranscriptionAssistant:
             return state
 
         except Exception as e:
-            await self._log_progress(f"Transcription failed: {str(e)}", state, TranscriptionStages.TRANSCRIBE[0])
+            await self._log_progress(f"Transcription failed: {str(e)}", state)
             raise ModelError(f"Transcription failed: {str(e)}")
-        
+                
     async def _cleanup_resources(self, state: TranscriptionState):
         """Clean up any temporary files or resources"""
         try:
