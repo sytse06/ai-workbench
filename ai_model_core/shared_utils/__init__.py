@@ -7,7 +7,9 @@ from ..shared_utils.utils import (
 )
 from ..shared_utils.factory import (
     get_model, 
-    get_embedding_model
+    get_embedding_model,
+    WHISPER_MODELS,
+    OUTPUT_FORMATS
 )
 from ..config.credentials import (
     load_credentials, 

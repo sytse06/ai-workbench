@@ -7,6 +7,21 @@ from langchain_community.embeddings import OllamaEmbeddings, OpenAIEmbeddings
 # Local imports
 from ..config.credentials import get_api_key, load_credentials
 
+__all__ = ['get_model', 'get_embedding_model', 'WHISPER_MODELS', 'OUTPUT_FORMATS']
+
+# Whisper model options
+WHISPER_SIZES = {
+    "tiny": "tiny",
+    "base": "base", 
+    "small": "small",
+    "medium": "medium",
+    "large": "large",
+    "large-v2": "large-v2", 
+    "large-v3": "large-v3"
+}
+OUTPUT_FORMATS = ["none", "txt", "srt", "vtt", "tsv", "json", "all"]
+WHISPER_MODELS = [f"Whisper {size}" for size in WHISPER_SIZES.keys()]
+
 
 def get_model(choice: str, **kwargs):
     """
@@ -50,21 +65,15 @@ def get_model(choice: str, **kwargs):
             base_url="http://localhost:11434",
             **kwargs)
     elif choice.startswith("Whisper"):
-        # Extract size from full model name (e.g. "Whisper base" -> "base")
         whisper_size = choice.split()[-1].lower()
-        valid_sizes = [
-            "tiny", "base", "small", "medium", 
-            "large", "large-v2", "large-v3"
-        ]
-        if whisper_size not in valid_sizes:
-            sizes_str = ", ".join(valid_sizes)
+        if whisper_size not in WHISPER_SIZES:
             raise ValueError(
-                f"Invalid Whisper model size '{whisper_size}'. Choose from: {sizes_str}"
+                f"Invalid Whisper model size '{whisper_size}'. Choose from: {', '.join(WHISPER_SIZES.keys())}"
             )
         try:
-            return whisper.load_model(whisper_size)
+            return whisper.load_model(WHISPER_SIZES[whisper_size])
         except Exception as e:
-            raise ValueError(f"Failed to load Whisper model: {str(e)}")        
+            raise ValueError(f"Failed to load Whisper model: {str(e)}")
     elif choice == "Mistral (large)":
         api_key = get_api_key('mistral')
         return ChatOpenAI(
