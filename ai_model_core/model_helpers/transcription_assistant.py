@@ -329,47 +329,6 @@ class TranscriptionAssistant:
             await self._log_progress(f"Error in preprocessing: {str(e)}", state, 0)
             raise AudioProcessingError(f"Failed to preprocess audio: {str(e)}")
             
-    async def process_audio(
-        self, 
-        audio_path: Union[str, Path],
-        context: Optional[TranscriptionContext] = None,
-        progress_callback: Optional[Callable] = None
-    ) -> dict:
-        """Main entry point with context support"""
-        try:
-            logger.info(f"Starting audio processing for: {audio_path}")
-            audio_path = Path(audio_path)
-            if not audio_path.exists():
-                raise FileNotFoundError(f"Audio file not found: {audio_path}")
-
-            # Use provided context or fall back to default
-            current_context = context or self.context
-
-            # Initialize state with empty input
-            initial_state = TranscriptionState(
-                input="",
-                audio_path=str(audio_path),
-                transcription="",
-                results={},
-                answer="",
-                all_actions=[],
-                initial_prompt=current_context.generate_prompt()
-            )
-
-            # Pass progress_callback to transcribe_audio through state
-            if progress_callback:
-                initial_state['progress_callback'] = progress_callback
-
-            logger.info("Starting graph execution")
-            final_state = await self.graph_runnable.ainvoke(initial_state)
-            logger.info("Processing completed successfully")
-            return self._prepare_response(final_state)
-
-        except Exception as e:
-            logger.error(f"Unexpected error in process_audio: {str(e)}")
-            logger.debug(f"Traceback: {traceback.format_exc()}")
-            raise TranscriptionError(f"Processing failed: {str(e)}")
-
     async def process_audio_streaming(
         self, 
         audio_path: Union[str, Path],
@@ -395,7 +354,7 @@ class TranscriptionAssistant:
             chunk_count = 0
             total_chunks = int(total_duration / 30) + 1
 
-            # Generate initial prompt only once
+            # Generate initial prompt once but don't pass to Whisper
             initial_prompt = self.context.generate_prompt() if self.context else ""
             logger.info(f"Starting transcription with context: {bool(initial_prompt)}")
             
@@ -407,7 +366,7 @@ class TranscriptionAssistant:
                 "current_text": "",
                 "raw_text": "",
                 "processed_time": f"0:00 / {int(total_duration//60)}:{int(total_duration%60):02d}",
-                "verbose_details": f"Processing {total_chunks} chunks with {len(initial_prompt)} characters of context."
+                "verbose_details": f"Processing {total_chunks} chunks."
             }
 
             async for chunk in self._preprocess_audio_file(str(audio_path)):
@@ -418,13 +377,12 @@ class TranscriptionAssistant:
                 try:
                     logger.info(f"Processing chunk {chunk_count}/{total_chunks}")
                     
-                    # Pass initial_prompt to transcribe but don't include in output
+                    # Remove initial_prompt from transcribe call
                     result = await asyncio.to_thread(
                         self.model.transcribe,
                         chunk,
                         language=self.language,
-                        temperature=self.temperature,
-                        initial_prompt=initial_prompt
+                        temperature=self.temperature
                     )
                     
                     processed_duration += chunk_duration
@@ -446,13 +404,13 @@ class TranscriptionAssistant:
                     full_text.append(result["text"])
                     raw_text = " ".join(full_text)
 
-                    # Format display text with context headers only for display
+                    # Format display text with context headers
                     display_text = raw_text
                     if self.context and (self.context.speakers or self.context.terms or self.context.context):
                         display_text = "\n\n".join([
                             "==============TRANSCRIPTION CONTEXT==============",
                             initial_prompt,
-                            "==============TRANSCRIPTION RESULT===============",
+                            "==============TRANSCRIPTION RESULT==============",
                             raw_text
                         ])
                     
@@ -569,7 +527,7 @@ class TranscriptionAssistant:
             total_duration = len(audio) / 1000.0
             processed_duration = 0
             
-            # Generate initial prompt once
+            # Generate initial prompt for display only
             initial_prompt = self.context.generate_prompt() if self.context else ""
             
             audio_chunks_generator = self._preprocess_audio_file(state['audio_path'], state)
@@ -592,13 +550,12 @@ class TranscriptionAssistant:
                 await self._log_progress(f"Processing chunk {chunk_count}...", state, progress)
 
                 try:
-                    # Use initial_prompt for transcription but keep raw text separate
+                    # Remove initial_prompt from transcribe call
                     chunk_result = await asyncio.to_thread(
                         transcribe_func,
                         chunk,
                         language=self.language,
-                        temperature=self.temperature,
-                        initial_prompt=initial_prompt
+                        temperature=self.temperature
                     )
                 except Exception as e:
                     await self._log_progress(f"Error in chunk {chunk_count}: {str(e)}", state, progress)
@@ -615,11 +572,11 @@ class TranscriptionAssistant:
                 full_text.append(chunk_result["text"])
 
                 # Store raw transcription for file output
-                state['transcription'] = " ".join(full_text)  # Clean text for files
+                state['transcription'] = " ".join(full_text)
 
                 # Store display version with context headers
                 if self.context and (self.context.speakers or self.context.terms or self.context.context):
-                    state['display_text'] = "\n".join([
+                    state['display_text'] = "\n\n".join([
                         "==============TRANSCRIPTION CONTEXT==============",
                         initial_prompt,
                         "==============TRANSCRIPTION RESULT==============",
@@ -657,7 +614,7 @@ class TranscriptionAssistant:
         except Exception as e:
             await self._log_progress(f"Transcription failed: {str(e)}", state)
             raise ModelError(f"Transcription failed: {str(e)}")
-                
+                    
     async def _cleanup_resources(self, state: TranscriptionState):
         """Clean up any temporary files or resources"""
         try:
