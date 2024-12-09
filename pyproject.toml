@@ -31,6 +31,7 @@ mistralai = "^1.1.0"
 pytest-asyncio = "^0.24.0"
 moviepy = "^1.0.3"
 yt-dlp = "^2024.11.18"
+openpyxl = "^3.1.5"
 
 [tool.poetry.dev-dependencies]
 pytest = "^8.2"
