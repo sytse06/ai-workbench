@@ -577,7 +577,7 @@ with gr.Blocks() as demo:
                     )
                     file_input = gr.File(
                         label="Upload Text Documents",
-                        file_types=[".txt", ".pdf", ".docx"],
+                        file_types=[".txt", ".md", ".pdf", ".docx"],
                         file_count="multiple"
                     )
                     with gr.Accordion("RAG Options", open=False):

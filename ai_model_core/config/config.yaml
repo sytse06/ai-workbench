@@ -127,76 +127,92 @@ prompts:
         "Brand Promise: {brand_promise}"
       {Brand_Pillars}
         "Brand Pillars: {brand_pillars}"
-    summarize_stuff: |
-      Write a concise summary of the following text in 4 sentences:
-      "{docs}"
+    summary_stuff: |
+      Write a concise summary of the following text in 6 sentences:
+      "{text}"
       Focus on the main ideas and key points. Avoid including minor details.
       CONCISE SUMMARY:
-    summarize_map: |
-      Analyze the following set of documents:
-      {docs}
-      
-      Your task is to:
-      1. Identify the 3-5 main themes or key points from these documents.
-      2. For each theme or key point:
-        a. Provide a brief 1-2 sentence explanation.
-        b. Include a specific example or short quote from the documents to support this theme (if available).
-      3. Maintain the original tone and style of the documents in your analysis.
-      
-      Format your response as follows:
-      Theme 1: [Theme title]
-      Explanation: [1-2 sentence explanation]
-      Example/Quote: "[relevant quote or example]"
-      
-      Theme 2: [Theme title]
-      Explanation: [1-2 sentence explanation]
-      Example/Quote: "[relevant quote or example]"
-      
-      [Continue for up to 5 themes]
+    initial_map_reduce_summary: |
+      Analyze this section of the document and identify its key themes:
+        {text}
+
+        Guidelines:
+        1. Extract 3-5 main concepts or ideas
+        2. For each concept/idea:
+          - Provide brief explanation
+          - Include supporting evidence
+          - Note any specific examples
+        3. Focus on:
+          - Core arguments
+          - Key findings
+          - Important details
+          - Significant conclusions
+
+        Format your response as:
+        Theme 1: [Title]
+        - Explanation: [1-2 sentences]
+        - Evidence: [Key supporting details]
+
+        Theme 2: [Title]
+        [Continue format...]
+
+        EXTRACTED THEMES:
       
       Note: Ensure your entire response is no more than 250 words.
-    summarize_map_reduce: |
-      Analyze the following chunk of text:
-      {docs}
-      Identify and list the 3-5 main themes or key points from this chunk. 
-      For each theme or key point, provide a brief 1-2 sentence explanation.
-      Themes:
-      1.
-      2.
-      3.
-      4.
-      5.
-    reduce_template: |
-      Below is a set of themes and key points extracted from different chunks of a larger text:
-      {docs}
-      Your task is to:
-      1. Identify the most recurring and significant themes across all chunks.
-      2. Consolidate similar themes.
-      3. Provide a final, coherent summary of 3-5 main themes or key points that represent the entire text.
-      4. Ensure your summary is concise (150-200 words) and captures the essence of the original text.
-
-      Final Summary:
-    summarize_refine: |
-      Your task is to refine and improve an existing summary of a text.
-
-      Existing summary:
-      {existing_answer}
-
-      New context to consider:
+    sequential_map_reduce_summary: |
+      Below is a set of themes and key points extracted from different chunks of a larger document:
       {text}
 
-      Instructions:
-      1. Carefully read the existing summary and the new context.
-      2. Identify any new, important information in the context that is missing from the existing summary.
-      3. Determine if the new information significantly changes or adds to the main points of the existing summary.
-      4. If the new context is relevant:
-        - Incorporate the new information into the existing summary.
-        - Ensure the refined summary remains concise (no more than 25% longer than the original).
-        - Maintain a coherent flow of ideas.
-      5. If the new context isn't useful or doesn't add significant value:
-        - Return the original summary unchanged.
+      Your task is to create a unified summary that:
+        1. Identifies common themes across sections
+        2. Synthesizes key findings
+        3. Maintains logical flow
+        4. Preserves important details
 
-      Refined Summary:
+      Guidelines:
+      - Combine related themes
+      - Eliminate redundancy
+      - Maintain coherence
+      - Preserve unique insights
+      - Create a balanced narrative
+
+      FINAL UNIFIED SUMMARY:
+    initial_refine_summary: |
+      Write a concise summary of the following text chunk for a refinement process:
+      {text}
+
+      Guidelines:
+      - Capture main ideas for further refinement
+      - Include key details that may be enriched later
+      - Use clear language that can be built upon
+      - Focus on essential information for iterative improvement
+
+      INITIAL REFINEMENT SUMMARY:
+    sequential_refine_summary: |
+      You are refining an existing summary with new information.
+
+        CURRENT SUMMARY:
+        {existing_summary}
+
+        NEW INFORMATION TO CONSIDER:
+        {text}
+
+        Instructions:
+        1. Review the existing summary
+        2. Analyze the new information
+        3. Determine if and how the new information:
+          - Adds important context
+          - Updates existing points
+          - Introduces new key ideas
+        4. Create an updated summary that:
+          - Integrates relevant new information
+          - Maintains narrative flow
+          - Stays concise and focused
+          - Preserves important details from both sources
+
+        If the new information doesn't add value, return the original summary unchanged.
+
+        REFINED SUMMARY:
     Transcribe Assistant: |
       Analyze the uploaded image (original filename: {input_file_name}) and provide the following information in Markdown format:
       
@@ -330,76 +346,92 @@ prompts:
         "Merkbelofte: {merkbelofte}"
       {Merkpijlers}
         "Merkpijlers: {merkpijlers}"
-    summarize_stuff: |
-      Schrijf een beknopte samenvatting van de volgende tekst in 4 zinnen:
+    summary_stuff: |
+      Schrijf een beknopte samenvatting van de volgende tekst in 6 zinnen:
       "{text}"
       Concentreer je op de hoofdideeën en kernpunten. Vermijd het opnemen van kleine details.
       BEKNOPTE SAMENVATTING:
-    summarize_map: |
-      Analyseer de volgende verzameling documenten:
-      {docs}
+    initial_map_reduce-summary: |
+      Analyseer dit deel van het document en identificeer de kernthema's:
+        {text}
 
-      Je taak is om:
+        Richtlijnen:
+        1. Haal 3-5 hoofdconcepten of ideeën naar voren
+        2. Voor elk concept/idee:
+          - Geef een korte uitleg
+          - Voeg ondersteunend bewijs toe
+          - Noteer specifieke voorbeelden
+        3. Focus op:
+          - Kernargumenten
+          - Belangrijkste bevindingen
+          - Essentiële details
+          - Significante conclusies
 
-      De 3-5 belangrijkste thema’s of kernpunten uit deze documenten te identificeren.
-      Voor elk thema of kernpunt: 
-      a. Geef een korte uitleg van 1-2 zinnen. 
-      b. Voeg een specifiek voorbeeld of een kort citaat uit de documenten toe ter ondersteuning van dit thema (indien beschikbaar).
-      Behoud de oorspronkelijke toon en stijl van de documenten in je analyse.
-      Formatteer je antwoord als volgt: 
-      Thema 1: [Thematitel]
-      Uitleg: [1-2 zinnen uitleg]
-      Voorbeeld/Citaat: "[relevant citaat of voorbeeld]"
+        Formuleer je antwoord als volgt:
+        Thema 1: [Titel]
+        - Toelichting: [1-2 zinnen]
+        - Bewijs: [Belangrijkste ondersteunende details]
 
-      Thema 2: [Thematitel]
-      Uitleg: [1-2 zinnen uitleg]
-      Voorbeeld/Citaat: "[relevant citaat of voorbeeld]"
+        Thema 2: [Titel]
+        [Vervolg format...]
 
-      [Ga door voor maximaal 5 thema’s]
-
-      Let op: zorg ervoor dat je gehele antwoord niet meer dan 250 woorden bevat.
-    summarize_map_reduce: |
-      Analyseer het volgende tekstfragment:
-      {docs}
-      Identificeer en maak een lijst van de 3-5 hoofdthema's of kernpunten uit dit fragment.
-      Geef voor elk thema of kernpunt een korte uitleg van 1-2 zinnen.
-      Thema's:
-      1.
-      2.
-      3.
-      4.
-      5.
-    reduce_template: |
-      Hieronder staat een reeks thema's en kernpunten die zijn geëxtraheerd uit verschillende fragmenten van een grotere tekst:
-      {docs}
-      Jouw taak is om:
-      1. De meest voorkomende en belangrijke thema's in alle fragmenten te identificeren.
-      2. Vergelijkbare thema's samen te voegen.
-      3. Een definitieve, samenhangende samenvatting te geven van 3-5 hoofdthema's of kernpunten die de hele tekst vertegenwoordigen.
-      4. Ervoor te zorgen dat je samenvatting beknopt is (150-200 woorden) en de essentie van de originele tekst weergeeft.
-
-      Samenvatting:
-    summarize_refine: |
-      Je taak is om een bestaande samenvatting van een tekst te verfijnen en te verbeteren.
-
-      Bestaande samenvatting:
-      {existing_answer}
-
-      Nieuwe context om te overwegen:
+        GEËXTRAHEERDE THEMA'S:
+      
+      Opmerking: Zorg dat je volledige antwoord niet meer dan 250 woorden bevat.
+    sequential_map_reduce_summary: |
+      Hieronder staat een verzameling thema's en kernpunten uit verschillende delen van een groter document:
       {text}
 
-      Instructies:
-      1. Lees de bestaande samenvatting en de nieuwe context zorgvuldig.
-      2. Identificeer eventuele nieuwe, belangrijke informatie in de context die ontbreekt in de bestaande samenvatting.
-      3. Bepaal of de nieuwe informatie de hoofdpunten van de bestaande samenvatting significant verandert of aanvult.
-      4. Als de nieuwe context relevant is:
-        - Verwerk de nieuwe informatie in de bestaande samenvatting.
-        - Zorg ervoor dat de verfijnde samenvatting beknopt blijft (niet meer dan 25% langer dan het origineel).
-        - Behoud een samenhangende gedachtenstroom.
-      5. Als de nieuwe context niet bruikbaar is of geen significante waarde toevoegt:
-        - Geef de originele samenvatting ongewijzigd terug.
+      Je taak is om een samenhangende samenvatting te maken die:
+        1. Gemeenschappelijke thema's tussen secties identificeert
+        2. Belangrijke bevindingen samenbrengt
+        3. Logische doorstroming behoudt
+        4. Belangrijke details bewaart
 
-      Verfijnde Samenvatting:
+      Richtlijnen:
+      - Combineer gerelateerde thema's
+      - Elimineer herhaling
+      - Behoud samenhang
+      - Bewaar unieke inzichten
+      - Creëer een evenwichtig verhaal
+
+      DEFINITIEVE SAMENVATTING:    
+    initial_refine_summary: |
+      Schrijf een beknopte samenvatting van het volgende tekstfragment voor een verfijningsproces:
+      {text}
+
+      Richtlijnen:
+      - Vat hoofdideeën samen voor verdere verfijning
+      - Neem belangrijke details op die later kunnen worden verrijkt
+      - Gebruik heldere taal waarop kan worden voortgebouwd
+      - Focus op essentiële informatie voor stapsgewijze verbetering
+
+      EERSTE VERFIJNINGSSAMENVATTING:
+    sequential_refine_summary: |
+      Je verfijnt een bestaande samenvatting met nieuwe informatie.
+
+        HUIDIGE SAMENVATTING:
+        {existing_summary}
+
+        NIEUWE INFORMATIE OM TE OVERWEGEN:
+        {text}
+
+        Instructies:
+        1. Bekijk de bestaande samenvatting
+        2. Analyseer de nieuwe informatie
+        3. Bepaal of en hoe de nieuwe informatie:
+          - Belangrijke context toevoegt
+          - Bestaande punten aanvult
+          - Nieuwe kernideeën introduceert
+        4. Maak een bijgewerkte samenvatting die:
+          - Relevante nieuwe informatie integreert
+          - Verhaallijn kloppend houdt
+          - Beknopt en gericht blijft
+          - Belangrijke details uit beide bronnen bewaart
+
+        Als de nieuwe informatie geen waarde toevoegt, behoud dan de originele samenvatting.
+
+        BIJGEWERKTE SAMENVATTING:
     Concept Analyzer: |
       Analyseer [concept X] in deze tekst, en beschrijf hoe het resoneert met [specifieke doelgroep]. Denk stap voor stap.
       
