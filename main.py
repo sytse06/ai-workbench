@@ -11,6 +11,7 @@ import traceback
 # Third-party imports
 from PIL import Image
 import gradio as gr
+from langchain_core.documents import Document
 
 # Local imports
 from ai_model_core.config.settings import (
@@ -220,14 +221,43 @@ async def rag_wrapper(message, history, model_choice, embedding_choice,
         return f"An error occurred: {str(e)}"
 
 # Wrapper function for Gradio interface summarize_assistant:
-async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
-                            chunk_overlap, max_tokens, temperature, 
-                            prompt_info, language, verbose):
+async def summarize_wrapper(
+    loaded_docs: Union[List[Document], List[str], None],
+    model_choice: str,
+    method: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    max_tokens: int,
+    temperature: float,
+    prompt_info: str,
+    language: str,
+    verbose: bool
+) -> str:
+    """
+    Wrapper function for document summarization using the SummarizationAssistant.
+    
+    Args:
+        loaded_docs: List of Document objects or strings to summarize
+        model_choice: Name of the language model to use
+        method: Summarization method (handled by Gradio dropdown)
+        chunk_size: Size of text chunks for processing (handled by Gradio slider)
+        chunk_overlap: Overlap between consecutive chunks (handled by Gradio slider)
+        max_tokens: Maximum tokens in the final summary (handled by Gradio slider)
+        temperature: Temperature parameter for text generation (handled by Gradio slider)
+        prompt_info: Type of summary prompt to use
+        language: Language for summarization (handled by Gradio dropdown)
+        verbose: Enable verbose logging (handled by Gradio checkbox)
+    """
+    # Only check for loaded documents as this isn't handled by Gradio UI constraints
     if loaded_docs is None or len(loaded_docs) == 0:
         return "Error: No documents loaded. Please load documents before summarizing."
 
     try:
+        if verbose:
+            logger.info(f"Starting summarization with method: {method}")
+            logger.info(f"Processing {len(loaded_docs)} documents")
         
+        # Initialize summarizer
         summarizer = SummarizationAssistant(
             model_name=model_choice,
             chunk_size=chunk_size,
@@ -240,19 +270,27 @@ async def summarize_wrapper(loaded_docs, model_choice, method, chunk_size,
             verbose=verbose
         )
 
-        # Perform summary using the method-specific prompt
-        summary = await summarizer.summarize(
-            loaded_docs, 
-            method=method, 
-            prompt_info=prompt_info,  # Use same method-specific prompt
+        # Perform summarization
+        result = await summarizer.summarize(
+            chunks=loaded_docs, 
+            method=method,
+            prompt_info=prompt_info,
             language=language
         )
-        return summary['final_summary']
-    
+        
+        if not result or 'final_summary' not in result:
+            return "Error: No summary generated. Please check your inputs and try again."
+        
+        if verbose:
+            logger.info(f"Successfully generated summary of length {len(result['final_summary'])}")
+        
+        return result['final_summary']
+
     except Exception as e:
         error_trace = traceback.format_exc()
-        return f"An error occurred during summarization: {str(e)}\n\nTraceback:\n{error_trace}"
-
+        logger.error(f"Summarization error: {str(e)}\n{error_trace}")
+        return f"An error occurred during summarization: {str(e)}"
+    
 # Helper functions for Gradio interface
 def clear_chat():
     return None
