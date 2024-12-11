@@ -249,76 +249,19 @@ class SummarizationAssistant:
                 
                 if method == "stuff":
                     return {"next_step": "summarize_stuff"}
-                elif method == "map_reduce":
-                    return {"next_step": "generate_map_summary"}
-                elif method == "refine":
-                    # Start sequential refinement
-                    return {"next_step": "refine_summary"}
                 else:
-                    # For now, only allow stuff and map-reduce methods
-                    raise NotImplementedError(
-                        f"Method {method} not yet implemented. Currently only 'stuff' method is supported."
-                    )
-            def detect_next_workflow_step(state: OverallState) -> str:
-                method = state["method"]
-                current = state.get("next_step")
-                
-                if method == "stuff":
-                    return END  # Single step
-                    
-                elif method == "map_reduce":
-                    # If we have intermediate summaries, move to reduce phase
-                    if state.get("intermediate_summaries"):
-                        return "reduce_summaries"
-                    return current  # Stay in map phase
-                    
-                elif method == "refine":
-                    # Stay in refine phase until all chunks processed
-                    if all(chunks_processed):  # Need to track this in state
-                        return END
-                    return current
-                
-                return END
+                    raise ValueError(f"Only 'stuff' method currently implemented")
 
             self.graph = StateGraph(OverallState)
             
-            # For now, only add nodes needed for stuff method
+            # Add only the nodes needed for stuff method
             self.graph.add_node("router", router)
             self.graph.add_node("summarize_stuff", self.summarize_stuff)
-            self.graph.add_node("generate_map_summary", self.generate_map_summary)
-            self.graph.add_node("reduce_summaries", self.reduce_summaries)
-            self.graph.add_node("refine_summary", self.refine_summary)
 
-            # Basic flow
+            # Simple linear path for stuff method
             self.graph.add_edge(START, "router")
-            
-            # Stuff method path
             self.graph.add_edge("router", "summarize_stuff")
             self.graph.add_edge("summarize_stuff", END)
-            
-            # Map-reduce method path
-            self.graph.add_edge("router", "generate_map_summary")
-            self.graph.add_edge("generate_map_summary", "generate_map_summary")
-            self.graph.add_edge("generate_map_summary", "reduce_summaries")
-            self.graph.add_edge("reduce_summaries", END)
-            
-            # Refine method path
-            self.graph.add_edge("router", "refine_summary")
-            self.graph.add_edge("refine_summary", "refine_summary")
-            self.graph.add_edge("refine_summary", END)
-            
-            # Add conditional edges for multi-step flows
-            self.graph.add_conditional_edges(
-                "router",
-                detect_next_step,
-                {
-                    "summarize_stuff": "summarize_stuff",
-                    "generate_map_summary": "generate_map_summary",
-                    "reduce_summaries": "reduce_summaries",
-                    "refine_summary": "refine_summary",
-                    END: END
-                }
-            )
 
             self.graph_runnable = self.graph.compile()
             
