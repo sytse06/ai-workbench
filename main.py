@@ -736,12 +736,12 @@ with gr.Blocks() as demo:
                     )
                     file_input = gr.File(
                         label="Upload Document",
-                        file_types=[".txt", ".pdf", ".docx"],
+                        file_types=[".txt", ".pdf", ".md", ".docx"],
                         file_count="single"
                     )
                     chunk_size = gr.Slider(
                         minimum=100, maximum=5000,
-                        value=500, step=100,
+                        value=2000, step=100,
                         label="Chunk Size"
                         )
                     chunk_overlap = gr.Slider(
@@ -773,7 +773,7 @@ with gr.Blocks() as demo:
                             )
                         max_tokens = gr.Slider(
                             minimum=50, maximum=4000,
-                            value=1000, step=50,
+                            value=3000, step=50,
                             label="Max Tokens"
                             )
                         temperature = gr.Slider(
@@ -806,8 +806,8 @@ with gr.Blocks() as demo:
                 fn=summarize_wrapper,
                 inputs=[
                     loaded_docs, model_choice, method, chunk_size,
-                    chunk_overlap, max_tokens, temperature, prompt_info, 
-                    language_choice, verbose
+                    chunk_overlap, max_tokens, temperature, 
+                    language_choice, prompt_info, verbose
                 ],
                 outputs=summary_output
             )
