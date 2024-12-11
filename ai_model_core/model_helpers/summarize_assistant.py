@@ -123,153 +123,88 @@ class SummarizationAssistant:
             
     async def summarize_stuff(self, state: OverallState) -> dict:
         """Summarize all content at once using the stuff method."""
-        try:
-            self.log_verbose("Starting 'stuff' summarization method")
-            logger.debug(f"Received state keys: {state.keys()}")
-            
-            if "chunks" not in state:
-                logger.error("No chunks found in state")
-                raise SummarizeException("No chunks in state")
-                
-            texts = []
-            for i, chunk in enumerate(state["chunks"]):
-                logger.debug(f"Processing chunk {i}")
-                if isinstance(chunk, Document):
-                    texts.append(chunk.page_content)
-                else:
-                    texts.append(chunk)
-            
-            logger.debug(f"Processed {len(texts)} chunks")
-            combined_text = "\n\n".join(texts)
-            
-            if not combined_text.strip():
-                logger.error("Combined text is empty")
-                raise SummarizeException("No content to summarize")
-                
-            logger.debug(f"Combined text length: {len(combined_text)}")
-            logger.debug("Creating chain with model and prompt")
-            
-            # Log the prompt template being used
-            logger.debug(f"Using prompt template: {self.stuff_prompt}")
-            
-            chain = self.stuff_prompt | self.model | StrOutputParser()
-            logger.debug("Invoking chain")
-            
-            summary = await chain.ainvoke({
-                "user_message": combined_text,
-                "prompt_info": state.get("prompt_info", self.prompt_info)
-            })
-            
-            logger.debug(f"Generated summary length: {len(summary) if summary else 0}")
-            
-            if not summary:
-                logger.error("Chain returned empty summary")
-                raise SummarizeException("Model returned empty summary")
-                
-            if len(summary) > self.max_tokens:
-                logger.debug(f"Truncating summary from {len(summary)} to {self.max_tokens} tokens")
-                summary = summary[:self.max_tokens]
-            
-            logger.debug("Successfully generated summary")
-            return {"final_summary": summary}
-                
-        except Exception as e:
-            logger.error(f"Error in stuff method: {str(e)}")
-            if hasattr(e, "__traceback__"):
-                logger.error("Full traceback:", exc_info=True)
-            raise SummarizeException(f"Stuff method failed: {str(e)}")
+        self.log_verbose("Starting 'stuff' summarization method")
+        
+        texts = [chunk.page_content if isinstance(chunk, Document) else chunk 
+                for chunk in state["chunks"]]
+        combined_text = "\n\n".join(texts)
+        
+        chain = self.stuff_prompt | self.model | StrOutputParser()
+        summary = await chain.ainvoke({
+            "user_message": combined_text,
+            "prompt_info": state.get("prompt_info", self.prompt_info)
+        })
+        
+        if len(summary) > self.max_tokens:
+            summary = summary[:self.max_tokens]
+        
+        return {
+            "final_summary": summary,
+            "next_step": END  # Update state with next step
+        }
             
     async def generate_map_summary(self, state: dict) -> dict:
         """Generate initial summary for a chunk in the map phase."""
-        try:
-            if not isinstance(state, dict):
-                raise SummarizeException("Invalid state type")
-            
-            # Extract chunk from state or current_chunk
-            chunk = state.get("chunk") or state.get("current_chunk")
-            if chunk is None:
-                raise SummarizeException("No chunk found in state")
-                    
-            text = chunk.page_content if isinstance(chunk, Document) else chunk
-            if not text.strip():
-                raise SummarizeException("Empty chunk received")
-                    
-            chain = self.map_prompt | self.model | StrOutputParser()
+        chunk = state["chunk"]
+        text = chunk.page_content if isinstance(chunk, Document) else chunk
+        
+        chain = self.map_prompt | self.model | StrOutputParser()
+        summary = await chain.ainvoke({
+            "user_message": text,
+            "prompt_info": state.get("prompt_info", self.prompt_info)
+        })
+        
+        return {
+            "intermediate_summaries": [summary],
+            "next_step": "reduce_summaries"  # Next step in map-reduce flow
+        }
+
+    async def reduce_summaries(self, state: OverallState) -> dict:
+        """Combine multiple summaries into a final summary."""
+        combined_text = "\n\n".join(state['intermediate_summaries'])
+        
+        chain = self.reduce_prompt | self.model | StrOutputParser()
+        final_summary = await chain.ainvoke({
+            "user_message": combined_text,
+            "prompt_info": state.get("prompt_info", self.prompt_info)
+        })
+        
+        if len(final_summary) > self.max_tokens:
+            final_summary = final_summary[:self.max_tokens]
+        
+        return {
+            "final_summary": final_summary,
+            "next_step": END  # Update state to end
+        }
+
+    async def refine_summary(self, state: dict) -> dict:
+        """Refine an existing summary with new content."""
+        chunk = state["chunk"]
+        existing_summary = state.get("existing_summary", "")
+        text = chunk.page_content if isinstance(chunk, Document) else chunk
+        
+        if not existing_summary:
+            chain = self.initial_refine_prompt | self.model | StrOutputParser()
             summary = await chain.ainvoke({
                 "user_message": text,
                 "prompt_info": state.get("prompt_info", self.prompt_info)
             })
-            
-            return {"intermediate_summaries": [summary]}
-                
-        except Exception as e:
-            logger.error(f"Error in map phase: {str(e)}")
-            raise SummarizeException(f"Map phase failed: {str(e)}")
-    
-    async def reduce_summaries(self, state: OverallState) -> dict:
-        """Combine multiple summaries into a final summary."""
-        try:
-            if not state['intermediate_summaries']:
-                raise SummarizeException("No intermediate summaries to reduce")
-                
-            combined_text = "\n\n".join(state['intermediate_summaries'])
-            
-            chain = self.reduce_prompt | self.model | StrOutputParser()
-            final_summary = await chain.ainvoke({
-                "user_message": combined_text,
+        else:
+            chain = self.sequential_refine_prompt | self.model | StrOutputParser()
+            summary = await chain.ainvoke({
+                "user_message": text,
+                "existing_summary": existing_summary,
                 "prompt_info": state.get("prompt_info", self.prompt_info)
             })
-            
-            if len(final_summary) > self.max_tokens:
-                final_summary = final_summary[:self.max_tokens]
-            
-            return {"final_summary": final_summary}
-            
-        except Exception as e:
-            logger.error(f"Error in reduce phase: {str(e)}")
-            raise SummarizeException(f"Reduce phase failed: {str(e)}")
-
-    async def refine_summary(self, state: dict) -> dict:
-        """Refine an existing summary with new content."""
-        try:
-            if not isinstance(state, dict):
-                raise SummarizeException("Invalid state type")
-                
-            chunk = state.get("chunk") or state.get("current_chunk")
-            if chunk is None:
-                raise SummarizeException("No chunk found in state")
-                
-            existing_summary = state.get("existing_summary", "")
-            
-            text = chunk.page_content if isinstance(chunk, Document) else chunk
-                    
-            if not text.strip():
-                raise SummarizeException("Empty chunk received for refinement")
-                    
-            # Use initial refine prompt if no existing summary
-            if not existing_summary:
-                chain = self.initial_refine_prompt | self.model | StrOutputParser()
-                summary = await chain.ainvoke({
-                    "user_message": text,
-                    "prompt_info": state.get("prompt_info", self.prompt_info)
-                })
-            else:
-                chain = self.sequential_refine_prompt | self.model | StrOutputParser()
-                summary = await chain.ainvoke({
-                    "user_message": text,
-                    "existing_summary": existing_summary,
-                    "prompt_info": state.get("prompt_info", self.prompt_info)
-                })
-            
-            if len(summary) > self.max_tokens:
-                summary = summary[:self.max_tokens]
-            
-            return {"final_summary": summary}
-                
-        except Exception as e:
-            logger.error(f"Error in refine phase: {str(e)}")
-            raise SummarizeException(f"Refine phase failed: {str(e)}")
-
+        
+        if len(summary) > self.max_tokens:
+            summary = summary[:self.max_tokens]
+        
+        return {
+            "final_summary": summary,
+            "next_step": END  # Update state to end
+        }
+    
     def map_summaries(self, state: OverallState) -> dict:
         """Create a list of Send objects for processing chunks based on method."""
         try:
@@ -310,69 +245,74 @@ class SummarizationAssistant:
             
             def router(state: OverallState) -> dict:
                 """Route to appropriate processing method."""
-                method = state.get("method", self.method)
-                logger.debug(f"Router called with method: {method}")
+                method = state["method"]
                 
-                # Return dict with next_step key to update state
                 if method == "stuff":
                     return {"next_step": "summarize_stuff"}
                 elif method == "map_reduce":
-                    return {"next_step": "map_summaries"}
+                    return {"next_step": "generate_map_summary"}
                 elif method == "refine":
-                    return {"next_step": "map_summaries"}
+                    # Start sequential refinement
+                    return {"next_step": "refine_summary"}
                 else:
-                    raise ValueError(f"Unknown method: {method}")
-
-            def decide_next_step(state: OverallState) -> str:
-                """Determine the next step in the workflow."""
-                method = state.get("method", self.method)
-                current_step = state.get("next_step")
-                logger.debug(f"Deciding next step for method: {method}")
+                    # For now, only allow stuff and map-reduce methods
+                    raise NotImplementedError(
+                        f"Method {method} not yet implemented. Currently only 'stuff' method is supported."
+                    )
+            def detect_next_workflow_step(state: OverallState) -> str:
+                method = state["method"]
+                current = state.get("next_step")
                 
                 if method == "stuff":
-                    return END
-                
-                if method == "map_reduce":
+                    return END  # Single step
+                    
+                elif method == "map_reduce":
+                    # If we have intermediate summaries, move to reduce phase
                     if state.get("intermediate_summaries"):
-                        logger.debug("Moving to reduce_summaries")
                         return "reduce_summaries"
-                    logger.debug("Moving to generate_map_summary")
-                    return "generate_map_summary"
-                        
-                if method == "refine":
-                    logger.debug("Moving to refine_summary")
-                    return "refine_summary"
+                    return current  # Stay in map phase
+                    
+                elif method == "refine":
+                    # Stay in refine phase until all chunks processed
+                    if all(chunks_processed):  # Need to track this in state
+                        return END
+                    return current
                 
-                logger.debug("No matching condition found, ending")
                 return END
 
-            # Rest of the setup remains the same...
             self.graph = StateGraph(OverallState)
             
-            # Add nodes
+            # For now, only add nodes needed for stuff method
             self.graph.add_node("router", router)
             self.graph.add_node("summarize_stuff", self.summarize_stuff)
-            self.graph.add_node("map_summaries", self.map_summaries)
             self.graph.add_node("generate_map_summary", self.generate_map_summary)
             self.graph.add_node("reduce_summaries", self.reduce_summaries)
             self.graph.add_node("refine_summary", self.refine_summary)
 
-            # Add edges
+            # Basic flow
             self.graph.add_edge(START, "router")
+            
+            # Stuff method path
+            self.graph.add_edge("router", "summarize_stuff")
             self.graph.add_edge("summarize_stuff", END)
-            self.graph.add_edge("map_summaries", "generate_map_summary")
+            
+            # Map-reduce method path
+            self.graph.add_edge("router", "generate_map_summary")
+            self.graph.add_edge("generate_map_summary", "generate_map_summary")
             self.graph.add_edge("generate_map_summary", "reduce_summaries")
             self.graph.add_edge("reduce_summaries", END)
-            self.graph.add_edge("map_summaries", "refine_summary")
+            
+            # Refine method path
+            self.graph.add_edge("router", "refine_summary")
+            self.graph.add_edge("refine_summary", "refine_summary")
             self.graph.add_edge("refine_summary", END)
-
-            # Add conditional edges
+            
+            # Add conditional edges for multi-step flows
             self.graph.add_conditional_edges(
                 "router",
-                decide_next_step,
+                detect_next_step,
                 {
                     "summarize_stuff": "summarize_stuff",
-                    "map_summaries": "map_summaries",
                     "generate_map_summary": "generate_map_summary",
                     "reduce_summaries": "reduce_summaries",
                     "refine_summary": "refine_summary",
@@ -381,72 +321,45 @@ class SummarizationAssistant:
             )
 
             self.graph_runnable = self.graph.compile()
-            self.log_verbose("Summarization graph setup completed")
             
         except Exception as e:
             logger.error(f"Error setting up graph: {str(e)}")
             raise
-    
+                    
     async def summarize(self, chunks: Union[str, List[str], List[Document]], 
                     method: str = None, prompt_info: str = None, 
                     language: str = None) -> dict:
         """Main entry point for summarization."""
-        try:
-            method = method or self.method
-            language = language or self.language_choice
-            self.log_verbose(f"Starting summarization process using {method} method")
-            
-            # Process input chunks
-            if isinstance(chunks, str):
+        method = method or self.method
+        self.log_verbose(f"Starting summarization using {method} method")
+        
+        # Process input chunks
+        if isinstance(chunks, str):
+            chunks = self.content_loader.load_and_split_documents(file_paths=chunks)
+        elif isinstance(chunks, list):
+            if all(isinstance(item, str) for item in chunks):
                 chunks = self.content_loader.load_and_split_documents(file_paths=chunks)
-            elif isinstance(chunks, list):
-                if all(isinstance(item, str) for item in chunks):
-                    chunks = self.content_loader.load_and_split_documents(file_paths=chunks)
-                elif all(isinstance(item, Document) for item in chunks):
-                    chunks = self.content_loader.split_documents(chunks, self.chunk_size, self.chunk_overlap)
-                else:
-                    raise ValueError("Content list must contain either all strings or all Documents")
+            elif all(isinstance(item, Document) for item in chunks):
+                chunks = self.content_loader.split_documents(chunks, self.chunk_size, self.chunk_overlap)
+            else:
+                raise ValueError("Content list must contain either all strings or all Documents")
 
-            if not chunks:
-                raise SummarizeException("No content to summarize after processing")
+        if not chunks:
+            raise SummarizeException("No content to summarize after processing")
 
-            self.log_verbose(f"Processing {len(chunks)} chunks")
-            logger.debug(f"First chunk sample: {chunks[0].page_content[:100]}...")
+        # Initialize state with minimal required fields
+        initial_state = {
+            "chunks": chunks,
+            "method": method,
+            "language": language or self.language_choice,
+            "intermediate_summaries": [],
+            "final_summary": "",
+            "prompt_info": prompt_info or self.prompt_info
+        }
 
-            # Initialize state with all required fields, maintaining original prompt handling
-            initial_state = {
-                "chunks": chunks,
-                "method": method,
-                "language": language,
-                "intermediate_summaries": [],
-                "final_summary": "",
-                "prompt_info": prompt_info or self.prompt_info,
-                "next_step": None
-            }
-
-            logger.debug(f"Initial state: {initial_state}")
-            if not self.graph_runnable:
-                logger.error("Graph not initialized")
-                raise SummarizeException("Graph not initialized")
-
-            try:
-                result = await self.graph_runnable.ainvoke(initial_state)
-                logger.debug(f"Graph result: {result}")
-            except Exception as graph_error:
-                logger.error(f"Graph execution error: {str(graph_error)}")
-                raise SummarizeException(f"Graph execution failed: {str(graph_error)}")
-            
-            if not result:
-                logger.error("Empty result from graph")
-                raise SummarizeException("Empty result from graph")
-                
-            if not result.get("final_summary"):
-                logger.error(f"No final summary in result. Result keys: {result.keys()}")
-                raise SummarizeException("No summary generated")
-                
-            self.log_verbose(f"Summarization completed. Summary length: {len(result['final_summary'])} characters")
-            return result
-                
-        except Exception as e:
-            logger.error(f"Error in summarization: {str(e)}")
-            raise SummarizeException(f"Summarization failed: {str(e)}")
+        result = await self.graph_runnable.ainvoke(initial_state)
+        
+        if not result.get("final_summary"):
+            raise SummarizeException("No summary generated")
+        
+        return result
