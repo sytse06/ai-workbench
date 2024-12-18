@@ -156,7 +156,7 @@ class SummarizationAssistant:
         
         return {
             "intermediate_summaries": [summary],
-            "next_step": "reduce_summaries"  # Next step in map-reduce flow
+            "next_step": "reduce_summaries"
         }
 
     async def reduce_summaries(self, state: OverallState) -> dict:
@@ -174,8 +174,42 @@ class SummarizationAssistant:
         
         return {
             "final_summary": final_summary,
-            "next_step": END  # Update state to end
+            "next_step": END
         }
+    
+        def route_by_method(self, state: OverallState) -> dict:
+        """Route to appropriate processing method based on state."""
+        method = state["method"]
+        
+        if method == "stuff":
+            return {"next_step": "summarize_stuff"}
+        elif method == "map_reduce":
+            return {"next_step": "map_summaries"}
+        else:
+            raise ValueError(f"Unsupported method: {method}")
+
+    def map_summaries(self, state: OverallState) -> dict:
+        """Create parallel processing tasks for chunks."""
+        try:
+            self.log_verbose(f"Mapping summaries using {state['method']} method")
+            
+            if not state["chunks"]:
+                raise SummarizeException("No chunks to process")
+            
+            # Create Send objects for parallel processing
+            sends = [
+                Send("generate_map_summary", {
+                    "chunk": chunk,
+                    "prompt_info": state.get("prompt_info", self.prompt_info)
+                })
+                for chunk in state["chunks"]
+            ]
+            
+            return {"sends": sends}
+            
+        except Exception as e:
+            logger.error(f"Error in mapping phase: {str(e)}")
+            raise SummarizeException(f"Mapping phase failed: {str(e)}")
 
     async def refine_summary(self, state: dict) -> dict:
         """Refine an existing summary with new content."""
@@ -204,79 +238,49 @@ class SummarizationAssistant:
             "final_summary": summary,
             "next_step": END  # Update state to end
         }
-    
-    def map_summaries(self, state: OverallState) -> dict:
-        """Create a list of Send objects for processing chunks based on method."""
-        try:
-            self.log_verbose(f"Mapping summaries using {state['method']} method")
-            
-            if not state["chunks"]:
-                raise SummarizeException("No chunks to process")
-                
-            sends = []
-            if state["method"] == "map_reduce":
-                sends = [
-                    Send("generate_map_summary", {
-                        "chunk": chunk,
-                        "prompt_info": state.get("prompt_info", self.prompt_info)
-                    })
-                    for chunk in state["chunks"]
-                ]
-            elif state["method"] == "refine":
-                sends = [
-                    Send("refine_summary", {
-                        "chunk": chunk,
-                        "existing_summary": state.get("final_summary", ""),
-                        "prompt_info": state.get("prompt_info", self.prompt_info)
-                    })
-                    for chunk in state["chunks"]
-                ]
-            
-            return {"sends": sends}
-                
-        except Exception as e:
-            logger.error(f"Error in mapping phase: {str(e)}")
-            raise SummarizeException(f"Mapping phase failed: {str(e)}")
             
     def setup_graph(self):
         """Set up the langgraph workflow."""
         try:
-            self.log_verbose("Setting up summarization graph")
+            self.log_verbose("Setting up summarization graph")            
             
-            def router(state: OverallState) -> dict:
-                """Route to appropriate processing method."""
-                method = state["method"]
-                
-                if method == "stuff":
-                    return {"next_step": "summarize_stuff"}
-                else:
-                    raise ValueError(f"Only 'stuff' method currently implemented")
-
-            self.graph = StateGraph(OverallState)
-            
-            # Add only the nodes needed for stuff method
-            self.graph.add_node("router", router)
+            # Add nodes
+            self.graph.add_node("router", self.route_by_method)
             self.graph.add_node("summarize_stuff", self.summarize_stuff)
+            self.graph.add_node("map_summaries", self.map_summaries)
+            self.graph.add_node("generate_map_summary", self.generate_map_summary)
+            self.graph.add_node("reduce_summaries", self.reduce_summaries)
 
-            # Simple linear path for stuff method
+            # Set up edges for stuff method
             self.graph.add_edge(START, "router")
             self.graph.add_edge("router", "summarize_stuff")
             self.graph.add_edge("summarize_stuff", END)
+
+            # Set up edges for map-reduce method with parallel processing
+            self.graph.add_edge("router", "map_summaries")
+            # This enables parallel processing of chunks
+            self.graph.add_conditional_edges(
+                "map_summaries",
+                lambda x: {"sends": x["sends"]},
+                ["generate_map_summary"]
+            )
+            self.graph.add_edge("generate_map_summary", "reduce_summaries")
+            self.graph.add_edge("reduce_summaries", END)
 
             self.graph_runnable = self.graph.compile()
             
         except Exception as e:
             logger.error(f"Error setting up graph: {str(e)}")
             raise
-                    
+                            
     async def summarize(self, chunks: Union[str, List[str], List[Document]], 
-                    method: str = None, prompt_info: str = None, 
-                    language: str = None) -> dict:
+                       method: str = None, prompt_info: str = None, 
+                       language: str = None) -> dict:
         """Main entry point for summarization."""
         method = method or self.method
         self.log_verbose(f"Starting summarization using {method} method")
         
-        # Process input chunks
+        # Process input chunks using EnhancedContentLoader
         if isinstance(chunks, str):
             chunks = self.content_loader.load_and_split_documents(file_paths=chunks)
         elif isinstance(chunks, list):
@@ -290,12 +294,11 @@ class SummarizationAssistant:
         if not chunks:
             raise SummarizeException("No content to summarize after processing")
 
-        # Initialize state with minimal required fields
         initial_state = {
             "chunks": chunks,
             "method": method,
             "language": language or self.language_choice,
-            "intermediate_summaries": [],
+            "intermediate_summaries": [],  # Will be combined using operator.add
             "final_summary": "",
             "prompt_info": prompt_info or self.prompt_info
         }
