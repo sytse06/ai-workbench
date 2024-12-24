@@ -177,10 +177,10 @@ class SummarizationAssistant:
             "next_step": END
         }
     
-        def route_by_method(self, state: OverallState) -> dict:
+    def route_by_method(self, state: OverallState) -> dict:
         """Route to appropriate processing method based on state."""
         method = state["method"]
-        
+            
         if method == "stuff":
             return {"next_step": "summarize_stuff"}
         elif method == "map_reduce":
