@@ -59,11 +59,50 @@ def get_model(choice: str, **kwargs):
             model_kwargs=model_kwargs,
             **kwargs
         )
+    elif choice == "Deepseek v3":
+        api_key = get_api_key('openrouter')
+        model_kwargs = {}
+        if 'http_referer' in kwargs:
+            model_kwargs["headers"] = model_kwargs.get("headers", {})
+            model_kwargs["headers"]["HTTP-Referer"] = kwargs.pop('http_referer')
+        if 'x_title' in kwargs:
+            model_kwargs["headers"] = model_kwargs.get("headers", {})
+            model_kwargs["headers"]["X-Title"] = kwargs.pop('ai-workbench')
+        
+        return ChatOpenAI(
+            model="deepseek/deepseek-chat",
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+            model_kwargs=model_kwargs,
+            **kwargs
+        )
+    elif choice == "Claude Sonnet beta":
+        api_key = get_api_key('openrouter')
+        model_kwargs = {}
+        if 'http_referer' in kwargs:
+            model_kwargs["headers"] = model_kwargs.get("headers", {})
+            model_kwargs["headers"]["HTTP-Referer"] = kwargs.pop('http_referer')
+        if 'x_title' in kwargs:
+            model_kwargs["headers"] = model_kwargs.get("headers", {})
+            model_kwargs["headers"]["X-Title"] = kwargs.pop('ai-workbench')
+        
+        return ChatOpenAI(
+            model="anthropic/claude-3.5-sonnet:beta",
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+            model_kwargs=model_kwargs,
+            **kwargs
+        )
     elif choice == "Ollama (LLama3.2)":
         return ChatOllama(
             model="llama3.2",
             base_url="http://localhost:11434",
             **kwargs)
+    elif choice == "Ollama (llama3.2-vision)":
+        return ChatOllama(
+            model="llama3.2-vision",
+            base_url="http://localhost:11434",
+            **kwargs)    
     elif choice.startswith("Whisper"):
         whisper_size = choice.split()[-1].lower()
         if whisper_size not in WHISPER_SIZES:
