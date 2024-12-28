@@ -404,9 +404,10 @@ with gr.Blocks() as demo:
             with gr.Row():
                 with gr.Column(scale=1):
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.1)", "Claude Sonnet",
-                         "Ollama (LLama3.2)",
-                         "Ollama (YI-coder)", "OpenAI GPT-4o-mini"],
+                        ["Ollama (LLama3.2)", "Claude Sonnet", 
+                         "Claude Sonnet beta", "Deepseek v3",
+                         "Mistral (large)", "Mistral (small)",
+                         "Ollama (LLama3.1)", "OpenAI GPT-4o-mini"],
                         label="Choose Model",
                         value="Ollama (LLama3.1)"
                     )
@@ -480,8 +481,10 @@ with gr.Blocks() as demo:
             with gr.Row():
                 with gr.Column(scale=1):
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.1)",  "Ollama (phi3.5)",
-                         "OpenAI GPT-4o-mini", "Claude Sonnet"],
+                        ["Ollama (LLama3.2)", "Claude Sonnet",
+                         "Claude Sonnet beta", "Deepseek v3",
+                         "Mistral (large)", "Mistral (small)",
+                         "OpenAI GPT-4o-mini", "Ollama (LLama3.1)"],
                         label="Choose Model",
                         value="Ollama (LLama3.2)"
                     )
@@ -552,7 +555,8 @@ with gr.Blocks() as demo:
                         type="pil", label="Upload Image", image_mode="RGB"
                     )
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLaVA)", "OpenAI GPT-4o-mini",
+                        ["Ollama (LLaVA)", "Ollama (llama3.2-vision)", 
+                         "Mistral (pixtral)", "OpenAI GPT-4o-mini",
                          "Claude Sonnet"],
                         label="Choose Model",
                         value="Ollama (LLaVA)"
@@ -623,7 +627,9 @@ with gr.Blocks() as demo:
                     )
                     with gr.Accordion("RAG Options", open=False):
                         model_choice = gr.Dropdown(
-                            ["Ollama (LLama3.1)", "Claude Sonnet",
+                            ["Ollama (LLama3.2)", "Claude Sonnet",
+                             "Claude Sonnet beta", "Deepseek v3",
+                             "Mistral (large)", "Mistral (small)",
                              "Ollama (phi3.5)", "OpenAI GPT-4o-mini"],
                             label="Choose Model",
                             value="Ollama (LLama3.1)"
@@ -765,7 +771,9 @@ with gr.Blocks() as demo:
                     )
                     with gr.Accordion("Summarization Options", open=False):
                         model_choice = gr.Dropdown(
-                            ["Ollama (LLama3.1)", "Claude Sonnet",
+                            ["Ollama (LLama3.2)", "Claude Sonnet",
+                             "Claude Sonnet beta", "Deepseek v3",
+                             "Mistral (large)", "Mistral (small)",
                              "Ollama (phi3.5)", "OpenAI GPT-4o-mini"],
                             label="Choose Model",
                             value="Ollama (LLama3.1)"
