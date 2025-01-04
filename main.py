@@ -480,26 +480,23 @@ with gr.Blocks() as demo:
                             label="Max Tokens"
                         )
                 with gr.Column(scale=4):
-                    rag_chat_bot = gr.Chatbot(
+                    chat_bot = gr.Chatbot(
                         height=600,
                         show_copy_button=True,
                         show_copy_all_button=True
                     )
-                    rag_text_box = gr.Textbox(
+                    chat_text_box = gr.Textbox(
                         label="User input",
                         placeholder="Type your question here..."
                     )
                     
                     chat_interface = gr.ChatInterface(
                         fn=chat_wrapper,
-                        chatbot=rag_chat_bot,
-                        textbox=rag_text_box,
+                        chatbot=chat_bot,
+                        textbox=chat_text_box,
                         additional_inputs=[
-                            model_choice, embedding_choice, chunk_size,
-                            chunk_overlap, temperature, num_similar_docs,
-                            max_tokens, url_input, file_input,
-                            language_choice, prompt_info, history_flag,
-                            retrieval_method
+                            model_choice, temperature, max_tokens, file_input,
+                            use_context, history_flag
                         ],
                         submit_btn="Submit",
                         retry_btn="🔄 Retry",
@@ -694,7 +691,8 @@ with gr.Blocks() as demo:
 
                 with gr.Column(scale=4):
                     rag_chat_bot = gr.Chatbot(
-                        height=600, show_copy_button=True,
+                        height=600, 
+                        show_copy_button=True,
                         show_copy_all_button=True
                     )
                     rag_text_box = gr.Textbox(
