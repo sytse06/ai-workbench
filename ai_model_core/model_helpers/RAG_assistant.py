@@ -42,21 +42,8 @@ class RAGAssistant:
         language="english",
         max_tokens=None
     ):
-    def __init__(
-        self,
-        model_name="Ollama (LLama3.1)",
-        embedding_model="nomic-embed-text",
-        retrieval_method="similarity",
-        chunk_size=500,
-        chunk_overlap=50,
-        temperature=0.4,
-        num_similar_docs=3,
-        language="english",
-        max_tokens=None
-    ):
         self.model_local = get_model(model_name)
         self.embedding_model_name = embedding_model
-        self.embedding_model = get_embedding_model(embedding_model)
         self.embedding_model = get_embedding_model(embedding_model)
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -151,13 +138,11 @@ class RAGAssistant:
         context = state['context']
         question = state['question']
 
-
         rag_prompt_template = """Answer the question based only on the following context:
         {context}
         Question: {question}
         """
         rag_prompt = ChatPromptTemplate.from_template(rag_prompt_template)
-
 
         chain = (
             rag_prompt
@@ -165,14 +150,8 @@ class RAGAssistant:
                 temperature=self.temperature,
                 max_tokens=self.max_tokens
             )
-            rag_prompt
-            | self.model_local.bind(
-                temperature=self.temperature,
-                max_tokens=self.max_tokens
-            )
             | StrOutputParser()
         )
-
 
         answer = chain.invoke({"context": context, "question": question})
         return {"answer": answer, "all_actions": ["answer_generated"]}
@@ -211,7 +190,6 @@ class RAGAssistant:
         input_dict = {"question": question, "context": context}
         if self.use_history and history:
             input_dict["history"] = _format_history(history)
-
 
         response = await rag_chain.ainvoke(input_dict)
 
