@@ -23,7 +23,7 @@ import numpy as np
 import gradio as gr
 from pydub import AudioSegment
 #import soundfile as sf
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip
 from dataclasses import dataclass, field
 
 from whisper.utils import get_writer
