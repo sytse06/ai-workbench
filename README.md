@@ -34,11 +34,8 @@ ai_workbench/
 ├── output/
 ├── tests/
 │   ├── __init__.py
-│   ├── conftest.py
-│   ├── summarization
-│   │   ├── __init__.py
-│   │   ├── conftest.py
-│   │   ├── summarization-tests.py
+│   ├── chat_assistant
+│   │   ├── test_chat_assistant.py
 ├── .env
 └── main.py
 ```

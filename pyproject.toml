@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "AI workbench"
-version = "0.1.0"
+version = "0.2"
 description = "By offering a range of models and features like prompt reusability and flexible experimentation, this AI workbench streamlines complex tasks and fosters rapid innovation."
 authors = ["Sytse van der Schaaf <sytse@svdschaaf.nl>"]
 packages = [{include = "ai_model_core"}]
@@ -12,7 +12,7 @@ tqdm = "^4.65.0"
 pyyaml = "^6.0"
 ollama = ">=0.4.4"
 Pillow = ">=9.2.0,<11.0"
-gradio = "^4.38.1"
+gradio = "^5.9.0"
 langgraph = "^0.2.19"
 pypdf = "^4.3.1"
 sentence-transformers = "^3.1.0"
