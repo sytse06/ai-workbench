@@ -16,6 +16,7 @@ def load_credentials():
         os.environ['MISTRAL_API_KEY'] = credentials['mistral_api_key']
         os.environ['ANTHROPIC_API_KEY'] = credentials['anthropic_api_key']
         os.environ['HUGGINGFACE_API_KEY'] = credentials['hf_api_key']
+        os.environ['GOOGLE_API_KEY'] = credentials['google_api_key']
         logger.info("Credentials loaded successfully")
     except FileNotFoundError:
         logger.error(f"Credentials file not found at {cred_path}")
@@ -48,6 +49,9 @@ def get_api_key(provider: str) -> str:
         key = os.getenv('HUGGINGFACE_API_KEY')
         logger.debug("Accessed HuggingFace via API key.")
         return key
-
+    elif provider.lower() == 'google':
+        key = os.getenv('GOOGLE_API_KEY')
+        logger.debug("Accessed Google AI via API key.")
+        return key
     else:
         raise ValueError(f"Unknown provider: {provider}")

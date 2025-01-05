@@ -92,7 +92,7 @@ async def chat_wrapper(
 ) -> str:
     
     global chat_assistant
-    chat_assistant.update_model(model_choice)
+    await chat_assistant.update_model(model_choice)
     
     # Generate response
     result = []
@@ -444,9 +444,9 @@ with gr.Blocks() as demo:
             with gr.Row():
                 with gr.Column(scale=1):
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.2)", "Claude Sonnet", 
-                         "Claude Sonnet beta", "Deepseek v3",
-                         "Mistral (large)", "Mistral (small)",
+                        ["Ollama (LLama3.2)", "Gemini 1.5 flash",
+                         "Claude Sonnet", "Claude Sonnet beta", 
+                         "Deepseek v3", "Mistral (large)", "Mistral (small)",
                          "Ollama (LLama3.1)", "OpenAI GPT-4o-mini"],
                         label="Choose Model",
                         value="Ollama (LLama3.2)"

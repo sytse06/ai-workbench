@@ -1,11 +1,11 @@
 # ai_model_core/shared_utils/__init__.py
-from ..shared_utils.utils import (
+from .utils import (
     get_system_prompt,
     get_prompt_template,
     _format_history,
     EnhancedContentLoader
 )
-from ..shared_utils.factory import (
+from .factory import (
     get_model, 
     get_embedding_model,
     WHISPER_MODELS,
@@ -26,7 +26,7 @@ from ..config.settings import (
 __all__ = [
     'get_system_prompt',
     'get_prompt_template',
-    'format_history',
+    '_format_history',
     'EnhancedContentLoader',
     'get_model', 
     'get_embedding_model',

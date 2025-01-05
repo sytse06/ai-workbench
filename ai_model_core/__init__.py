@@ -43,7 +43,7 @@ __all__ = [
     # Shared Utils
     'get_system_prompt',
     'get_prompt_template',
-    'format_history',
+    '_format_history',
     'EnhancedContentLoader',
     'get_model', 
     'get_embedding_model',

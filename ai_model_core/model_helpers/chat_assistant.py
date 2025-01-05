@@ -49,42 +49,31 @@ class ChatAssistant:
             temp_dir=temp_dir
         )
 
+    async def update_model(self, model_choice: str):
+        """Asynchronously update the model if the choice has changed."""
+        if self.model_choice != model_choice:
+            self.model = get_model(model_choice)
+            self.model_choice = model_choice
+
     async def process_chat_context_files(
         self,
         files: List[gr.File]
     ) -> Tuple[str, bool]:
-        """
-        Process uploaded files for chat context using the internal EnhancedContentLoader.
-        
-        Args:
-            files: List of files uploaded through Gradio interface
-            
-        Returns:
-            Tuple containing:
-            - Status message string
-            - Success flag (True if processing succeeded)
-        """
+        """Process uploaded files for chat context using the internal EnhancedContentLoader."""
         if not files:
             return "No files uploaded", False
             
         try:
-            # Convert file paths to list
             file_paths = [f.name for f in files]
-            
-            # Load documents using the existing load_documents method
             success = await self.load_documents(file_paths=file_paths)
             
             if success:
-                # Generate status message
                 file_names = ", ".join(Path(f.name).name for f in files)
                 status_msg = (
                     f"Successfully processed {len(files)} file(s): {file_names}\n"
                     f"Created {len(self.documents)} context chunks for chat"
                 )
-                
-                # Clean up temporary files
                 self.content_loader.cleanup()
-                
                 return status_msg, True
             
             return "Failed to process files", False
@@ -100,50 +89,18 @@ class ChatAssistant:
         use_context: bool = True,
         max_documents: int = 3
     ) -> str:
-        """
-        Get relevant context from loaded documents based on the message.
-        
-        Args:
-            message: The user's input message
-            use_context: Boolean flag to determine if context should be used
-            max_documents: Maximum number of documents to include in context
-            
-        Returns:
-            String containing relevant document content if use_context is True,
-            empty string otherwise
-        """
+        """Get relevant context from loaded documents based on the message."""
         if not use_context or not self.documents:
             return ""
             
         return self.get_relevant_context(message, max_documents)
-
-    def update_model(self, model_choice: str):
-        if self.model_choice != model_choice:
-            self.model = get_model(model_choice)
-            self.model_choice = model_choice
-
-    def _format_history(self, history: List[Tuple[str, str]]) -> List[BaseMessage]:
-        formatted_history = []
-        for human, ai in history:
-            formatted_history.append(HumanMessage(content=human))
-            formatted_history.append(AIMessage(content=ai))
-        return formatted_history
 
     async def load_documents(
         self,
         file_paths: Optional[Union[str, List[str], List[Any]]] = None,
         urls: Optional[str] = None
     ) -> bool:
-        """
-        Load documents from files or URLs and store them in the assistant's memory.
-        
-        Args:
-            file_paths: Single file path or list of file paths to load
-            urls: Newline-separated string of URLs to load
-            
-        Returns:
-            bool: True if documents were successfully loaded
-        """
+        """Load documents from files or URLs and store them in the assistant's memory."""
         try:
             new_docs = self.content_loader.load_documents(file_paths=file_paths, urls=urls)
             if new_docs:
@@ -156,39 +113,25 @@ class ChatAssistant:
             return False
 
     def get_relevant_context(self, message: str, max_documents: int = 3) -> str:
-        """
-        Retrieve relevant context from loaded documents based on the user's message.
-        This is a simple implementation that could be enhanced with embeddings and similarity search.
-        
-        Args:
-            message: The user's input message
-            max_documents: Maximum number of documents to include in context
-            
-        Returns:
-            str: Relevant context from documents
-        """
+        """Retrieve relevant context from loaded documents based on the user's message."""
         if not self.documents:
             return ""
             
-        # Simple keyword matching - could be replaced with more sophisticated retrieval
         relevant_docs = []
         message_words = set(message.lower().split())
         
         for doc in self.documents:
             content = doc.page_content.lower()
-            # Count how many query words appear in the document
             relevance_score = sum(1 for word in message_words if word in content)
             if relevance_score > 0:
                 relevant_docs.append((relevance_score, doc))
         
-        # Sort by relevance and take top documents
         relevant_docs.sort(reverse=True, key=lambda x: x[0])
         selected_docs = relevant_docs[:max_documents]
         
         if not selected_docs:
             return ""
             
-        # Format the context
         context_parts = []
         for _, doc in selected_docs:
             source = doc.metadata.get('source', 'Unknown source')
@@ -206,51 +149,65 @@ class ChatAssistant:
         stream: bool = False,
         use_context: bool = True
     ) -> Generator[str, None, None]:
-        """
-        Enhanced chat function that incorporates document context when relevant.
-        
-        Args:
-            message: User's input message
-            history: Chat history as list of (human, ai) message tuples
-            history_flag: Whether to include chat history
-            stream: Whether to stream the response
-            use_context: Whether to include relevant document context
-            
-        Yields:
-            Generated response text
-        """
+        """Enhanced chat function that incorporates document context when relevant."""
         logger.info(f"Chat function called with message: {message}, history_flag: {history_flag}, model_choice: {self.model_choice}")
         
         messages = []
-        if history_flag:
-            messages.extend(self._format_history(history))
-            
-        # Add relevant context from documents if available
-        if use_context and self.documents:
-            context = self.get_context_from_docs(message, use_context)
-            if context:
-                context_message = (
-                    "Here is some relevant information from the uploaded documents:\n\n"
-                    f"{context}\n\n"
-                    "Please consider this information when responding to the user's message:"
-                )
-                messages.append(HumanMessage(content=context_message))
+        if history_flag and history:
+            try:
+                formatted_messages = _format_history(history)
+                messages.extend(formatted_messages)
+                logger.info(f"Successfully formatted {len(formatted_messages)} messages from history")
+            except Exception as e:
+                logger.error(f"Error formatting history: {str(e)}")
+                logger.error(f"History that caused error: {history}")
+                pass
                 
         messages.append(HumanMessage(content=message))
         
-        # Configure the model with current settings
-        self.model = self.model.bind(
-            temperature=self.temperature,
-            max_tokens=self.max_tokens
-        )
-        
-        if stream:
-            async for chunk in self.model.astream(messages):
-                yield chunk.content
+        # Configure model based on type
+        if "ollama" in self.model_choice.lower():
+            if stream:
+                self.model = self.model.bind(
+                    stop=None,
+                    stream=True
+                )
+            else:
+                self.model = self.model.bind(
+                    stop=None
+                )
+        elif "gemini" in self.model_choice.lower():
+            # Gemini uses generation_config without stream parameter
+            self.model = self.model.bind(
+                generation_config={
+                    "temperature": self.temperature,
+                    "max_output_tokens": self.max_tokens
+                }
+            )
         else:
-            result = await self.model.agenerate([messages])
-            yield result.generations[0][0].text
-
+            if stream:
+                self.model = self.model.bind(
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    stream=True
+                )
+            else:
+                self.model = self.model.bind(
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens
+                )
+        
+        try:
+            if stream and not "gemini" in self.model_choice.lower():
+                async for chunk in self.model.astream(messages):
+                    yield chunk.content
+            else:
+                result = await self.model.agenerate([messages])
+                yield result.generations[0][0].text
+        except Exception as e:
+            logger.error(f"Error in chat generation: {str(e)}")
+            yield f"An error occurred: {str(e)}"
+        
     def clear_documents(self):
         """Clear all loaded documents from memory."""
         self.documents = []
@@ -279,7 +236,9 @@ class ChatAssistant:
         return "\n".join(summary_parts)
 
     def set_temperature(self, temperature: float):
+        """Set the temperature parameter for the model."""
         self.temperature = temperature
 
     def set_max_tokens(self, max_tokens: int):
+        """Set the max_tokens parameter for the model."""
         self.max_tokens = max_tokens

@@ -1,8 +1,10 @@
 # Third-party imports
 import whisper
 from langchain_openai import ChatOpenAI
-from langchain_community.chat_models import ChatOllama
-from langchain_community.embeddings import OllamaEmbeddings, OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
+from langchain_ollama import ChatOllama
+from langchain_ollama import OllamaEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Local imports
 from ..config.credentials import get_api_key, load_credentials
@@ -91,6 +93,14 @@ def get_model(choice: str, **kwargs):
             api_key=api_key,
             base_url="https://openrouter.ai/api/v1",
             model_kwargs=model_kwargs,
+            **kwargs
+        )
+    elif choice == "Gemini 1.5 flash":
+        api_key = get_api_key('google')
+        return ChatGoogleGenerativeAI(
+            model="gemini-1.5-flash",
+            google_api_key=api_key,
+            convert_system_message_to_human=True,
             **kwargs
         )
     elif choice == "Ollama (LLama3.2)":

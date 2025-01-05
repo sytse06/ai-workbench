@@ -366,10 +366,28 @@ def get_prompt_template(prompt_info: str, config: dict, language_choice: str = "
     ])
 
 def _format_history(history: List[tuple[str, str]]) -> List[Union[HumanMessage, AIMessage]]:
+    """Format chat history into LangChain message format with validation."""
     formatted_history = []
-    for user_msg, ai_msg in history:
-        formatted_history.append(HumanMessage(content=user_msg))
-        formatted_history.append(AIMessage(content=ai_msg))
+        
+    if not history:  # Handle empty history
+        return formatted_history
+            
+    for entry in history:
+        # Validate tuple structure
+        if not isinstance(entry, (tuple, list)) or len(entry) != 2:
+            logger.warning(f"Invalid history entry format: {entry}")
+            continue
+                
+        user_msg, ai_msg = entry
+            
+        # Handle user message
+        if user_msg is not None and isinstance(user_msg, str) and user_msg.strip():
+                formatted_history.append(HumanMessage(content=user_msg))
+                
+        # Handle AI message
+        if ai_msg is not None and isinstance(ai_msg, str) and ai_msg.strip():
+            formatted_history.append(AIMessage(content=ai_msg))
+                
     return formatted_history
 
 # Function to load config from a YAML file
