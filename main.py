@@ -82,7 +82,7 @@ transcription_assistant = TranscriptionAssistant(model_size="base")
 # Wrapper function for Gradio implementation chat_assistant:
 async def chat_wrapper(
     message: str,
-    history: List[Tuple[str, str]],
+    history: List[dict],
     model_choice: str,
     temperature: float,
     max_tokens: int,
@@ -98,13 +98,14 @@ async def chat_wrapper(
     result = []
     async for chunk in chat_assistant.chat(
         message=message,
-        history=history,
+        history=history,  # ChatAssistant already handles both formats
         history_flag=history_flag,
         stream=True,
         use_context=use_context
     ):
         result.append(chunk)
-        yield ''.join(result)
+        # Instead of yielding a string, yield a message object
+        yield {"role": "assistant", "content": ''.join(result)}
 
 # File processing handler
 async def process_files_wrapper(files: List[gr.File]) -> Tuple[str, bool]:  
@@ -483,25 +484,23 @@ with gr.Blocks() as demo:
                     chat_bot = gr.Chatbot(
                         height=600,
                         show_copy_button=True,
-                        show_copy_all_button=True
+                        show_copy_all_button=True,
+                        avatar_images=(None, "🤖"),
+                        msg_format="messages",
                     )
-                    chat_text_box = gr.Textbox(
+                    text_input = gr.Textbox(
                         label="User input",
                         placeholder="Type your question here..."
                     )
                     
-                    chat_interface = gr.ChatInterface(
-                        fn=chat_wrapper,
-                        chatbot=chat_bot,
-                        textbox=chat_text_box,
-                        additional_inputs=[
-                            model_choice, temperature, max_tokens, file_input,
+                    text_input.submit(
+                        chat_wrapper,
+                        inputs=[
+                            text_input, chat_bot, model_choice, 
+                            temperature, max_tokens, file_input,
                             use_context, history_flag
                         ],
-                        submit_btn="Submit",
-                        retry_btn="🔄 Retry",
-                        undo_btn="↩️ Undo",
-                        clear_btn="🗑️ Clear",
+                        outputs=[chat_bot]
                     )
 
             # Connect the load_button to the process_chat_context_files
@@ -555,9 +554,6 @@ with gr.Blocks() as demo:
                             history_flag_prompt
                         ],
                         submit_btn="Submit",
-                        retry_btn="🔄 Retry",
-                        undo_btn="↩️ Undo",
-                        clear_btn="🗑️ Clear",
                     )
 
         # Vision Assistant Tab
@@ -595,9 +591,6 @@ with gr.Blocks() as demo:
                             image_input, model_choice, history_flag
                         ],
                         submit_btn="Submit",
-                        retry_btn="🔄 Retry",
-                        undo_btn="↩️ Undo",
-                        clear_btn="🗑️ Clear"
                     )
 
             vision_clear_btn = gr.Button("Clear All")
@@ -711,9 +704,6 @@ with gr.Blocks() as demo:
                             retrieval_method
                         ],
                         submit_btn="Submit",
-                        retry_btn="🔄 Retry",
-                        undo_btn="↩️ Undo",
-                        clear_btn="🗑️ Clear",
                     )
                     flag_btn = gr.Button("Flag")
                     flag_options = gr.Dropdown(
@@ -884,7 +874,7 @@ with gr.Blocks() as demo:
                         )
 
                 # Right Column - Output and Progress
-                with gr.Column(scale=2):
+                with gr.Column(scale=4):
                     with gr.Accordion("Transcription Context Hints", open=False):
                         speakers_input = gr.Textbox(
                             label="Speakers",

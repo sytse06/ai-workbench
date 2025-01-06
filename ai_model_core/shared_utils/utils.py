@@ -1,7 +1,7 @@
 # ai_model_core/shared_utils/utils.py
 # Standard library imports
 from pathlib import Path
-from typing import List, Union, Any, Optional
+from typing import List, Union, Any, Optional, Tuple
 import os
 import logging
 import tempfile
@@ -10,7 +10,7 @@ from urllib.parse import urlparse, parse_qs
 # Third-party imports
 from langchain.schema import Document
 from langchain_community.document_loaders import TextLoader, WebBaseLoader, Docx2txtLoader, UnstructuredMarkdownLoader
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from langchain.schema import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
 from pydub import AudioSegment
@@ -365,30 +365,21 @@ def get_prompt_template(prompt_info: str, config: dict, language_choice: str = "
         ("human", "{prompt_info}\n\n{user_message}")
     ])
 
-def _format_history(history: List[tuple[str, str]]) -> List[Union[HumanMessage, AIMessage]]:
-    """Format chat history into LangChain message format with validation."""
-    formatted_history = []
-        
-    if not history:  # Handle empty history
-        return formatted_history
-            
-    for entry in history:
-        # Validate tuple structure
-        if not isinstance(entry, (tuple, list)) or len(entry) != 2:
-            logger.warning(f"Invalid history entry format: {entry}")
-            continue
-                
-        user_msg, ai_msg = entry
-            
-        # Handle user message
-        if user_msg is not None and isinstance(user_msg, str) and user_msg.strip():
-                formatted_history.append(HumanMessage(content=user_msg))
-                
-        # Handle AI message
-        if ai_msg is not None and isinstance(ai_msg, str) and ai_msg.strip():
-            formatted_history.append(AIMessage(content=ai_msg))
-                
-    return formatted_history
+def _format_history(history: List[Union[Tuple[str, str], dict]]) -> List[BaseMessage]:
+    messages = []
+    if isinstance(history[0], tuple):
+        for human_msg, ai_msg in history:
+            messages.extend([
+                HumanMessage(content=human_msg),
+                AIMessage(content=ai_msg)
+            ])
+    else:  # Handle dict format
+        for msg in history:
+            if msg["role"] == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            elif msg["role"] == "assistant":
+                messages.append(AIMessage(content=msg["content"]))
+    return messages
 
 # Function to load config from a YAML file
 def load_config(file_path: str) -> dict:
