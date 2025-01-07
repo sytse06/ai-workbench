@@ -89,7 +89,7 @@ async def chat_wrapper(
     files: List[gr.File],
     history_flag: bool,
     use_context: bool = True
-) -> str:
+) -> dict:
     
     global chat_assistant
     await chat_assistant.update_model(model_choice)
@@ -98,7 +98,7 @@ async def chat_wrapper(
     result = []
     async for chunk in chat_assistant.chat(
         message=message,
-        history=history,  # ChatAssistant already handles both formats
+        history=history,
         history_flag=history_flag,
         stream=True,
         use_context=use_context
@@ -486,7 +486,6 @@ with gr.Blocks() as demo:
                         show_copy_button=True,
                         show_copy_all_button=True,
                         avatar_images=(None, "🤖"),
-                        msg_format="messages",
                     )
                     text_input = gr.Textbox(
                         label="User input",
@@ -538,7 +537,8 @@ with gr.Blocks() as demo:
 
                 with gr.Column(scale=4):
                     prompt_chat_bot = gr.Chatbot(
-                        height=600, show_copy_button=True,
+                        height=600, 
+                        show_copy_button=True,
                         show_copy_all_button=True
                     )
                     prompt_text_box = gr.Textbox(
@@ -576,7 +576,8 @@ with gr.Blocks() as demo:
 
                 with gr.Column(scale=4):
                     vision_chatbot = gr.Chatbot(
-                        height=600, show_copy_button=True,
+                        height=600, 
+                        show_copy_button=True,
                         show_copy_all_button=True
                     )
                     vision_question_input = gr.Textbox(

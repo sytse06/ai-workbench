@@ -1,7 +1,7 @@
 # ai_model_core/shared_utils/utils.py
 # Standard library imports
 from pathlib import Path
-from typing import List, Union, Any, Optional, Tuple
+from typing import List, Union, Any, Optional, Tuple, Dict
 import os
 import logging
 import tempfile
@@ -365,20 +365,26 @@ def get_prompt_template(prompt_info: str, config: dict, language_choice: str = "
         ("human", "{prompt_info}\n\n{user_message}")
     ])
 
-def _format_history(history: List[Union[Tuple[str, str], dict]]) -> List[BaseMessage]:
+def _format_history(history: List[Union[Tuple[str, str], Dict[str, str]]]) -> List[BaseMessage]:
+    """Convert chat history to LangChain message format."""
     messages = []
-    if isinstance(history[0], tuple):
-        for human_msg, ai_msg in history:
+    if not history:
+        return messages
+        
+    # Handle both tuple and dict formats
+    for entry in history:
+        if isinstance(entry, tuple):
+            user_msg, ai_msg = entry
             messages.extend([
-                HumanMessage(content=human_msg),
+                HumanMessage(content=user_msg),
                 AIMessage(content=ai_msg)
             ])
-    else:  # Handle dict format
-        for msg in history:
-            if msg["role"] == "user":
-                messages.append(HumanMessage(content=msg["content"]))
-            elif msg["role"] == "assistant":
-                messages.append(AIMessage(content=msg["content"]))
+        elif isinstance(entry, dict):
+            if entry["role"] == "user":
+                messages.append(HumanMessage(content=entry["content"]))
+            elif entry["role"] == "assistant":
+                messages.append(AIMessage(content=entry["content"]))
+                
     return messages
 
 # Function to load config from a YAML file

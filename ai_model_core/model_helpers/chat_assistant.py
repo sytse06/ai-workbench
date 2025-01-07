@@ -144,7 +144,7 @@ class ChatAssistant:
     async def chat(
         self, 
         message: str, 
-        history: List[tuple[str, str]], 
+        history: List[dict], 
         history_flag: bool, 
         stream: bool = False,
         use_context: bool = True

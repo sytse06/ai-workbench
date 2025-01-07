@@ -87,8 +87,10 @@ class TestChatAssistant:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("message,history,history_flag", [
         ("Hello", [], True),
-        ("Hello", [("Hi", "Hello!")], True),
-        ("Hello", [("Hi", "Hello!")], False),
+        ("Hello", [{"role": "user", "content": "Hi"}, 
+                {"role": "assistant", "content": "Hello!"}], True),
+        ("Hello", [{"role": "user", "content": "Hi"}, 
+                {"role": "assistant", "content": "Hello!"}], False),
     ])
     async def test_chat_history_handling(self, chat_assistant, message, history, history_flag):
         chat_assistant.model = MockStreamingModel("Test history response")
@@ -104,8 +106,6 @@ class TestChatAssistant:
         
         assert len(responses) > 0
         assert "Test history response" in responses[0]
-
-    # ... (keep other existing tests) ...
 
 @pytest.mark.asyncio
 async def test_chat_wrapper():
@@ -135,4 +135,6 @@ async def test_chat_wrapper():
             result.append(chunk)
 
         assert len(result) > 0
-        assert "Mock wrapper response" in result[0]
+        assert isinstance(result[0], dict)
+        assert result[0]["role"] == "assistant"
+        assert "Mock wrapper response" in result[0]["content"]
