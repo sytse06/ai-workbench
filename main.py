@@ -11,6 +11,7 @@ import traceback
 # Third-party imports
 from PIL import Image
 import gradio as gr
+from gradio import ChatMessage
 from langchain_core.documents import Document
 
 # Local imports
@@ -28,7 +29,10 @@ from ai_model_core.shared_utils.factory import (
 from ai_model_core.shared_utils.utils import ( 
     EnhancedContentLoader,
     get_prompt_template,
-    _format_history
+    format_user_message,
+    format_assistant_message,
+    format_file_content,
+    convert_history_to_messages
 )
 from ai_model_core.model_helpers import (
     ChatAssistant, 
@@ -483,14 +487,18 @@ with gr.Blocks() as demo:
                 with gr.Column(scale=4):
                     chat_bot = gr.Chatbot(
                         height=600,
+                        type="messages",
                         show_copy_button=True,
                         show_copy_all_button=True,
                         avatar_images=(None, "🤖"),
                     )
-                    text_input = gr.Textbox(
-                        label="User input",
-                        placeholder="Type your question here..."
-                    )
+                    with gr.Row():
+                        text_input = gr.Textbox(
+                            label="User input",
+                            placeholder="Type your question here...",
+                            scale=8 
+                        )
+                        submit_btn = gr.Button("Submit", scale=1)
                     
                     text_input.submit(
                         chat_wrapper,
@@ -499,7 +507,18 @@ with gr.Blocks() as demo:
                             temperature, max_tokens, file_input,
                             use_context, history_flag
                         ],
-                        outputs=[chat_bot]
+                        outputs=[chat_bot],
+                        api_name="chat" 
+                    )
+                    submit_btn.click(  # Add click event for the button
+                        chat_wrapper,
+                        inputs=[
+                            text_input, chat_bot, model_choice, 
+                            temperature, max_tokens, file_input,
+                            use_context, history_flag
+                        ],
+                        outputs=[chat_bot],
+                        api_name="chat_button"
                     )
 
             # Connect the load_button to the process_chat_context_files

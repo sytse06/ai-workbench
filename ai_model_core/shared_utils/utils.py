@@ -365,6 +365,139 @@ def get_prompt_template(prompt_info: str, config: dict, language_choice: str = "
         ("human", "{prompt_info}\n\n{user_message}")
     ])
 
+# Add these functions to utils.py
+
+def format_user_message(
+    message: str = None,
+    files: List[Any] = None,
+    history: List[dict] = None
+) -> Tuple[str, List[dict]]:
+    """
+    Format user input (text and/or files) into the Gradio v5 messages format.
+    
+    Args:
+        message: Text message from user
+        files: List of uploaded files
+        history: Existing chat history
+    
+    Returns:
+        Tuple of (cleared message input, updated history)
+    """
+    if history is None:
+        history = []
+    
+    messages = []
+    
+    # Handle file uploads first
+    if files:
+        for file in files:
+            messages.append({
+                "role": "user",
+                "content": {
+                    "path": file.name,
+                    "alt_text": f"Uploaded file: {Path(file.name).name}"
+                }
+            })
+    
+    # Then add the text message if present
+    if message and message.strip():
+        messages.append({
+            "role": "user",
+            "content": message
+        })
+    
+    return "", history + messages
+
+def format_assistant_message(
+    content: str,
+    metadata: dict = None,
+) -> dict:
+    """
+    Format assistant response in Gradio v5 messages format.
+    
+    Args:
+        content: The response text
+        metadata: Optional metadata about the response (e.g., model used, tools)
+    
+    Returns:
+        Dict in the correct message format
+    """
+    message = {
+        "role": "assistant",
+        "content": content
+    }
+    
+    if metadata:
+        message["metadata"] = metadata
+        
+    return message
+
+def format_file_content(
+    file_path: str,
+    alt_text: str = None,
+    file_type: str = None
+) -> dict:
+    """
+    Format file content for display in chat.
+    
+    Args:
+        file_path: Path to the file
+        alt_text: Optional alternative text for accessibility
+        file_type: Optional file type hint
+        
+    Returns:
+        Dict with file content formatting
+    """
+    if not alt_text:
+        alt_text = f"File: {Path(file_path).name}"
+        
+    content = {
+        "path": file_path,
+        "alt_text": alt_text
+    }
+    
+    if file_type:
+        content["type"] = file_type
+        
+    return content
+
+def convert_history_to_messages(
+    history: List[Union[Tuple[str, str], Dict[str, str]]]
+) -> List[dict]:
+    """
+    Convert different history formats to Gradio v5 messages format.
+    
+    Args:
+        history: Chat history in various formats
+        
+    Returns:
+        List of messages in Gradio v5 format
+    """
+    messages = []
+    
+    if not history:
+        return messages
+        
+    for entry in history:
+        if isinstance(entry, tuple):
+            # Convert old tuple format (user_msg, assistant_msg)
+            user_msg, assistant_msg = entry
+            messages.extend([
+                {"role": "user", "content": user_msg},
+                {"role": "assistant", "content": assistant_msg}
+            ])
+        elif isinstance(entry, dict):
+            # Already in correct format or needs role/content keys
+            if "role" in entry and "content" in entry:
+                messages.append(entry)
+            else:
+                # Try to convert other dict formats
+                role = entry.get("speaker", entry.get("type", "user"))
+                content = entry.get("message", entry.get("text", ""))
+                messages.append({"role": role, "content": content})
+                
+    return messages
+
 def _format_history(history: List[Union[Tuple[str, str], Dict[str, str]]]) -> List[BaseMessage]:
     """Convert chat history to LangChain message format."""
     messages = []
