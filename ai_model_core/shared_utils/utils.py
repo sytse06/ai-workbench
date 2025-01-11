@@ -388,25 +388,26 @@ def format_user_message(
     
     messages = []
     
-    # Handle file uploads first
-    if files:
-        for file in files:
-            messages.append({
-                "role": "user",
-                "content": {
-                    "path": file.name,
-                    "alt_text": f"Uploaded file: {Path(file.name).name}"
-                }
-            })
-    
-    # Then add the text message if present
     if message and message.strip():
         messages.append({
             "role": "user",
-            "content": message
+            "content": message.strip()
         })
     
-    return "", history + messages
+    # Handle file uploads if present
+        if files:
+            for file in files:
+                messages.append({
+                    "role": "user",
+                    "content": {
+                        "path": file.name,
+                        "alt_text": f"Uploaded file: {Path(file.name).name}"
+                    }
+                })
+        
+        return "", history + messages
+    
+    return message, history  # Return original inputs if no valid message
 
 def format_assistant_message(
     content: str,

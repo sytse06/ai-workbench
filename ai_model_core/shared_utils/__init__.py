@@ -3,7 +3,11 @@ from .utils import (
     get_system_prompt,
     get_prompt_template,
     _format_history,
-    EnhancedContentLoader
+    EnhancedContentLoader,
+    format_user_message,
+    format_assistant_message,
+    format_file_content,
+    convert_history_to_messages
 )
 from .factory import (
     get_model, 
@@ -36,5 +40,9 @@ __all__ = [
     'get_directory',
     'get_prompt',
     'get_prompt_list',
-    'update_prompt_list'
+    'update_prompt_list',
+    'format_user_message',
+    'format_assistant_message',
+    'format_file_content',
+    'convert_history_to_messages'
 ]

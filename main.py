@@ -109,7 +109,14 @@ async def chat_wrapper(
     ):
         result.append(chunk)
         # Instead of yielding a string, yield a message object
-        yield {"role": "assistant", "content": ''.join(result)}
+        yield format_assistant_message(
+            content=''.join(result),
+            metadata={
+                "title": f"🤖 Using {model_choice}",
+                "temperature": temperature,
+                "max_tokens": max_tokens
+            }
+        )
 
 # File processing handler
 async def process_files_wrapper(files: List[gr.File]) -> Tuple[str, bool]:  
@@ -485,7 +492,7 @@ with gr.Blocks() as demo:
                             label="Max Tokens"
                         )
                 with gr.Column(scale=4):
-                    chat_bot = gr.Chatbot(
+                    chatbot = gr.Chatbot(
                         height=600,
                         type="messages",
                         show_copy_button=True,
@@ -501,26 +508,34 @@ with gr.Blocks() as demo:
                         submit_btn = gr.Button("Submit", scale=1)
                     
                     text_input.submit(
-                        chat_wrapper,
-                        inputs=[
-                            text_input, chat_bot, model_choice, 
-                            temperature, max_tokens, file_input,
-                            use_context, history_flag
-                        ],
-                        outputs=[chat_bot],
-                        api_name="chat" 
-                    )
+                            lambda msg, history, files: format_user_message(msg, files, history),
+                            [text_input, chatbot, file_input],
+                            [text_input, chatbot],
+                            queue=False
+                        ).then(
+                            chat_wrapper,
+                            inputs=[
+                                text_input, chatbot, model_choice,
+                                temperature, max_tokens, file_input,
+                                use_context, history_flag
+                            ],
+                            outputs=[chatbot]
+                        )
                     submit_btn.click(  # Add click event for the button
+                        lambda msg, history, files: format_user_message(msg, files, history),
+                        [text_input, chatbot, file_input],
+                        [text_input, chatbot],
+                        queue=False
+                    ).then(
                         chat_wrapper,
                         inputs=[
-                            text_input, chat_bot, model_choice, 
+                            text_input, chatbot, model_choice,
                             temperature, max_tokens, file_input,
                             use_context, history_flag
                         ],
-                        outputs=[chat_bot],
-                        api_name="chat_button"
+                        outputs=[chatbot]
                     )
-
+            
             # Connect the load_button to the process_chat_context_files
             loaded_docs = gr.State()
             load_button.click(
@@ -556,7 +571,8 @@ with gr.Blocks() as demo:
 
                 with gr.Column(scale=4):
                     prompt_chat_bot = gr.Chatbot(
-                        height=600, 
+                        height=600,
+                        type="messages", 
                         show_copy_button=True,
                         show_copy_all_button=True
                     )
@@ -573,6 +589,7 @@ with gr.Blocks() as demo:
                             history_flag_prompt
                         ],
                         submit_btn="Submit",
+                        type="messages"
                     )
 
         # Vision Assistant Tab
@@ -596,6 +613,7 @@ with gr.Blocks() as demo:
                 with gr.Column(scale=4):
                     vision_chatbot = gr.Chatbot(
                         height=600, 
+                        type="messages",
                         show_copy_button=True,
                         show_copy_all_button=True
                     )
@@ -611,6 +629,7 @@ with gr.Blocks() as demo:
                             image_input, model_choice, history_flag
                         ],
                         submit_btn="Submit",
+                        type="messages"
                     )
 
             vision_clear_btn = gr.Button("Clear All")
@@ -704,7 +723,8 @@ with gr.Blocks() as demo:
 
                 with gr.Column(scale=4):
                     rag_chat_bot = gr.Chatbot(
-                        height=600, 
+                        height=600,
+                        type="messages", 
                         show_copy_button=True,
                         show_copy_all_button=True
                     )

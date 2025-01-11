@@ -6,19 +6,31 @@ import os
 from typing import List, Generator, Any, Optional, Union, Tuple
 
 # Third-party imports
-from langchain.schema import HumanMessage, AIMessage, Document, BaseMessage
+from langchain.schema import (
+    HumanMessage,
+    AIMessage,
+    Document,
+    BaseMessage,
+    SystemMessage
+)
 import gradio as gr
 
 # Local imports
-from ..shared_utils.factory import (
-    get_model,
-    get_embedding_model
+from ai_model_core.shared_utils.factory import (
+    get_model
 )
-from ..config.settings import load_config
-from ..shared_utils.utils import (
+from ai_model_core.config.settings import (
+    load_config
+)
+from ai_model_core.shared_utils.utils import (
     EnhancedContentLoader,
     get_prompt_template,
-    _format_history
+    get_system_prompt,
+    _format_history,
+    format_assistant_message,
+    format_user_message,
+    format_file_content,
+    convert_history_to_messages
 )
 
 # Set USER_AGENT environment variable
@@ -36,11 +48,23 @@ class ChatAssistant:
         chunk_overlap: int = 200,
         temp_dir: str = "input/tmp"
     ):
+        """
+        Initialize ChatAssistant with enhanced capabilities for chat, prompt, and file handling.
+        
+        Args:
+            model_choice: Name of the model to use
+            temperature: Temperature for text generation
+            max_tokens: Maximum tokens in response
+            chunk_size: Size of text chunks for document processing
+            chunk_overlap: Overlap between consecutive chunks
+            temp_dir: Directory for temporary files
+        """
         self.model = get_model(model_choice)
         self.model_choice = model_choice
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.documents: List[Document] = []
+        self.config = load_config()
         
         # Initialize the content loader
         self.content_loader = EnhancedContentLoader(
@@ -59,7 +83,7 @@ class ChatAssistant:
         self,
         files: List[gr.File]
     ) -> Tuple[str, bool]:
-        """Process uploaded files for chat context using the internal EnhancedContentLoader."""
+        """Process uploaded files for chat context."""
         if not files:
             return "No files uploaded", False
             
@@ -79,28 +103,15 @@ class ChatAssistant:
             return "Failed to process files", False
             
         except Exception as e:
-            error_msg = f"Error processing files: {str(e)}"
-            logger.error(error_msg)
-            return error_msg, False
-
-    def get_context_from_docs(
-        self,
-        message: str,
-        use_context: bool = True,
-        max_documents: int = 3
-    ) -> str:
-        """Get relevant context from loaded documents based on the message."""
-        if not use_context or not self.documents:
-            return ""
-            
-        return self.get_relevant_context(message, max_documents)
+            logger.error(f"Error processing files: {str(e)}")
+            return f"Error processing files: {str(e)}", False
 
     async def load_documents(
         self,
-        file_paths: Optional[Union[str, List[str], List[Any]]] = None,
+        file_paths: Optional[Union[str, List[str]]] = None,
         urls: Optional[str] = None
     ) -> bool:
-        """Load documents from files or URLs and store them in the assistant's memory."""
+        """Load documents from files or URLs."""
         try:
             new_docs = self.content_loader.load_documents(file_paths=file_paths, urls=urls)
             if new_docs:
@@ -112,8 +123,20 @@ class ChatAssistant:
             logger.error(f"Error loading documents: {str(e)}")
             return False
 
+    def get_context_from_docs(
+        self,
+        message: str,
+        use_context: bool = True,
+        max_documents: int = 3
+    ) -> str:
+        """Get relevant context from loaded documents."""
+        if not use_context or not self.documents:
+            return ""
+            
+        return self.get_relevant_context(message, max_documents)
+
     def get_relevant_context(self, message: str, max_documents: int = 3) -> str:
-        """Retrieve relevant context from loaded documents based on the user's message."""
+        """Retrieve relevant context based on the message."""
         if not self.documents:
             return ""
             
@@ -147,37 +170,56 @@ class ChatAssistant:
         history: List[dict], 
         history_flag: bool, 
         stream: bool = False,
-        use_context: bool = True
+        use_context: bool = True,
+        prompt_info: Optional[str] = None,
+        language_choice: Optional[str] = None
     ) -> Generator[str, None, None]:
-        """Enhanced chat function that incorporates document context when relevant."""
-        logger.info(f"Chat function called with message: {message}, history_flag: {history_flag}, model_choice: {self.model_choice}")
-        
-        messages = []
-        if history_flag and history:
-            try:
-                formatted_messages = _format_history(history)
-                messages.extend(formatted_messages)
-                logger.info(f"Successfully formatted {len(formatted_messages)} messages from history")
-            except Exception as e:
-                logger.error(f"Error formatting history: {str(e)}")
-                logger.error(f"History that caused error: {history}")
-                pass
+        """Enhanced chat function with support for prompts and context."""
+        try:
+            # Prepare messages based on whether we're using prompts
+            if prompt_info and language_choice:
+                system_prompt = get_system_prompt(language_choice, self.config)
+                prompt_template = get_prompt_template(prompt_info, self.config, language_choice)
                 
-        messages.append(HumanMessage(content=message))
-        
-        # Configure model based on type
-        if "ollama" in self.model_choice.lower():
-            if stream:
-                self.model = self.model.bind(
-                    stop=None,
-                    stream=True
+                messages = [SystemMessage(content=system_prompt)]
+                if history_flag and history:
+                    formatted_history = _format_history(history)
+                    messages.extend(formatted_history)
+                
+                formatted_message = prompt_template.format(
+                    prompt_info=prompt_info,
+                    user_message=message
                 )
+                messages.append(HumanMessage(content=formatted_message))
             else:
-                self.model = self.model.bind(
-                    stop=None
-                )
+                messages = []
+                if history_flag and history:
+                    messages.extend(_format_history(history))
+                messages.append(HumanMessage(content=message))
+
+            # Configure model based on type
+            self._configure_model(stream)
+
+            # Generate response
+            if stream and "gemini" not in self.model_choice.lower():
+                async for chunk in self.model.astream(messages):
+                    yield chunk.content
+            else:
+                result = await self.model.agenerate([messages])
+                yield result.generations[0][0].text
+
+        except Exception as e:
+            logger.error(f"Error in chat generation: {str(e)}")
+            yield f"An error occurred: {str(e)}"
+
+    def _configure_model(self, stream: bool = False):
+        """Configure model parameters based on model type."""
+        if "ollama" in self.model_choice.lower():
+            self.model = self.model.bind(
+                stop=None,
+                stream=stream
+            )
         elif "gemini" in self.model_choice.lower():
-            # Gemini uses generation_config without stream parameter
             self.model = self.model.bind(
                 generation_config={
                     "temperature": self.temperature,
@@ -185,36 +227,19 @@ class ChatAssistant:
                 }
             )
         else:
-            if stream:
-                self.model = self.model.bind(
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                    stream=True
-                )
-            else:
-                self.model = self.model.bind(
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens
-                )
-        
-        try:
-            if stream and not "gemini" in self.model_choice.lower():
-                async for chunk in self.model.astream(messages):
-                    yield chunk.content
-            else:
-                result = await self.model.agenerate([messages])
-                yield result.generations[0][0].text
-        except Exception as e:
-            logger.error(f"Error in chat generation: {str(e)}")
-            yield f"An error occurred: {str(e)}"
-        
+            self.model = self.model.bind(
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                stream=stream
+            )
+
     def clear_documents(self):
-        """Clear all loaded documents from memory."""
+        """Clear all loaded documents."""
         self.documents = []
         logger.info("Cleared all documents from memory")
 
     def get_document_summary(self) -> str:
-        """Get a summary of currently loaded documents."""
+        """Get a summary of loaded documents."""
         if not self.documents:
             return "No documents currently loaded."
             
@@ -223,10 +248,7 @@ class ChatAssistant:
         
         for doc in self.documents:
             source = doc.metadata.get('source', 'Unknown source')
-            if source in sources:
-                sources[source] += 1
-            else:
-                sources[source] = 1
+            sources[source] = sources.get(source, 0) + 1
                 
         summary_parts.append(f"Total documents loaded: {len(self.documents)}")
         summary_parts.append("\nDocuments by source:")
@@ -236,9 +258,9 @@ class ChatAssistant:
         return "\n".join(summary_parts)
 
     def set_temperature(self, temperature: float):
-        """Set the temperature parameter for the model."""
+        """Set the temperature parameter."""
         self.temperature = temperature
 
     def set_max_tokens(self, max_tokens: int):
-        """Set the max_tokens parameter for the model."""
+        """Set the max_tokens parameter."""
         self.max_tokens = max_tokens
