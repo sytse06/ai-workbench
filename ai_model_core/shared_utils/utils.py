@@ -364,8 +364,21 @@ def get_prompt_template(prompt_info: str, config: dict, language_choice: str = "
         ("system", system_prompt),
         ("human", "{prompt_info}\n\n{user_message}")
     ])
+def get_prompt(prompt_name: str) -> str:
+    config = load_config()
+    return config['prompts'].get(prompt_name)
 
-# Add these functions to utils.py
+def get_prompt_list(language: str) -> List[str]:
+    config = load_config()
+    prompts = config.get("prompts", {})
+    return prompts.get(language, [])
+
+# Function to update prompt list based on language choice
+def update_prompt_list(language: str):
+    new_prompts = get_prompt_list(language)
+    return gr.Dropdown(choices=new_prompts)
+
+# Functions to support new messaging format Gradiov5
 
 def format_user_message(
     message: str = None,

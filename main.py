@@ -4,7 +4,17 @@ import os
 import logging
 import sys
 import asyncio
-from typing import List, Union, Tuple
+from typing import (
+    List,
+    Generator,
+    Any,
+    Optional,
+    Union,
+    Tuple,
+    Dict,
+    Generator, 
+    AsyncGenerator
+)
 from pathlib import Path
 import traceback
 
@@ -16,19 +26,20 @@ from langchain_core.documents import Document
 
 # Local imports
 from ai_model_core.config.settings import (
-    load_config, 
-    get_prompt_list, 
-    update_prompt_list
+    load_config,
 )
 from ai_model_core.shared_utils.factory import (
     get_model,
     get_embedding_model,
     WHISPER_MODELS,
-    OUTPUT_FORMATS
+    OUTPUT_FORMATS,
+    update_model
 )
 from ai_model_core.shared_utils.utils import ( 
     EnhancedContentLoader,
     get_prompt_template,
+    get_prompt_list, 
+    update_prompt_list,
     format_user_message,
     format_assistant_message,
     format_file_content,
@@ -36,8 +47,6 @@ from ai_model_core.shared_utils.utils import (
 )
 from ai_model_core.model_helpers import (
     ChatAssistant, 
-    PromptAssistant, 
-    VisionAssistant,
     RAGAssistant, 
     SummarizationAssistant,
     TranscriptionAssistant
@@ -77,46 +86,63 @@ logger.propagate = False
 
 # Initialize assistants with default models
 chat_assistant = ChatAssistant("Ollama (LLama3.2)")
-prompt_assistant = PromptAssistant("Ollama (LLama3.2)")
-vision_assistant = VisionAssistant("Ollama (LLaVA)")
-rag_assistant = RAGAssistant("Ollama (LLama3.2)")
+#prompt_assistant = PromptAssistant("Ollama (LLama3.2)")
+#vision_assistant = VisionAssistant("Ollama (LLaVA)")
+#rag_assistant = RAGAssistant("Ollama (LLama3.2)")
 summarization_assistant = SummarizationAssistant("Ollama (LLama3.2)")
 transcription_assistant = TranscriptionAssistant(model_size="base")
 
 # Wrapper function for Gradio implementation chat_assistant:
 async def chat_wrapper(
-    message: str,
+    message: Dict,
     history: List[dict],
     model_choice: str,
     temperature: float,
     max_tokens: int,
     files: List[gr.File],
-    history_flag: bool,
+    history_flag: bool = True,
     use_context: bool = True
-) -> dict:
+) -> Generator[Dict, None, None]:
+    """
+    Updated chat wrapper supporting Gradio v5 message format
+    """
     
     global chat_assistant
     await chat_assistant.update_model(model_choice)
+    chat_assistant.set_temperature(temperature)
+    chat_assistant.set_max_tokens(max_tokens)
     
-    # Generate response
-    result = []
-    async for chunk in chat_assistant.chat(
-        message=message,
-        history=history,
-        history_flag=history_flag,
-        stream=True,
-        use_context=use_context
-    ):
-        result.append(chunk)
-        # Instead of yielding a string, yield a message object
-        yield format_assistant_message(
-            content=''.join(result),
-            metadata={
-                "title": f"🤖 Using {model_choice}",
-                "temperature": temperature,
-                "max_tokens": max_tokens
+    try:
+        # Generate response using unified chat assistant
+        result = []
+        async for chunk in chat_assistant.chat(
+            message=message,
+            history=history,
+            history_flag=history_flag,
+            stream=True,
+            use_context=use_context,
+            prompt_info=None
+        ):
+            result.append(chunk)
+            # Yield a properly formatted Gradio v5 message
+            yield {
+                "role": "assistant",
+                "content": [''.join(result)],
+                "metadata": {
+                    "model": model_choice,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens
+                }
             }
-        )
+    except Exception as e:
+        logger.error(f"Error in chat generation: {str(e)}")
+        yield {
+            "role": "assistant",
+            "content": [f"An error occurred: {str(e)}"],
+            "metadata": {
+                "error": str(e)
+            }
+        }
 
 # File processing handler
 async def process_files_wrapper(files: List[gr.File]) -> Tuple[str, bool]:  
@@ -508,22 +534,23 @@ with gr.Blocks() as demo:
                         submit_btn = gr.Button("Submit", scale=1)
                     
                     text_input.submit(
-                            lambda msg, history, files: format_user_message(msg, files, history),
-                            [text_input, chatbot, file_input],
-                            [text_input, chatbot],
-                            queue=False
-                        ).then(
-                            chat_wrapper,
-                            inputs=[
-                                text_input, chatbot, model_choice,
-                                temperature, max_tokens, file_input,
-                                use_context, history_flag
-                            ],
-                            outputs=[chatbot]
-                        )
-                    submit_btn.click(  # Add click event for the button
-                        lambda msg, history, files: format_user_message(msg, files, history),
-                        [text_input, chatbot, file_input],
+                        lambda msg: {"role": "user", "content": [msg]},  # Format user message
+                        [text_input],
+                        [text_input, chatbot],
+                        queue=False
+                    ).then(
+                        chat_wrapper,
+                        inputs=[
+                            text_input, chatbot, model_choice,
+                            temperature, max_tokens, file_input,
+                            use_context, history_flag
+                        ],
+                        outputs=[chatbot]
+                    )
+                    # Connect the submit button to the chat_wrapper function        
+                    submit_btn.click(
+                        lambda msg: {"role": "user", "content": [msg]},
+                        [text_input],
                         [text_input, chatbot],
                         queue=False
                     ).then(
@@ -536,7 +563,7 @@ with gr.Blocks() as demo:
                         outputs=[chatbot]
                     )
             
-            # Connect the load_button to the process_chat_context_files
+            # This load_button is connected to process_chat_context_files method
             loaded_docs = gr.State()
             load_button.click(
                 fn=lambda files: asyncio.run(process_files_wrapper(files)),

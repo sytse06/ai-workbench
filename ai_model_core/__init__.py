@@ -2,11 +2,19 @@
 from .shared_utils.utils import (
     get_system_prompt,
     get_prompt_template,
+    get_prompt,
+    get_prompt_list,
+    update_prompt_list,
     _format_history,
-    EnhancedContentLoader
+    EnhancedContentLoader,
+    format_assistant_message,
+    format_user_message,
+    format_file_content,
+    convert_history_to_messages
 )
 from .shared_utils.factory import (
-    get_model, 
+    get_model,
+    update_model, 
     get_embedding_model
 )
 from .config.credentials import (
@@ -15,10 +23,7 @@ from .config.credentials import (
 )
 from .config.settings import (
     load_config,
-    get_directory,
-    get_prompt,
-    get_prompt_list,
-    update_prompt_list
+    get_directory
 )
 from .model_helpers import (
     ChatAssistant,
@@ -43,9 +48,13 @@ __all__ = [
     # Shared Utils
     'get_system_prompt',
     'get_prompt_template',
+    'get_prompt',
+    'get_prompt_list',
+    'update_prompt_list',
     '_format_history',
     'EnhancedContentLoader',
-    'get_model', 
+    'get_model',
+    'update_model', 
     'get_embedding_model',
     
     # Config
@@ -53,9 +62,6 @@ __all__ = [
     'get_api_key',
     'load_config',
     'get_directory',
-    'get_prompt',
-    'get_prompt_list',
-    'update_prompt_list',
     
     # Model helpers
     'ChatAssistant',

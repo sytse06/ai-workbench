@@ -3,7 +3,20 @@
 import logging
 from pathlib import Path
 import os
-from typing import List, Generator, Any, Optional, Union, Tuple
+import base64
+from io import BytesIO
+from PIL import Image
+from typing import (
+    List,
+    Generator,
+    Any,
+    Optional,
+    Union,
+    Tuple,
+    Dict,
+    Generator, 
+    AsyncGenerator
+)
 
 # Third-party imports
 from langchain.schema import (
@@ -17,7 +30,8 @@ import gradio as gr
 
 # Local imports
 from ai_model_core.shared_utils.factory import (
-    get_model
+    get_model,
+    update_model
 )
 from ai_model_core.config.settings import (
     load_config
@@ -72,12 +86,6 @@ class ChatAssistant:
             chunk_overlap=chunk_overlap,
             temp_dir=temp_dir
         )
-
-    async def update_model(self, model_choice: str):
-        """Asynchronously update the model if the choice has changed."""
-        if self.model_choice != model_choice:
-            self.model = get_model(model_choice)
-            self.model_choice = model_choice
 
     async def process_chat_context_files(
         self,
@@ -134,6 +142,29 @@ class ChatAssistant:
             return ""
             
         return self.get_relevant_context(message, max_documents)
+    
+        def _convert_to_base64(self, image: Image.Image, format: str = "PNG") -> str:
+            """Convert PIL Image to base64 string."""
+            buffered = BytesIO()
+            image.save(buffered, format=format)
+            return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+    def _process_message_content(self, content: List[Union[str, Dict]]) -> Tuple[str, Optional[Image.Image]]:
+        """Process Gradio v5 message content to extract text and images."""
+        message_text = ""
+        image = None
+
+        for item in content:
+            if isinstance(item, str):
+                message_text += item + " "
+            elif isinstance(item, dict):
+                if "path" in item:  # Image file
+                    try:
+                        image = Image.open(item["path"])
+                    except Exception as e:
+                        logger.error(f"Error loading image: {e}")
+                        
+        return message_text.strip(), image
 
     def get_relevant_context(self, message: str, max_documents: int = 3) -> str:
         """Retrieve relevant context based on the message."""
@@ -165,43 +196,69 @@ class ChatAssistant:
         return "\n".join(context_parts)
 
     async def chat(
-        self, 
-        message: str, 
-        history: List[dict], 
-        history_flag: bool, 
+        self,
+        message: Dict,  # Gradio v5 message format
+        history: List[Dict],
+        history_flag: bool = True,
         stream: bool = False,
         use_context: bool = True,
         prompt_info: Optional[str] = None,
         language_choice: Optional[str] = None
-    ) -> Generator[str, None, None]:
-        """Enhanced chat function with support for prompts and context."""
+    ) -> AsyncGenerator[str, None]:
+        """Unified chat function handling both text and vision inputs."""
         try:
-            # Prepare messages based on whether we're using prompts
+            # Process message content
+            message_text, image = self._process_message_content(message["content"])
+            
+            # Prepare base messages
+            messages = []
+            
+            # Add system message if using prompts
             if prompt_info and language_choice:
                 system_prompt = get_system_prompt(language_choice, self.config)
-                prompt_template = get_prompt_template(prompt_info, self.config, language_choice)
+                messages.append(SystemMessage(content=system_prompt))
                 
-                messages = [SystemMessage(content=system_prompt)]
-                if history_flag and history:
-                    formatted_history = _format_history(history)
-                    messages.extend(formatted_history)
-                
-                formatted_message = prompt_template.format(
+                # Format message with prompt template
+                prompt_template = get_prompt_template(prompt_info, self.config)
+                message_text = prompt_template.format(
                     prompt_info=prompt_info,
-                    user_message=message
+                    user_message=message_text
                 )
-                messages.append(HumanMessage(content=formatted_message))
-            else:
-                messages = []
-                if history_flag and history:
-                    messages.extend(_format_history(history))
-                messages.append(HumanMessage(content=message))
 
-            # Configure model based on type
+            # Add history if enabled
+            if history_flag and history:
+                messages.extend(_format_history(history))
+
+            # Handle image content
+            if image:
+                image_b64 = self._convert_to_base64(image)
+                messages.append({
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": message_text},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{image_b64}"
+                            }
+                        }
+                    ]
+                })
+            else:
+                messages.append(HumanMessage(content=message_text))
+
+            # Add relevant context if enabled
+            if use_context:
+                context = self.get_context_from_docs(message_text)
+                if context:
+                    # Insert context before the user's message
+                    messages.insert(-1, SystemMessage(content=f"Context:\n{context}"))
+
+            # Configure model parameters
             self._configure_model(stream)
 
             # Generate response
-            if stream and "gemini" not in self.model_choice.lower():
+            if stream:
                 async for chunk in self.model.astream(messages):
                     yield chunk.content
             else:
@@ -232,7 +289,7 @@ class ChatAssistant:
                 max_tokens=self.max_tokens,
                 stream=stream
             )
-
+            
     def clear_documents(self):
         """Clear all loaded documents."""
         self.documents = []
