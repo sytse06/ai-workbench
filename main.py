@@ -448,7 +448,7 @@ with gr.Blocks() as demo:
                     type="messages",
                     show_copy_button=True,
                     show_copy_all_button=True,
-                    avatar_images=("user", "assistant"),
+                    #avatar_images=("user", "assistant"),
                     )
                 with gr.Row():
                     text_input = gr.Textbox(

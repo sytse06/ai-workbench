@@ -4,23 +4,30 @@ from unittest.mock import Mock, patch, AsyncMock, MagicMock
 from pathlib import Path
 import asyncio
 from typing import List, Tuple
+import tempfile
+import os
+import shutil
+from PIL import Image
+import io
 
 from langchain.schema import HumanMessage, AIMessage, Document, BaseMessage
 import gradio as gr
 
 from ai_model_core.model_helpers.chat_assistant import ChatAssistant
-from ai_model_core.shared_utils.utils import (
+from ai_model_core.shared_utils.utils import ( 
     EnhancedContentLoader,
     get_prompt_template,
+    get_prompt_list, 
+    update_prompt_list,
     format_user_message,
     format_assistant_message,
     format_file_content,
-    convert_history_to_messages
+    convert_history_to_messages,
+    process_files,
+    process_message
 )
 from ai_model_core.config.settings import (
-    load_config,
-    get_prompt_list,
-    get_system_prompt
+    load_config
 )
 
 class MockStreamingModel:
@@ -481,3 +488,234 @@ class TestPromptTemplateHandling:
 
             assert formatted_message is not None
             assert expected_text in formatted_message.content.lower()
+    @pytest.fixture
+    def mock_file_processor():
+        return Mock(spec=EnhancedContentLoader, **{
+            'process_image.return_value': ('test_content', {'width': 100, 'height': 100}),
+            'process_document.return_value': Document(page_content='test content'),
+            'cleanup.return_value': None
+        })
+
+    @pytest.fixture
+    def sample_image():
+        img = Image.new('RGB', (100, 100), color='red')
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='PNG')
+        img_byte_arr = img_byte_arr.getvalue()
+        return img_byte_arr
+
+class TestMessageFormatting:
+    def test_format_user_message_text_only(self):
+        message = "Hello"
+        result, history = format_user_message(message)
+        assert len(history) == 1
+        assert history[0]["role"] == "user"
+        assert history[0]["content"] == message
+
+    def test_format_user_message_with_files(self, mock_gradio_files):
+        message = "Check these files"
+        result, history = format_user_message(message, mock_gradio_files)
+        assert len(history) == 3  # Message + 2 files
+        assert all(msg["role"] == "user" for msg in history)
+        file_messages = [msg for msg in history if isinstance(msg["content"], dict)]
+        assert len(file_messages) == 2
+        for msg in file_messages:
+            assert "path" in msg["content"]
+            assert "alt_text" in msg["content"]
+
+    def test_format_assistant_message(self):
+        content = "Response"
+        metadata = {"model": "test"}
+        message = format_assistant_message(content, metadata)
+        assert message["role"] == "assistant"
+        assert message["content"] == content
+        assert message["metadata"] == metadata
+
+    def test_convert_history_formats(self):
+        tuple_history = [("user msg", "assistant msg")]
+        dict_history = [
+            {"role": "user", "content": "Hi"},
+            {"role": "assistant", "content": "Hello"}
+        ]
+        
+        tuple_messages = convert_history_to_messages(tuple_history)
+        dict_messages = convert_history_to_messages(dict_history)
+        
+        assert len(tuple_messages) == 2
+        assert len(dict_messages) == 2
+        assert all("role" in msg and "content" in msg 
+                  for msg in tuple_messages + dict_messages)
+
+class TestMultimodalProcessing:
+    @pytest.mark.asyncio
+    async def test_image_processing(self, chat_assistant, mock_file_processor, sample_image):
+        chat_assistant.content_loader = mock_file_processor
+        
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+            tmp_file.write(sample_image)
+            
+        try:
+            response = await chat_assistant.chat(
+                message={
+                    'content': [
+                        {'type': 'text', 'text': 'Describe this image'},
+                        {'type': 'image', 'path': tmp_file.name}
+                    ]
+                },
+                history=[]
+            )
+            
+            mock_file_processor.process_image.assert_called_once()
+            assert mock_file_processor.process_image.call_args[0][0] == tmp_file.name
+            
+        finally:
+            os.unlink(tmp_file.name)
+
+    @pytest.mark.asyncio
+    async def test_multimodal_message(self, chat_assistant, mock_file_processor):
+        chat_assistant.content_loader = mock_file_processor
+        
+        response = await chat_assistant.chat(
+            message={
+                'content': [
+                    {'type': 'text', 'text': 'Look at these files'},
+                    {'type': 'file', 'path': 'test.pdf'},
+                    {'type': 'image', 'path': 'test.jpg'}
+                ]
+            },
+            history=[]
+        )
+        
+        assert mock_file_processor.process_document.called
+        assert mock_file_processor.process_image.called
+
+    @pytest.mark.asyncio
+    async def test_file_size_limits(self, chat_assistant):
+        large_file = gr.File(
+            name='large.pdf',
+            size=11*1024*1024  # 11MB
+        )
+        
+        with pytest.raises(ValueError, match='File too large'):
+            await chat_assistant.process_chat_context_files([large_file])
+
+    @pytest.mark.asyncio
+    async def test_unsupported_file_type(self, chat_assistant):
+        invalid_file = gr.File(
+            name='test.xyz'
+        )
+        
+        with pytest.raises(ValueError, match='Unsupported file type'):
+            await chat_assistant.process_chat_context_files([invalid_file])
+
+class TestPromptTemplates:
+    @pytest.mark.asyncio
+    async def test_template_validation(self, chat_assistant):
+        with pytest.raises(ValueError, match='Invalid template'):
+            await chat_assistant.chat(
+                message="test",
+                history=[],
+                prompt_info="nonexistent_template",
+                language_choice="english"
+            )
+
+    @pytest.mark.asyncio
+    async def test_template_interpolation(self, chat_assistant):
+        test_cases = [
+            ("", "empty message"),
+            ("x" * 1000, "long message"),
+            ("Hello\n\nWorld", "multiline message"),
+            ("Special chars: !@#$%", "special characters")
+        ]
+        
+        for message, case in test_cases:
+            try:
+                await chat_assistant.chat(
+                    message=message,
+                    history=[],
+                    prompt_info="general",
+                    language_choice="english"
+                )
+            except Exception as e:
+                pytest.fail(f"Template interpolation failed for {case}: {str(e)}")
+
+    @pytest.mark.asyncio
+    async def test_language_switching_edge_cases(self, chat_assistant):
+        test_cases = [
+            ("english", "general"),
+            ("dutch", "algemeen"),
+            ("english", "code_review"),
+            ("dutch", "code_review")
+        ]
+        
+        for lang, template in test_cases:
+            response = None
+            async for chunk in chat_assistant.chat(
+                message="test message",
+                history=[],
+                prompt_info=template,
+                language_choice=lang
+            ):
+                response = chunk
+            assert response is not None
+
+    def test_template_cleanup(self, chat_assistant):
+        template = get_prompt_template("general", chat_assistant.config)
+        formatted = template.format(
+            prompt_info="general",
+            user_message="test"
+        )
+        assert "{" not in formatted
+        assert "}" not in formatted
+
+class TestIntegration:
+    @pytest.mark.asyncio
+    async def test_context_retrieval_with_files(self, chat_assistant, mock_file_processor):
+        chat_assistant.content_loader = mock_file_processor
+        
+        # Add test documents
+        chat_assistant.documents = [
+            Document(page_content="test content A", metadata={"source": "doc1.pdf"}),
+            Document(page_content="test content B", metadata={"source": "doc2.txt"}),
+            Document(page_content="unrelated content", metadata={"source": "doc3.txt"})
+        ]
+        
+        context = chat_assistant.get_context_from_docs(
+            message="Find content A and B",
+            use_context=True
+        )
+        
+        assert "test content A" in context
+        assert "test content B" in context
+        assert "unrelated content" not in context
+
+    @pytest.mark.asyncio
+    async def test_streaming_with_large_response(self, chat_assistant):
+        long_response = "Long response " * 100
+        chat_assistant.model = MockStreamingModel(long_response)
+        
+        chunks = []
+        async for chunk in chat_assistant.chat(
+            message="Generate long response",
+            history=[],
+            stream=True
+        ):
+            chunks.append(chunk)
+            
+        assert len(chunks) > 0
+        assert ''.join(chunks) == long_response
+
+    @pytest.mark.asyncio
+    async def test_temporary_file_cleanup(self, chat_assistant, mock_file_processor):
+        chat_assistant.content_loader = mock_file_processor
+        temp_dir = tempfile.mkdtemp()
+        chat_assistant.content_loader.temp_dir = temp_dir
+        
+        try:
+            await chat_assistant.process_chat_context_files([
+                gr.File(name='test.txt')
+            ])
+            mock_file_processor.cleanup.assert_called_once()
+            
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
