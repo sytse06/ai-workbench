@@ -21,6 +21,9 @@ from urllib.parse import urlparse
 import requests
 import yt_dlp
 
+# Local imports
+from ai_model_core.config.settings import load_config
+
 logger = logging.getLogger(__name__)
 
 class EnhancedContentLoader:
@@ -533,9 +536,3 @@ def _format_history(history: List[Union[Tuple[str, str], Dict[str, str]]]) -> Li
                 messages.append(AIMessage(content=entry["content"]))
                 
     return messages
-
-# Function to load config from a YAML file
-def load_config(file_path: str) -> dict:
-    with open(file_path, 'r') as file:
-        config = yaml.safe_load(file)
-    return config
