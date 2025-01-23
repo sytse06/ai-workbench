@@ -43,7 +43,9 @@ from ai_model_core.shared_utils.utils import (
     format_user_message,
     format_assistant_message,
     format_file_content,
-    convert_history_to_messages
+    convert_history_to_messages,
+    process_files,
+    process_message
 )
 from ai_model_core.model_helpers import (
     ChatAssistant, 
@@ -86,8 +88,6 @@ logger.propagate = False
 
 # Initialize assistants with default models
 chat_assistant = ChatAssistant("Ollama (LLama3.2)")
-#prompt_assistant = PromptAssistant("Ollama (LLama3.2)")
-#vision_assistant = VisionAssistant("Ollama (LLaVA)")
 #rag_assistant = RAGAssistant("Ollama (LLama3.2)")
 summarization_assistant = SummarizationAssistant("Ollama (LLama3.2)")
 transcription_assistant = TranscriptionAssistant(model_size="base")
@@ -95,17 +95,17 @@ transcription_assistant = TranscriptionAssistant(model_size="base")
 # Wrapper function for Gradio implementation chat_assistant:
 async def chat_wrapper(
     message: Dict,
-    history: List[dict],
+    history: List[Dict],
     model_choice: str,
     temperature: float,
     max_tokens: int,
-    files: List[gr.File],
+    files: Optional[List[gr.File]] = None,
+    use_context: bool = True,
     history_flag: bool = True,
-    use_context: bool = True
-) -> Generator[Dict, None, None]:
-    """
-    Updated chat wrapper supporting Gradio v5 message format
-    """
+    prompt_info: Optional[str] = None,
+    language_choice: Optional[str] = None
+) -> AsyncGenerator[Dict, None]:
+    """Universal wrapper that uses standardized utils for message handling"""
     
     global chat_assistant
     await chat_assistant.update_model(model_choice)
@@ -113,94 +113,19 @@ async def chat_wrapper(
     chat_assistant.set_max_tokens(max_tokens)
     
     try:
-        # Generate response using unified chat assistant
-        result = []
-        async for chunk in chat_assistant.chat(
+        msg = await process_message(
             message=message,
             history=history,
-            history_flag=history_flag,
-            stream=True,
-            use_context=use_context,
-            prompt_info=None
-        ):
-            result.append(chunk)
-            # Yield a properly formatted Gradio v5 message
-            yield {
-                "role": "assistant",
-                "content": [''.join(result)],
-                "metadata": {
-                    "model": model_choice,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens
-                }
-            }
+            model=chat_assistant,
+            prompt_info=prompt_info,
+            language_choice=language_choice,
+            history_flag=history_flag
+        )
+        yield format_assistant_message(msg)
+            
     except Exception as e:
-        logger.error(f"Error in chat generation: {str(e)}")
-        yield {
-            "role": "assistant",
-            "content": [f"An error occurred: {str(e)}"],
-            "metadata": {
-                "error": str(e)
-            }
-        }
-
-# File processing handler
-async def process_files_wrapper(files: List[gr.File]) -> Tuple[str, bool]:  
-    return await chat_assistant.process_chat_context_files(files)
-
-# Wrapper function for Gradio interface prompt_assistant:
-async def prompt_wrapper(
-    message: str,
-    history: List[tuple[str, str]],
-    model_choice: str,
-    prompt_info: str,
-    language_choice: str,
-    history_flag: bool,
-    stream: bool = False
-):
-    global prompt_assistant
-    prompt_assistant.update_model(model_choice)
-
-    result = []
-    async for chunk in prompt_assistant.prompt(
-        message, history, prompt_info, language_choice, history_flag, stream
-    ):
-        result.append(chunk)
-        yield ''.join(result)
-
-
-# Wrapper function for Gradio interface vision_assistant:
-async def process_image_wrapper(
-    message: str,
-    history: List[tuple[str, str]],
-    image: Union[Image.Image, str, None],
-    model_choice: str,
-    history_flag: bool,
-    stream: bool = False
-):
-    if image is None or not isinstance(image, Image.Image):
-        return "Please upload a valid image first."
-
-    vision_assistant.update_model(model_choice)
-
-    try:
-        result = await vision_assistant.process_image(image, message, stream)
-
-        if isinstance(result, list):
-            result_text = ''.join(result)
-        else:
-            result_text = result
-
-        if history_flag:
-            history.append((message, result_text))
-
-        return result_text
-    except Exception as e:
-        error_message = f"An error occurred: {str(e)}"
-        logger.error(f"Error in process_image_wrapper: {e}")
-        logger.error("Full traceback:", exc_info=True)
-        return error_message
-
+        logger.error(f"Chat error: {str(e)}")
+        yield format_assistant_message(f"An error occurred: {str(e)}")
 # Wrapper function for loading documents (RAG and summarization)
 def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
     try:
@@ -476,196 +401,98 @@ with gr.Blocks() as demo:
     gr.Markdown("# AI WorkBench")
     gr.Markdown("### Get work done with LLM's of choice")
 
-    with gr.Tabs():
-        # Chat Tab
-        with gr.Tab("Chat"):
-            with gr.Row():
-                with gr.Column(scale=1):
-                    model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.2)", "Gemini 1.5 flash",
-                         "Claude Sonnet", "Claude Sonnet beta", 
-                         "Deepseek v3", "Mistral (large)", "Mistral (small)",
-                         "Ollama (LLama3.1)", "OpenAI GPT-4o-mini"],
-                        label="Choose Model",
-                        value="Ollama (LLama3.2)"
+    # Chat Tab
+    tabs = gr.TabItem("Chat")
+    with tabs:
+        with gr.Row():
+            with gr.Column(scale=1):
+                model_choice = gr.Dropdown(
+                    ["Ollama (LLama3.2)", "Gemini 1.5 flash",
+                    "Claude Sonnet", "Claude Sonnet beta", 
+                    "Deepseek v3", "Mistral (large)", "Mistral (small)",
+                    "Ollama (LLama3.1)", "OpenAI GPT-4o-mini"],
+                    label="Choose Model",
+                    value="Ollama (LLama3.2)"
+                )
+                # File upload section
+                with gr.Group():
+                    file_input = gr.File(
+                        label="Upload files (<10MB, <4000 words - images: <5MB)",
+                        file_count="multiple",
+                        file_types=["txt", "md", "pdf", "py", "jpg", "png", "gif"]
                     )
-                    # File upload section
-                    with gr.Group():
-                        file_input = gr.File(
-                            label="Upload Context Content",
-                            file_count="multiple",
-                            file_types=[".txt", ".md", ".py"]
-                            )
-                        load_button = gr.Button("Load in chat context")
-                        load_output = gr.Textbox(
-                        label="Load Status", interactive=False
-                        )
-                        use_context = gr.Checkbox(
-                            label="Use uploaded files as context",
-                            value=True
-                            )
+                    load_button = gr.Button("Load in chat context")
+                    load_output = gr.Textbox(
+                    label="Load Status", interactive=False
+                    )
+                    use_context = gr.Checkbox(
+                        label="Use uploaded files as context",
+                        value=True
+                    )
                         
-                    with gr.Accordion("Model parameters", open=False):
-                        history_flag = gr.Checkbox(
-                        label="Include conversation history", value=True
-                    )
-                        temperature = gr.Slider(
-                            minimum=0, maximum=1, value=0.1, step=0.1,
-                            label="Temperature"
-                        )
-                        max_tokens = gr.Slider(
-                            minimum=150, maximum=4000, value=500, step=50,
-                            label="Max Tokens"
-                        )
-                with gr.Column(scale=4):
-                    chatbot = gr.Chatbot(
-                        height=600,
-                        type="messages",
-                        show_copy_button=True,
-                        show_copy_all_button=True,
-                        avatar_images=(None, "🤖"),
-                    )
-                    with gr.Row():
-                        text_input = gr.Textbox(
-                            label="User input",
-                            placeholder="Type your question here...",
-                            scale=8 
-                        )
-                        submit_btn = gr.Button("Submit", scale=1)
-                    
-                    text_input.submit(
-                        lambda msg: {"role": "user", "content": [msg]},  # Format user message
-                        [text_input],
-                        [text_input, chatbot],
-                        queue=False
-                    ).then(
-                        chat_wrapper,
-                        inputs=[
-                            text_input, chatbot, model_choice,
-                            temperature, max_tokens, file_input,
-                            use_context, history_flag
-                        ],
-                        outputs=[chatbot]
-                    )
-                    # Connect the submit button to the chat_wrapper function        
-                    submit_btn.click(
-                        lambda msg: {"role": "user", "content": [msg]},
-                        [text_input],
-                        [text_input, chatbot],
-                        queue=False
-                    ).then(
-                        chat_wrapper,
-                        inputs=[
-                            text_input, chatbot, model_choice,
-                            temperature, max_tokens, file_input,
-                            use_context, history_flag
-                        ],
-                        outputs=[chatbot]
-                    )
-            
-            # This load_button is connected to process_chat_context_files method
-            loaded_docs = gr.State()
-            load_button.click(
-                fn=lambda files: asyncio.run(process_files_wrapper(files)),
-                inputs=[file_input],
-                outputs=[load_output, loaded_docs]
-            )
-            
-        # Prompting Tab
-        with gr.Tab("Prompting"):
-            with gr.Row():
-                with gr.Column(scale=1):
-                    model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.2)", "Claude Sonnet",
-                         "Claude Sonnet beta", "Deepseek v3",
-                         "Mistral (large)", "Mistral (small)",
-                         "OpenAI GPT-4o-mini", "Ollama (LLama3.1)"],
-                        label="Choose Model",
-                        value="Ollama (LLama3.2)"
-                    )
-                    language_choice = gr.Dropdown(
-                        ["english", "dutch"],
-                        label="Choose Language",
-                        value="english"
-                    )
-                    prompt_info = gr.Dropdown(
-                        choices=get_prompt_list(language_choice.value),
-                        label="Prompt Selection", interactive=True
-                    )
-                    history_flag_prompt = gr.Checkbox(
-                        label="Include conversation history", value=True
-                    )
-
-                with gr.Column(scale=4):
-                    prompt_chat_bot = gr.Chatbot(
-                        height=600,
-                        type="messages", 
-                        show_copy_button=True,
-                        show_copy_all_button=True
-                    )
-                    prompt_text_box = gr.Textbox(
-                        label="Prompt input",
-                        placeholder="Type your prompt here..."
-                    )
-                    gr.ChatInterface(
-                        fn=prompt_wrapper,
-                        chatbot=prompt_chat_bot,
-                        textbox=prompt_text_box,
-                        additional_inputs=[
-                            model_choice, prompt_info, language_choice,
-                            history_flag_prompt
-                        ],
-                        submit_btn="Submit",
-                        type="messages"
-                    )
-
-        # Vision Assistant Tab
-        with gr.Tab("Vision Assistant"):
-            with gr.Row():
-                with gr.Column(scale=1):
-                    image_input = gr.Image(
-                        type="pil", label="Upload Image", image_mode="RGB"
-                    )
-                    model_choice = gr.Dropdown(
-                        ["Ollama (LLaVA)", "Ollama (llama3.2-vision)", 
-                         "Mistral (pixtral)", "OpenAI GPT-4o-mini",
-                         "Claude Sonnet"],
-                        label="Choose Model",
-                        value="Ollama (LLaVA)"
-                    )
+                with gr.Accordion("Model parameters", open=False):
                     history_flag = gr.Checkbox(
-                        label="Include conversation history", value=True
+                    label="Include history", value=True
+                )
+                    temperature = gr.Slider(
+                        minimum=0, maximum=1, value=0.1, step=0.1,
+                        label="Temperature"
                     )
+                    max_tokens = gr.Slider(
+                        minimum=150, maximum=4000, value=1000, step=100,
+                        label="Max Tokens"
+                    )
+            with gr.Column(scale=4):
+                chatbot = gr.Chatbot(
+                    height=600,
+                    type="messages",
+                    show_copy_button=True,
+                    show_copy_all_button=True,
+                    avatar_images=("user", "assistant"),
+                    )
+                with gr.Row():
+                    text_input = gr.Textbox(
+                        label="User input",
+                        placeholder="Type your question here...",
+                        scale=8 
+                        )
+                    submit_btn = gr.Button("Submit", scale=1)
+                    
+                text_input.submit(
+                    fn=format_user_message,
+                    inputs=[text_input, chatbot],
+                    outputs=[text_input, chatbot]
+                ).success(
+                    fn=process_message,  
+                    inputs=[
+                        text_input, chatbot, model_choice,
+                        temperature, max_tokens, file_input,
+                        use_context, history_flag
+                    ],
+                    outputs=[chatbot]
+                )
+                    # Connect the submit button to the chat_wrapper function        
+                submit_btn.click(
+                    fn=format_user_message,
+                    inputs=[text_input, chatbot],
+                    outputs=[text_input, chatbot]
+                ).success(
+                    fn=process_message,
+                    inputs=[
+                        text_input, chatbot, model_choice,
+                        temperature, max_tokens, file_input,
+                        use_context, history_flag
+                    ],
+                    outputs=[chatbot]
+                )
 
-                with gr.Column(scale=4):
-                    vision_chatbot = gr.Chatbot(
-                        height=600, 
-                        type="messages",
-                        show_copy_button=True,
-                        show_copy_all_button=True
-                    )
-                    vision_question_input = gr.Textbox(
-                        label="Ask about the image",
-                        placeholder="Type your question about the image here..."
-                    )
-                    gr.ChatInterface(
-                        fn=process_image_wrapper,
-                        chatbot=vision_chatbot,
-                        textbox=vision_question_input,
-                        additional_inputs=[
-                            image_input, model_choice, history_flag
-                        ],
-                        submit_btn="Submit",
-                        type="messages"
-                    )
-
-            vision_clear_btn = gr.Button("Clear All")
-            vision_clear_btn.click(
-                fn=clear_vision_chat,
-                inputs=[],
-                outputs=[vision_chatbot, vision_question_input, image_input]
-            )
-
+                loaded_docs = gr.State(value=None)
+                file_input.change(
+                    fn=process_files,
+                    inputs=[file_input],
+                    outputs=[load_output, loaded_docs]
+                )
+            
         # RAG Assistant Tab
         with gr.Tab("RAG Assistant"):
             with gr.Row():

@@ -376,13 +376,11 @@ def get_prompt_list(language: str) -> List[str]:
     prompts = config.get("prompts", {})
     return prompts.get(language, [])
 
-# Function to update prompt list based on language choice
 def update_prompt_list(language: str):
     new_prompts = get_prompt_list(language)
     return gr.Dropdown(choices=new_prompts)
 
 # Functions to support new messaging format Gradiov5
-
 def format_user_message(
     message: str = None,
     files: List[Any] = None,
@@ -536,3 +534,36 @@ def _format_history(history: List[Union[Tuple[str, str], Dict[str, str]]]) -> Li
                 messages.append(AIMessage(content=entry["content"]))
                 
     return messages
+async def process_message(
+    message: Dict,
+    history: List[Dict],
+    model_choice: str,
+    temperature: float,
+    max_tokens: int,
+    files: List[gr.File],
+    use_context: bool = True,
+    history_flag: bool = True
+) -> Dict:
+    global chat_assistant
+    await chat_assistant.update_model(model_choice)
+    chat_assistant.set_temperature(temperature)
+    chat_assistant.set_max_tokens(max_tokens)
+    
+    try:
+        result = []
+        async for chunk in chat_assistant.chat(
+            message=message,
+            history=convert_history_to_messages(history),
+            history_flag=history_flag,
+            stream=True,
+            use_context=use_context
+        ):
+            result.append(chunk)
+            yield format_assistant_message(''.join(result))
+            
+    except Exception as e:
+        logger.error(f"Chat error: {str(e)}")
+        yield format_assistant_message(f"An error occurred: {str(e)}")
+
+async def process_files(files: List[gr.File]) -> Tuple[str, List[Document]]:
+    return await chat_assistant.process_chat_context_files(files)

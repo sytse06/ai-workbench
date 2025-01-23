@@ -10,7 +10,9 @@ from .utils import (
     format_user_message,
     format_assistant_message,
     format_file_content,
-    convert_history_to_messages
+    convert_history_to_messages,
+    process_files,
+    process_message
 )
 from .factory import (
     get_model,
