@@ -410,15 +410,16 @@ def format_user_message(
         })
     
     # Handle file uploads if present
-        if files:
-            for file in files:
-                messages.append({
-                    "role": "user",
-                    "content": {
-                        "path": file.name,
-                        "alt_text": f"Uploaded file: {Path(file.name).name}"
-                    }
-                })
+    if files:
+        for file in files:
+            file_path = file.name if hasattr(file, 'name') else file.get('path')
+            messages.append({
+                "role": "user",
+                "content": {
+                    "path": file_path,
+                    "alt_text": f"Uploaded file: {Path(file_path).name}"
+                }
+            })
         
         return "", history + messages
     
@@ -546,9 +547,10 @@ async def process_message(
     history_flag: bool = True
 ) -> Dict:
     global chat_assistant
-    await chat_assistant.update_model(model_choice)
-    chat_assistant.set_temperature(temperature)
-    chat_assistant.set_max_tokens(max_tokens)
+    new_model = await update_model(model_choice, chat_assistant.model_choice)
+    if new_model:
+        chat_assistant.model = new_model
+        chat_assistant.model_choice = model_choice
     
     try:
         result = []
@@ -566,5 +568,11 @@ async def process_message(
         logger.error(f"Chat error: {str(e)}")
         yield format_assistant_message(f"An error occurred: {str(e)}")
 
-async def process_files(files: List[gr.File]) -> Tuple[str, List[Document]]:
-    return await chat_assistant.process_chat_context_files(files)
+async def process_files(files: List[gr.File]) -> List[Document]:
+    if not files:
+        return []
+    try:
+        return await chat_assistant.process_chat_context_files(files)
+    except Exception as e:
+        logger.error(f"Error processing files: {str(e)}")
+        return []

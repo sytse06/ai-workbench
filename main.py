@@ -414,7 +414,13 @@ with gr.Blocks() as demo:
                 label="Choose Model",
                 value="Ollama (LLama3.2)"
                 )
-                with gr.Accordion("Chat options", open=False):
+                # File upload section
+                file_input = gr.File(
+                    label="Upload Files (<10MB, <4000 words - images: <5MB)",
+                    file_count="multiple",
+                    file_types=["txt", "md", "pdf", "py", "jpg", "png", "gif"]
+                )
+                with gr.Accordion("Chat Options", open=False):
                     language_choice = gr.Dropdown(
                         ["english", "dutch"],
                         label="Choose Prompt Family",
@@ -434,21 +440,7 @@ with gr.Blocks() as demo:
                     )
                     history_flag = gr.Checkbox(
                     label="Include history", value=True
-                    )
-                # File upload section
-                file_input = gr.File(
-                    label="Upload files (<10MB, <4000 words - images: <5MB)",
-                    file_count="multiple",
-                    file_types=["txt", "md", "pdf", "py", "jpg", "png", "gif"]
-                )
-                load_button = gr.Button("Load in chat context")
-                load_output = gr.Textbox(
-                label="Load Status", interactive=False
-                )
-                use_context = gr.Checkbox(
-                    label="Use uploaded files as context",
-                    value=True
-                )                    
+                    )                  
             with gr.Column(scale=4):
                 chatbot = gr.Chatbot(
                     height=600,
@@ -473,7 +465,7 @@ with gr.Blocks() as demo:
                     inputs=[
                         text_input, chatbot, model_choice,
                         temperature, max_tokens, file_input,
-                        use_context, history_flag
+                        history_flag
                     ],
                     outputs=[chatbot]
                 )
@@ -487,15 +479,20 @@ with gr.Blocks() as demo:
                     inputs=[
                         text_input, chatbot, model_choice,
                         temperature, max_tokens, file_input,
-                        use_context, history_flag
+                        history_flag
                     ],
                     outputs=[chatbot]
                 )
-                loaded_docs = gr.State(value=None)
+                loaded_docs = gr.State([])
                 file_input.change(
                     fn=process_files,
                     inputs=[file_input],
-                    outputs=[load_output, loaded_docs]
+                    outputs=[loaded_docs]
+                ).then(
+                    fn=process_message,
+                    inputs=[text_input, chatbot, model_choice, temperature, 
+                            max_tokens, loaded_docs],
+                    outputs=[chatbot]
                 )
                 
     # RAG Assistant Tab

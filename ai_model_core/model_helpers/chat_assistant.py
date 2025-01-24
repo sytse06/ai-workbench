@@ -87,32 +87,16 @@ class ChatAssistant:
             temp_dir=temp_dir
         )
 
-    async def process_chat_context_files(
-        self,
-        files: List[gr.File]
-    ) -> Tuple[str, bool]:
-        """Process uploaded files for chat context."""
+    async def process_chat_context_files(self, files: List[gr.File]) -> List[Document]:
         if not files:
-            return "No files uploaded", False
-            
+            return []
         try:
             file_paths = [f.name for f in files]
-            success = await self.load_documents(file_paths=file_paths)
-            
-            if success:
-                file_names = ", ".join(Path(f.name).name for f in files)
-                status_msg = (
-                    f"Successfully processed {len(files)} file(s): {file_names}\n"
-                    f"Created {len(self.documents)} context chunks for chat"
-                )
-                self.content_loader.cleanup()
-                return status_msg, True
-            
-            return "Failed to process files", False
-            
+            await self.load_documents(file_paths=file_paths)
+            return self.documents
         except Exception as e:
             logger.error(f"Error processing files: {str(e)}")
-            return f"Error processing files: {str(e)}", False
+            return []
 
     async def load_documents(
         self,

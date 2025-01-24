@@ -181,11 +181,11 @@ def get_model(choice: str, **kwargs):
     else:
         raise ValueError(f"Invalid model choice: {choice}")
 
-def update_model(self, model_choice: str):
-    "Update the model if the choice has changed."""
-    if self.model_choice != model_choice:
-        self.model = get_model(model_choice)
-        self.model_choice = model_choice
+async def update_model(model_name: str, current_model: str) -> bool:
+    """Update model if choice has changed."""
+    if current_model != model_name:
+        return get_model(model_name)
+    return None
 
 def get_embedding_model(choice: str, **kwargs):
     load_credentials()
