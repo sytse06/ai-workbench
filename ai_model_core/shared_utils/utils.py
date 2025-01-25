@@ -1,7 +1,17 @@
 # ai_model_core/shared_utils/utils.py
 # Standard library imports
 from pathlib import Path
-from typing import List, Union, Any, Optional, Tuple, Dict
+from typing import (
+    List,
+    Generator,
+    Any,
+    Optional,
+    Union,
+    Tuple,
+    Dict,
+    Generator, 
+    AsyncGenerator
+)
 import gradio as gr
 import os
 import logging
@@ -24,6 +34,12 @@ import yt_dlp
 
 # Local imports
 from ai_model_core.config.settings import load_config
+
+from ai_model_core.shared_utils.factory import (
+    get_model,
+    get_embedding_model,
+    update_model  # Add this import
+)
 
 logger = logging.getLogger(__name__)
 
@@ -383,62 +399,37 @@ def update_prompt_list(language: str):
 
 # Functions to support new messaging format Gradiov5
 def format_user_message(
-    message: str = None,
-    files: List[Any] = None,
-    history: List[dict] = None
-) -> Tuple[str, List[dict]]:
-    """
-    Format user input (text and/or files) into the Gradio v5 messages format.
-    
-    Args:
-        message: Text message from user
-        files: List of uploaded files
-        history: Existing chat history
-    
-    Returns:
-        Tuple of (cleared message input, updated history)
-    """
+    message: str,
+    history: List[Dict],
+    files: Optional[List[gr.File]] = None
+) -> Tuple[str, List[Dict]]:
     if history is None:
         history = []
-    
-    messages = []
-    
-    if message and message.strip():
-        messages.append({
-            "role": "user",
-            "content": message.strip()
-        })
-    
-    # Handle file uploads if present
-    if files:
+
+    # If message is text only
+    if message and not files:
+        history.append({"role": "user", "content": message.strip()})
+    # If we have files
+    elif files:
+        content = []
+        if message:
+            content.append(message.strip())
         for file in files:
-            file_path = file.name if hasattr(file, 'name') else file.get('path')
-            messages.append({
-                "role": "user",
-                "content": {
-                    "path": file_path,
-                    "alt_text": f"Uploaded file: {Path(file_path).name}"
-                }
+            file_path = file.name if hasattr(file, 'name') else file
+            content.append({
+                "path": file_path,
+                "type": Path(file_path).suffix[1:],
+                "alt_text": f"Uploaded file: {Path(file_path).name}"
             })
-        
-        return "", history + messages
-    
-    return message, history  # Return original inputs if no valid message
+        history.append({"role": "user", "content": content})
+
+    return "", history
 
 def format_assistant_message(
     content: str,
-    metadata: dict = None,
-) -> dict:
-    """
-    Format assistant response in Gradio v5 messages format.
-    
-    Args:
-        content: The response text
-        metadata: Optional metadata about the response (e.g., model used, tools)
-    
-    Returns:
-        Dict in the correct message format
-    """
+    metadata: Optional[Dict] = None,
+    tools_used: Optional[List[Dict]] = None
+) -> Dict:
     message = {
         "role": "assistant",
         "content": content
@@ -446,37 +437,26 @@ def format_assistant_message(
     
     if metadata:
         message["metadata"] = metadata
+    if tools_used:
+        message["tools"] = tools_used
         
     return message
 
-def format_file_content(
-    file_path: str,
-    alt_text: str = None,
-    file_type: str = None
-) -> dict:
-    """
-    Format file content for display in chat.
-    
-    Args:
-        file_path: Path to the file
-        alt_text: Optional alternative text for accessibility
-        file_type: Optional file type hint
-        
-    Returns:
-        Dict with file content formatting
-    """
+def format_file_content(file_path: str, alt_text: str = None, file_type: str = None) -> dict:
+    """Format file content as a properly structured message."""
     if not alt_text:
         alt_text = f"File: {Path(file_path).name}"
         
-    content = {
+    file_content = {
         "path": file_path,
-        "alt_text": alt_text
+        "alt_text": alt_text,
+        "type": file_type or Path(file_path).suffix[1:]
     }
     
-    if file_type:
-        content["type"] = file_type
-        
-    return content
+    return {
+        "role": "user",
+        "content": [file_content]
+    }
 
 def convert_history_to_messages(
     history: List[Union[Tuple[str, str], Dict[str, str]]]
@@ -536,43 +516,39 @@ def _format_history(history: List[Union[Tuple[str, str], Dict[str, str]]]) -> Li
                 messages.append(AIMessage(content=entry["content"]))
                 
     return messages
+
 async def process_message(
     message: Dict,
     history: List[Dict],
     model_choice: str,
-    temperature: float,
-    max_tokens: int,
-    files: List[gr.File],
-    use_context: bool = True,
-    history_flag: bool = True
-) -> Dict:
-    global chat_assistant
-    new_model = await update_model(model_choice, chat_assistant.model_choice)
-    if new_model:
-        chat_assistant.model = new_model
-        chat_assistant.model_choice = model_choice
-    
+    prompt_info: Optional[str] = None,
+    language_choice: Optional[str] = None,
+    history_flag: bool = True,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    files: Optional[List[gr.File]] = None,
+    use_context: bool = True
+) -> AsyncGenerator[Dict, None]:
     try:
+        new_model = await update_model(model_choice, chat_assistant.model_choice)
+        if new_model:
+            chat_assistant.model = new_model
+            chat_assistant.model_choice = model_choice
+
         result = []
         async for chunk in chat_assistant.chat(
             message=message,
-            history=convert_history_to_messages(history),
+            history=history,
+            prompt_info=prompt_info,
+            language_choice=language_choice,
             history_flag=history_flag,
             stream=True,
             use_context=use_context
         ):
             result.append(chunk)
+            # Format each chunk as a proper message
             yield format_assistant_message(''.join(result))
             
     except Exception as e:
         logger.error(f"Chat error: {str(e)}")
         yield format_assistant_message(f"An error occurred: {str(e)}")
-
-async def process_files(files: List[gr.File]) -> List[Document]:
-    if not files:
-        return []
-    try:
-        return await chat_assistant.process_chat_context_files(files)
-    except Exception as e:
-        logger.error(f"Error processing files: {str(e)}")
-        return []

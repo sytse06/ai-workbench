@@ -92,7 +92,7 @@ chat_assistant = ChatAssistant("Ollama (LLama3.2)")
 summarization_assistant = SummarizationAssistant("Ollama (LLama3.2)")
 transcription_assistant = TranscriptionAssistant(model_size="base")
 
-# Wrapper function for Gradio implementation chat_assistant:
+# Wrapper function to instantiate chat_assistant:
 async def chat_wrapper(
     message: Dict,
     history: List[Dict],
@@ -105,27 +105,44 @@ async def chat_wrapper(
     prompt_info: Optional[str] = None,
     language_choice: Optional[str] = None
 ) -> AsyncGenerator[Dict, None]:
-    """Universal wrapper that uses standardized utils for message handling"""
-    
+    """Wrapper for chat functionality with proper message formatting."""
     global chat_assistant
-    await chat_assistant.update_model(model_choice)
-    chat_assistant.set_temperature(temperature)
-    chat_assistant.set_max_tokens(max_tokens)
     
     try:
-        msg = await process_message(
-            message=message,
+        # Update model if needed
+        if model_choice != chat_assistant.model_choice:
+            new_model = await update_model(model_choice, chat_assistant.model_choice)
+            if new_model:
+                chat_assistant.model = new_model
+                chat_assistant.model_choice = model_choice
+                
+        chat_assistant.set_temperature(temperature)
+        chat_assistant.set_max_tokens(max_tokens)
+
+        # Format message if it's not already formatted
+        if isinstance(message, str):
+            formatted_message = {"role": "user", "content": message}
+        else:
+            formatted_message = message
+            
+        # Process message and yield formatted responses
+        async for msg in process_message(
+            message=formatted_message,
             history=history,
-            model=chat_assistant,
+            model_choice=model_choice,
             prompt_info=prompt_info,
             language_choice=language_choice,
-            history_flag=history_flag
-        )
-        yield format_assistant_message(msg)
-            
+            history_flag=history_flag,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            files=files
+        ):
+            yield msg
+
     except Exception as e:
-        logger.error(f"Chat error: {str(e)}")
+        logger.error(f"Chat wrapper error: {str(e)}")
         yield format_assistant_message(f"An error occurred: {str(e)}")
+        
 # Wrapper function for loading documents (RAG and summarization)
 def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
     try:
@@ -453,33 +470,34 @@ with gr.Blocks() as demo:
                     text_input = gr.Textbox(
                         label="User input",
                         placeholder="Type your question here...",
-                            scale=8 
-                    )
-                    submit_btn = gr.Button("Submit", scale=1)                    
+                        scale=8,
+                        submit_btn=True,
+                        stop_btn=True
+                    )                
                 text_input.submit(
                     fn=format_user_message,
-                    inputs=[text_input, chatbot],
+                    inputs=[text_input, chatbot, file_input],
                     outputs=[text_input, chatbot]
                 ).success(
                     fn=process_message,  
                     inputs=[
                         text_input, chatbot, model_choice,
                         temperature, max_tokens, file_input,
-                        history_flag
+                        prompt_info, language_choice, history_flag
                     ],
                     outputs=[chatbot]
                 )
                 # Connect the submit button to the chat_wrapper function        
                 submit_btn.click(
                     fn=format_user_message,
-                    inputs=[text_input, chatbot],
+                    inputs=[text_input, chatbot, file_input],
                     outputs=[text_input, chatbot]
                 ).success(
                     fn=process_message,
                     inputs=[
                         text_input, chatbot, model_choice,
                         temperature, max_tokens, file_input,
-                        history_flag
+                        prompt_info, language_choice, history_flag
                     ],
                     outputs=[chatbot]
                 )
@@ -587,7 +605,9 @@ with gr.Blocks() as demo:
                 )
                 rag_text_box = gr.Textbox(
                     label="RAG input",
-                    placeholder="Type your question here..."
+                    placeholder="Type your question here...",
+                    submit_btn=True,
+                    stop_btn=True,
                 )
                 chat_interface = gr.ChatInterface(
                     fn=rag_wrapper,

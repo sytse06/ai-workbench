@@ -86,7 +86,14 @@ class ChatAssistant:
             chunk_overlap=chunk_overlap,
             temp_dir=temp_dir
         )
-
+        
+    async def update_model(self, model_choice: str):
+        if self.model_choice != model_choice:  # Add 4 spaces indentation
+            new_model = await update_model(model_choice, self.model_choice)
+            if new_model:
+                self.model = new_model 
+                self.model_choice = model_choice
+        
     async def process_chat_context_files(self, files: List[gr.File]) -> List[Document]:
         if not files:
             return []
