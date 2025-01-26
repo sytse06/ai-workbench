@@ -1,3 +1,17 @@
+# ai_model_core/shared_utils/factory.py
+# Standard library imports
+from typing import (
+    List,
+    Generator,
+    Any,
+    Optional,
+    Union,
+    Tuple,
+    Dict,
+    Generator, 
+    AsyncGenerator
+)
+
 # Third-party imports
 import whisper
 from langchain_openai import ChatOpenAI

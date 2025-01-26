@@ -11,32 +11,15 @@ from .shared_utils.utils import (
     format_user_message,
     format_file_content,
     convert_history_to_messages,
-    process_files,
     process_message
 )
-from .shared_utils.factory import (
-    get_model,
-    update_model, 
-    get_embedding_model
-)
+from .shared_utils.factory import *
 from .config.credentials import (
     load_credentials, 
     get_api_key
 )
-from .config.settings import (
-    load_config,
-    get_directory
-)
-from .model_helpers import (
-    ChatAssistant,
-    RAGAssistant,
-    VisionAssistant,
-    PromptAssistant,
-    SummarizationAssistant,
-    TranscriptionAssistant,
-    TranscriptionContext,
-    E5Embeddings
-)
+from .config.settings import *
+from .model_helpers import *
 from .model_helpers.transcription_assistant import (
     TranscriptionError,
     FileError,

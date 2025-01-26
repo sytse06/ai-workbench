@@ -11,6 +11,11 @@ from PIL import Image
 import io
 
 from langchain.schema import HumanMessage, AIMessage, Document, BaseMessage
+from langchain_openai import ChatOpenAI
+from langchain_openai import OpenAIEmbeddings
+from langchain_ollama import ChatOllama
+from langchain_ollama import OllamaEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 import gradio as gr
 
 from ai_model_core.model_helpers.chat_assistant import ChatAssistant
@@ -19,16 +24,164 @@ from ai_model_core.shared_utils.utils import (
     get_prompt_template,
     get_prompt_list, 
     update_prompt_list,
+    _format_history,
     format_user_message,
     format_assistant_message,
     format_file_content,
     convert_history_to_messages,
-    process_files,
     process_message
 )
 from ai_model_core.config.settings import (
     load_config
 )
+
+# tests/chat_assistant/test_chat_assistant.py
+import pytest
+from unittest.mock import Mock, patch, AsyncMock, MagicMock
+from langchain.schema import HumanMessage, AIMessage, SystemMessage, Document
+import gradio as gr
+
+class TestGradioMessageFormat:
+    def test_basic_message_structure(self):
+        message = {"role": "user", "content": "Hello"}
+        assert "role" in message
+        assert "content" in message
+        assert message["role"] in ["user", "assistant"]
+        assert isinstance(message["content"], str)
+
+    @pytest.mark.parametrize("invalid_message", [
+        {"content": "Missing role"},
+        {"role": "invalid", "content": "Wrong role"},
+        {"role": "user"},  # Missing content
+        "Not a dict"
+    ])
+    def test_invalid_message_formats(self, invalid_message):
+        with pytest.raises((KeyError, ValueError, AssertionError)):
+            self.validate_message(invalid_message)
+
+    def test_multimodal_message_format(self):
+        multimodal_msg = {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Look at this"},
+                {"type": "image", "path": "test.jpg"}
+            ]
+        }
+        assert isinstance(multimodal_msg["content"], list)
+        assert all("type" in component for component in multimodal_msg["content"])
+
+    @staticmethod
+    def validate_message(message):
+        assert isinstance(message, dict)
+        assert "role" in message
+        assert "content" in message
+        assert message["role"] in ["user", "assistant"]
+
+class TestMessageFormatting:
+    def test_format_user_message(self):
+        message = "Hello"
+        history = []
+        _, formatted_history = format_user_message(message, None, history)
+        assert len(formatted_history) == 1
+        assert formatted_history[0]["role"] == "user"
+        assert formatted_history[0]["content"] == message
+
+    def test_format_assistant_message(self):
+        content = "Test response"
+        metadata = {"model": "test-model"}
+        message = format_assistant_message(content, metadata)
+        assert message["role"] == "assistant"
+        assert message["content"] == content
+        assert message["metadata"] == metadata
+
+    def test_convert_history_to_messages(self):
+        langchain_history = [
+            HumanMessage(content="Hi"),
+            AIMessage(content="Hello"),
+            SystemMessage(content="System prompt")
+        ]
+        
+        gradio_messages = convert_history_to_messages(langchain_history)
+        assert len(gradio_messages) == 2  # System message filtered out
+        assert gradio_messages[0]["role"] == "user"
+        assert gradio_messages[1]["role"] == "assistant"
+
+class TestChatAssistant:
+    @pytest.mark.asyncio
+    async def test_chat_with_context(self, chat_assistant):
+        message = {"role": "user", "content": "Hi"}
+        history = []
+        
+        async for response in chat_assistant.chat(
+            message=message,
+            history=history,
+            stream=True
+        ):
+            assert isinstance(response, str)
+
+    @pytest.mark.asyncio
+    async def test_multimodal_chat(self, chat_assistant):
+        message = {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Analyze this"},
+                {"type": "image", "path": "test.jpg"}
+            ]
+        }
+        
+        async for response in chat_assistant.chat(
+            message=message,
+            history=[],
+            stream=True
+        ):
+            assert isinstance(response, str)
+
+    @pytest.mark.asyncio
+    async def test_file_handling(self, chat_assistant):
+        test_file = Mock(spec=gr.File)
+        test_file.name = "test.txt"
+        
+        status, success = await chat_assistant.process_chat_context_files([test_file])
+        assert success is True
+class TestMessageFormatValidation:
+    def test_langchain_to_gradio_conversion(self):
+        langchain_history = [
+            HumanMessage(content="Hi"),
+            AIMessage(content="Hello")
+        ]
+        
+        gradio_format = convert_history_to_messages(langchain_history)
+        assert isinstance(gradio_format, list)
+        assert all({"role", "content"} <= msg.keys() for msg in gradio_format)
+        assert gradio_format[0]["role"] == "user"
+
+    def test_chat_format_integration(self, chat_assistant):
+        gradio_message = {"role": "user", "content": "Hi"}
+        history = []
+        response = chat_assistant.chat(gradio_message, history)
+        assert isinstance(response.content, str)
+        
+class TestMessageFormatting:
+    def test_format_utils(self):
+        # Test user message formatting
+        message = "Hello"
+        history = []
+        _, formatted_history = format_user_message(message, history)
+        assert formatted_history[0] == {"role": "user", "content": "Hello"}
+
+        # Test assistant message formatting
+        assistant_msg = format_assistant_message("Hi")
+        assert assistant_msg == {"role": "assistant", "content": "Hi"}
+
+        # Test conversion chain
+        gradio_history = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi"}
+        ]
+        langchain_messages = _format_history(gradio_history)
+        assert isinstance(langchain_messages[0], HumanMessage)
+        assert isinstance(langchain_messages[1], AIMessage)
+        
 
 class MockStreamingModel:
     """Mock model that simulates LangChain streaming interface"""
@@ -181,6 +334,22 @@ def mock_gradio_files():
     file2.name = str(Path("test2.txt").absolute())
     return [file1, file2]
 
+@pytest.fixture
+def mock_file_processor():
+    # Using Mock to simulate EnhancedContentLoader
+    processor = Mock(spec=EnhancedContentLoader)
+    processor.process_image.return_value = ('test_content', {'width': 100, 'height': 100})
+    processor.process_document.return_value = Document(page_content='test content')
+    processor.cleanup.return_value = None
+    return processor
+
+@pytest.fixture
+def sample_image():
+    img = Image.new('RGB', (100, 100), color='red')
+    img_byte_arr = io.BytesIO()
+    img.save(img_byte_arr, format='PNG')
+    img_byte_arr = img_byte_arr.getvalue()
+    return img_byte_arr
 class TestChatAssistant:
     @pytest.mark.asyncio
     async def test_initialization(self, chat_assistant):
@@ -379,9 +548,9 @@ class TestChatAssistant:
 class TestPromptTemplateHandling:
     @pytest.fixture(autouse=True)
     def setup(self, chat_assistant, monkeypatch, mock_config):
-        self.chat_assistant = chat_assistant
         monkeypatch.setattr('ai_model_core.config.settings.load_config', 
                            lambda: mock_config)
+        return chat_assistant
         
     def test_prompt_template_loading(self, mock_config):
         """Test that prompt templates are loaded correctly"""
@@ -488,22 +657,6 @@ class TestPromptTemplateHandling:
 
             assert formatted_message is not None
             assert expected_text in formatted_message.content.lower()
-    @pytest.fixture
-    def mock_file_processor():
-        return Mock(spec=EnhancedContentLoader, **{
-            'process_image.return_value': ('test_content', {'width': 100, 'height': 100}),
-            'process_document.return_value': Document(page_content='test content'),
-            'cleanup.return_value': None
-        })
-
-    @pytest.fixture
-    def sample_image():
-        img = Image.new('RGB', (100, 100), color='red')
-        img_byte_arr = io.BytesIO()
-        img.save(img_byte_arr, format='PNG')
-        img_byte_arr = img_byte_arr.getvalue()
-        return img_byte_arr
-
 class TestMessageFormatting:
     def test_format_user_message_text_only(self):
         message = "Hello"

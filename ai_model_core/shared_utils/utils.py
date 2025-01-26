@@ -35,12 +35,6 @@ import yt_dlp
 # Local imports
 from ai_model_core.config.settings import load_config
 
-from ai_model_core.shared_utils.factory import (
-    get_model,
-    get_embedding_model,
-    update_model  # Add this import
-)
-
 logger = logging.getLogger(__name__)
 
 class EnhancedContentLoader:
