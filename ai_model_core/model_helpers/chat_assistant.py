@@ -26,7 +26,7 @@ from langchain.schema import (
     BaseMessage,
     SystemMessage
 )
-from langchain.document_loaders import (
+from langchain_community.document_loaders import (
     TextLoader, 
     UnstructuredMarkdownLoader, 
     Docx2txtLoader

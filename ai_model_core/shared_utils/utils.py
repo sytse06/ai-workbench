@@ -20,8 +20,18 @@ from urllib.parse import urlparse, parse_qs
 
 # Third-party imports
 from langchain.schema import Document
-from langchain_community.document_loaders import TextLoader, WebBaseLoader, Docx2txtLoader, UnstructuredMarkdownLoader
-from langchain.schema import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from langchain_community.document_loaders import (
+    TextLoader, 
+    WebBaseLoader, 
+    Docx2txtLoader, 
+    UnstructuredMarkdownLoader
+)
+from langchain.schema import (
+    BaseMessage, 
+    HumanMessage, 
+    AIMessage, 
+    SystemMessage
+)
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
 from pydub import AudioSegment
