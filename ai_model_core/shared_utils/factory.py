@@ -1,5 +1,7 @@
 # ai_model_core/shared_utils/factory.py
 # Standard library imports
+import os
+import sys
 from typing import (
     List,
     Generator,
@@ -53,7 +55,26 @@ def get_model(choice: str, **kwargs):
     """
     load_credentials() 
     
-    if choice == "Ollama (LLama3.1)":
+        # Test model support for testing environment
+    if choice == "test_model" and os.getenv("TESTING") == "true":
+        from langchain.schema import BaseMessage
+        
+        class TestModel:
+            def __init__(self, response="Test response"):
+                self.response = response
+                
+            def bind(self, **kwargs):
+                return self
+                
+            async def astream(self, messages: List[BaseMessage], **kwargs):
+                yield AIMessage(content=self.response)
+                
+            async def agenerate(self, messages: List[BaseMessage], **kwargs):
+                return MockLLMResult(generations=[[MockGeneration(text=self.response)]])
+                
+        return TestModel()
+    
+    elif choice == "Ollama (LLama3.1)":
         return ChatOllama(
             model="llama3.1",
             base_url="http://localhost:11434",

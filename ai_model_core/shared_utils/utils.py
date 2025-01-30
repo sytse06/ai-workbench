@@ -392,48 +392,75 @@ def update_prompt_list(language: str):
     return gr.Dropdown(choices=new_prompts)
 
 # Functions to support new messaging format Gradiov5
-def format_user_message(
-    message: str,
-    history: List[Dict],
-    files: Optional[List[gr.File]] = None
+async def format_user_message(
+    message: str, 
+    history: List[Dict] = None, 
+    files: List = None
 ) -> Tuple[str, List[Dict]]:
+    """
+    Format a user message, optionally including file attachments.
+    
+    Args:
+        message: User's text message
+        history: Optional chat history
+        files: Optional list of file objects
+        
+    Returns:
+        Tuple of (empty string, new history list)
+    """
     if history is None:
         history = []
+        
+    new_history = history.copy()
 
-    # If message is text only
-    if message and not files:
-        history.append({"role": "user", "content": message.strip()})
-    # If we have files
-    elif files:
+    if files:
+        # If we have files, create a list of content items
         content = []
         if message:
             content.append(message.strip())
+            
         for file in files:
-            file_path = file.name if hasattr(file, 'name') else file
-            content.append({
-                "path": file_path,
-                "type": Path(file_path).suffix[1:],
-                "alt_text": f"Uploaded file: {Path(file_path).name}"
-            })
-        history.append({"role": "user", "content": content})
+            file_path = file.name if hasattr(file, 'name') else str(file)
+            file_ext = Path(file_path).suffix.lower()
+            
+            # Handle different file types
+            if file_ext in ['.jpg', '.jpeg', '.png', '.gif']:
+                content.append({
+                    "type": "image",
+                    "path": file_path,
+                    "alt_text": f"Image: {os.path.basename(file_path)}"
+                })
+            else:
+                content.append({
+                    "type": "file",
+                    "path": file_path,
+                    "alt_text": f"File: {os.path.basename(file_path)}"
+                })
+                
+        new_history.append({"role": "user", "content": content})
+    elif message:
+        # Simple text message
+        new_history.append({"role": "user", "content": message.strip()})
+    
+    return "", new_history
 
-    return "", history
-
-def format_assistant_message(
-    content: str,
-    metadata: Optional[Dict] = None,
-    tools_used: Optional[List[Dict]] = None
-) -> Dict:
+def format_assistant_message(content: str, metadata: Dict = None) -> Dict:
+    """
+    Format a message from the assistant.
+    
+    Args:
+        content: Message content
+        metadata: Optional metadata dictionary
+        
+    Returns:
+        Formatted message dictionary
+    """
     message = {
         "role": "assistant",
         "content": content
     }
-    
     if metadata:
         message["metadata"] = metadata
-    if tools_used:
-        message["tools"] = tools_used
-        
     return message
 
 def format_file_content(file_path: str, alt_text: str = None, file_type: str = None) -> dict:
@@ -452,14 +479,12 @@ def format_file_content(file_path: str, alt_text: str = None, file_type: str = N
         "content": [file_content]
     }
 
-def convert_history_to_messages(
-    history: List[Union[Tuple[str, str], Dict[str, str]]]
-) -> List[dict]:
+def convert_history_to_messages(history: List[Union[BaseMessage, Dict, Tuple[str, str]]]) -> List[Dict]:
     """
     Convert different history formats to Gradio v5 messages format.
     
     Args:
-        history: Chat history in various formats
+        history: Chat history in various formats (LangChain messages, dicts, or tuples)
         
     Returns:
         List of messages in Gradio v5 format
@@ -470,44 +495,75 @@ def convert_history_to_messages(
         return messages
         
     for entry in history:
-        if isinstance(entry, tuple):
-            # Convert old tuple format (user_msg, assistant_msg)
+        if isinstance(entry, (HumanMessage, AIMessage, SystemMessage)):
+            # Handle LangChain message types
+            role = {
+                HumanMessage: "user",
+                AIMessage: "assistant",
+                SystemMessage: "system"
+            }.get(type(entry))
+            messages.append({
+                "role": role,
+                "content": entry.content
+            })
+        elif isinstance(entry, tuple):
+            # Handle tuple format (user_msg, assistant_msg)
             user_msg, assistant_msg = entry
-            messages.extend([
-                {"role": "user", "content": user_msg},
-                {"role": "assistant", "content": assistant_msg}
-            ])
+            if user_msg:  # Only add non-empty messages
+                messages.append({"role": "user", "content": user_msg})
+            if assistant_msg:  # Only add non-empty messages
+                messages.append({"role": "assistant", "content": assistant_msg})
         elif isinstance(entry, dict):
-            # Already in correct format or needs role/content keys
+            # Handle dictionary format
             if "role" in entry and "content" in entry:
-                messages.append(entry)
-            else:
-                # Try to convert other dict formats
-                role = entry.get("speaker", entry.get("type", "user"))
-                content = entry.get("message", entry.get("text", ""))
-                messages.append({"role": role, "content": content})
-                
+                messages.append(entry.copy())  # Use copy to avoid modifying original
+            elif "speaker" in entry:  # Alternative format
+                messages.append({
+                    "role": entry["speaker"],
+                    "content": entry.get("message", "")
+                })
+            elif "type" in entry:  # Another alternative format
+                messages.append({
+                    "role": entry["type"],
+                    "content": entry.get("text", "")
+                })
+    
     return messages
 
-def _format_history(history: List[Union[Tuple[str, str], Dict[str, str]]]) -> List[BaseMessage]:
-    """Convert chat history to LangChain message format."""
+def _format_history(history: List[Union[Dict, Tuple[str, str]]]) -> List[BaseMessage]:
+    """
+    Convert chat history to LangChain message format.
+    
+    Args:
+        history: List of messages in dictionary or tuple format
+        
+    Returns:
+        List of LangChain message objects
+    """
     messages = []
+    
     if not history:
         return messages
         
-    # Handle both tuple and dict formats
     for entry in history:
         if isinstance(entry, tuple):
-            user_msg, ai_msg = entry
-            messages.extend([
-                HumanMessage(content=user_msg),
-                AIMessage(content=ai_msg)
-            ])
+            # Handle tuple format (user_msg, assistant_msg)
+            user_msg, assistant_msg = entry
+            if user_msg:
+                messages.append(HumanMessage(content=user_msg))
+            if assistant_msg:
+                messages.append(AIMessage(content=assistant_msg))
         elif isinstance(entry, dict):
-            if entry["role"] == "user":
-                messages.append(HumanMessage(content=entry["content"]))
-            elif entry["role"] == "assistant":
-                messages.append(AIMessage(content=entry["content"]))
+            # Handle dictionary format
+            role = entry.get("role", "").lower()
+            content = entry.get("content", "")
+            
+            if role == "user":
+                messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                messages.append(AIMessage(content=content))
+            elif role == "system":
+                messages.append(SystemMessage(content=content))
                 
     return messages
 
