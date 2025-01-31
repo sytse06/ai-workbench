@@ -427,14 +427,8 @@ with gr.Blocks() as demo:
                     "Claude Sonnet", "Claude Sonnet beta", 
                     "Deepseek v3", "Mistral (large)", "Mistral (small)",
                     "Ollama (LLama3.1)", "OpenAI GPT-4o-mini"],
-                label="Choose Model",
-                value="Ollama (LLama3.2)"
-                )
-                # File upload section
-                file_input = gr.File(
-                    label="Upload Files (<10MB, <4000 words - images: <5MB)",
-                    file_count="multiple",
-                    file_types=["txt", "md", "pdf", "py", "jpg", "png", "gif"]
+                    label="Choose Model",
+                    value="Ollama (LLama3.2)"
                 )
                 with gr.Accordion("Chat Options", open=True):
                     temperature = gr.Slider(
@@ -461,43 +455,40 @@ with gr.Blocks() as demo:
                     )                  
 
             with gr.Column(scale=4):
-                chatbot = gr.Chatbot(
-                    height=500,
+                chat_window = gr.Chatbot(
+                    value=[],
                     show_copy_button=True,
-                    show_copy_all_button=True
-                )
-                textbox = gr.Textbox(
-                    label="User input",
-                    placeholder="Type your question here..."
+                    show_copy_all_button=True,
+                    height=450,
+                    type="messages",
                 )
                 
-                chat_interface = gr.ChatInterface(
+                with gr.Row():
+                    text_input = gr.MultimodalTextbox(
+                        label='Type your message here',
+                        file_count="multiple",
+                        file_types=["txt", "md", "pdf", "py", "jpg", "png", "gif"],
+                        placeholder="Type your message here...",
+                        scale=8
+                    )
+                clear = gr.ClearButton([chat_window], scale=1)
+
+                # Handle message submission
+                text_input.submit(
                     fn=chat_wrapper,
-                    type='messages',
-                    chatbot=chatbot,
-                    textbox=textbox,
-                    submit_btn=True,
-                    stop_btn=True,
-                    additional_inputs=[
+                    inputs=[
+                        text_input,
+                        chat_window,
                         model_choice,
                         temperature,
                         max_tokens,
-                        file_input,
                         prompt_info,
                         language_choice,
                         history_flag
                     ],
+                    outputs=[chat_window]
                 )
-
-                # Handle file uploads
-                file_input.change(
-                    fn=chat_assistant.process_chat_context_files,
-                    inputs=[file_input],
-                    outputs=[chatbot]
-                )
-
-                clear = gr.ClearButton([textbox, chatbot])
-
+            
     # Update prompt list when language changes
     language_choice.change(
         fn=update_prompt_list,
