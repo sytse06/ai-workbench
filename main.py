@@ -412,6 +412,9 @@ def finish_transcription(*args):
         transcribing: "false"
     }
 
+def print_like_dislike(x: gr.LikeData):
+    print(x.index, x.value, x.liked)
+
 # Gradio interface setup
 with gr.Blocks() as demo:
     gr.Markdown("# AI WorkBench")
@@ -455,30 +458,32 @@ with gr.Blocks() as demo:
                     )                  
 
             with gr.Column(scale=4):
-                chat_window = gr.Chatbot(
-                    value=[],
-                    show_copy_button=True,
-                    show_copy_all_button=True,
-                    height=450,
+                chatbot = gr.Chatbot(
+                    elem_id="chatbot",
+                    bubble_full_width=False,
                     type="messages",
+                    show_copy_button=True,
+                    show_copy_all_button=True
                 )
-                
-                with gr.Row():
-                    text_input = gr.MultimodalTextbox(
-                        label='Type your message here',
-                        file_count="multiple",
-                        file_types=["txt", "md", "pdf", "py", "jpg", "png", "gif"],
-                        placeholder="Type your message here...",
-                        scale=8
-                    )
-                clear = gr.ClearButton([chat_window], scale=1)
+                chatbot.like(print_like_dislike, None, None, like_user_message=True)
 
-                # Handle message submission
-                text_input.submit(
+                chat_input = gr.MultimodalTextbox(
+                    interactive=True,
+                    file_count="multiple",
+                    file_types=["txt", "md", "pdf", "py", "jpg", "png", "gif"],
+                    placeholder="Enter message or upload file...",
+                    show_label=False,
+                    sources=["microphone", "upload"]
+                )
+
+                with gr.Row():
+                    clear = gr.ClearButton([chatbot])
+
+                chat_input.submit(
                     fn=chat_wrapper,
                     inputs=[
-                        text_input,
-                        chat_window,
+                        chat_input,
+                        chatbot,
                         model_choice,
                         temperature,
                         max_tokens,
@@ -486,8 +491,9 @@ with gr.Blocks() as demo:
                         language_choice,
                         history_flag
                     ],
-                    outputs=[chat_window]
-                )
+                    outputs=chatbot
+                ).then(lambda: gr.MultimodalTextbox(interactive=True),
+                    None, [chat_input])
             
     # Update prompt list when language changes
     language_choice.change(
