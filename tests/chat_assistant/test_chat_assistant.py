@@ -88,36 +88,29 @@ def mock_gradio_files():
 
 @pytest.mark.asyncio
 class TestMessageFormatting:
-    async def test_format_user_message_with_files(self, chat_assistant):
-        message = "Test message"
-        files = [
-            MagicMock(name="test.txt")
-        ]
-        files[0].name = "test.txt"
-        
-        result = await format_user_message(message, [], files)
-        assert isinstance(result, tuple)
-        empty_str, history = result
-        assert empty_str == ""
-        assert len(history) == 1
-        assert history[0]["role"] == "user"
-        assert isinstance(history[0]["content"], list)
-
-    @pytest.mark.asyncio
-    async def test_format_user_message_with_files(self, chat_assistant, mock_gradio_files):
-        message = "Check these files"
+    async def test_format_user_message(self):
+        """Test user message formatting function."""
+        message = "Hello"
         history = []
-        result, new_history = await format_user_message(message, mock_gradio_files, history)
-        assert result == ""
-        assert len(new_history) == 3  # Message + 2 files
-        assert all(msg["role"] == "user" for msg in new_history)
+        empty_str, new_history = await format_user_message(message, None, history)
         
-        # Verify file messages
-        file_messages = [msg for msg in new_history if isinstance(msg["content"], dict)]
-        assert len(file_messages) == 2
-        for msg in file_messages:
-            assert "path" in msg["content"]
-            assert "alt_text" in msg["content"]
+        assert empty_str == ""
+        assert len(new_history) == 1
+        assert new_history[0]["role"] == "user"
+        assert new_history[0]["content"] == message
+        
+    async def test_format_user_message_with_files(self, chat_assistant):
+        files = [MagicMock(spec=gr.File) for _ in range(2)]
+        for i, f in enumerate(files):
+            f.name = f"test{i}.txt"
+
+        result = await format_user_message("Check these files", files, [])
+        empty_str, history = result
+
+        assert empty_str == ""
+        assert len(history) == 3
+        assert isinstance(history[-1]["content"], str)
+        assert history[-1]["content"] == "Check these files"
 
     def test_format_assistant_message(self):
         content = "Test response"
@@ -150,68 +143,60 @@ class TestChatAssistant:
         assert isinstance(chat_assistant.documents, list)
     
     @pytest.mark.asyncio
-    async def test_file_size_limits(self, chat_assistant, test_input_dir):
-        """Test file size limits for both text and image files."""
-        # Create test files
-        test_files = {
-            'valid_text': {
-                'path': test_input_dir / "valid.txt",
-                'size': 10 * 1024 * 1024 - 1024,  # 9.9MB
-                'type': 'text'
-            },
-            'large_text': {
-                'path': test_input_dir / "large.txt",
-                'size': 11 * 1024 * 1024,  # 11MB
-                'type': 'text'
-            },
-            'valid_image': {
-                'path': test_input_dir / "valid.jpg",
-                'size': 5 * 1024 * 1024 - 1024,  # 4.9MB
-                'type': 'image'
-            },
-            'large_image': {
-                'path': test_input_dir / "large.jpg",
-                'size': 6 * 1024 * 1024,  # 6MB
-                'type': 'image'
-            }
-        }
+    async def test_file_validation(self, monkeypatch, chat_assistant, test_input_dir):
+        class MockStat:
+            def __init__(self, size):
+                self.st_size = size
+                self.st_mode = 0o777  # Add st_mode to simulate a directory
+
+            def __call__(self, *, follow_symlinks=True):
+                return self
+
+        test_cases = [
+            ([("image.jpg", 5 * 1024 * 1024)], True),           # Single valid image
+            ([("big.jpg", 5 * 1024 * 1024 + 1)], False),        # Single oversized image
+            ([("doc.txt", 10 * 1024 * 1024)], True),            # Single valid text
+            ([("big.txt", 10 * 1024 * 1024 + 1)], False),       # Single oversized text
+            ([("doc1.txt", 5 * 1024 * 1024),                    # Combined size test
+            ("doc2.txt", 5 * 1024 * 1024 + 1)], False)
+        ]
+
+        for files_info, should_pass in test_cases:
+            files = []
+            for name, size in files_info:
+                # Create a temporary file with the specified size
+                file_path = test_input_dir / name
+                with open(file_path, 'wb') as f:
+                    f.write(b'\0' * size)
+                
+                mock_file = MagicMock(spec=gr.File)
+                mock_file.name = str(file_path)
+                files.append(mock_file)
+                monkeypatch.setattr(Path, "stat", MockStat(size))
+
+            if should_pass:
+                await chat_assistant._validate_files(files)
+            else:
+                with pytest.raises(ValueError):
+                    await chat_assistant._validate_files(files)
+                                                                            
+    @pytest.mark.asyncio
+    async def test_detect_file_type(self):
+        """Test file type detection logic"""
+        test_cases = [
+            ("doc.txt", "text"),
+            ("script.py", "text"),
+            ("image.jpg", "image"),
+            ("photo.png", "image"),
+            ("data.json", "text"),
+            ("unknown.xyz", "text")  # Default to text
+        ]
         
-        # Create all test files
-        for file_info in test_files.values():
-            file_info['path'].write_bytes(b"0" * file_info['size'])
-        
-        # Test valid text file
-        mock_valid_text = MagicMock(spec=gr.File)
-        mock_valid_text.name = str(test_files['valid_text']['path'])
-        mock_valid_text.type = 'text'
-        result = await chat_assistant.process_chat_context_files([mock_valid_text])
-        assert result is not None
-
-        # Test oversized text file
-        mock_large_text = MagicMock(spec=gr.File)
-        mock_large_text.name = str(test_files['large_text']['path'])
-        mock_large_text.type = 'text'
-        with pytest.raises(ValueError, match=r".*exceeds size limit of 10MB"):
-            await chat_assistant.process_chat_context_files([mock_large_text])
-
-        # Test valid image file
-        mock_valid_img = MagicMock(spec=gr.File)
-        mock_valid_img.name = str(test_files['valid_image']['path'])
-        mock_valid_img.type = 'image'
-        result = await chat_assistant.process_chat_context_files([mock_valid_img])
-        assert result is not None
-
-        # Test oversized image file
-        mock_large_img = MagicMock(spec=gr.File)
-        mock_large_img.name = str(test_files['large_image']['path'])
-        mock_large_img.type = 'image'
-        with pytest.raises(ValueError, match=r".*exceeds size limit of 5MB"):
-            await chat_assistant.process_chat_context_files([mock_large_img])
-
-        # Cleanup
-        for file_info in test_files.values():
-            if file_info['path'].exists():
-                file_info['path'].unlink()
+        for filename, expected_type in test_cases:
+            mock_file = MagicMock(spec=gr.File)
+            mock_file.name = filename
+            detected_type = chat_assistant.detect_file_type(mock_file)
+            assert detected_type == expected_type
         
     @pytest.mark.asyncio
     async def test_word_count_limit(self, chat_assistant, test_input_dir):

@@ -162,6 +162,14 @@ class ChatAssistant:
         # Check combined size limit
         if combined_size > self.MAX_COMBINED_SIZE:
             raise ValueError("Combined file size exceeds limit of 10MB")
+        
+    async def detect_file_type(self, file: gr.File) -> str:
+        """Detect if a file is an image or text based on its extension."""
+        file_path = file.name if hasattr(file, "name") else str(file)
+        image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp'}
+        if Path(file_path).suffix.lower() in image_extensions:
+            return "image"
+        return "text"
 
     async def _process_single_file(self, file_path: str) -> List[Document]:
         """Process a single file and return documents."""

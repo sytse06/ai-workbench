@@ -19,7 +19,7 @@ ai_workbench/
 │   │   ├── utils.py
 │   ├── model_helpers/
 │   │   ├── __init__.py
-│   │   ├── chat_assistant_.py
+│   │   ├── chat_assistant.py
 │   │   ├── prompt_assistant.py
 │   │   ├── RAG_assistant.py
 │   │   ├── summarize_assistant.py
