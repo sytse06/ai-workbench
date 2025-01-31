@@ -85,32 +85,50 @@ def mock_gradio_files():
     file2 = MagicMock(spec=gr.File)
     file2.name = str(Path("test2.txt").absolute())
     return [file1, file2]
-
-@pytest.mark.asyncio
 class TestMessageFormatting:
+    @pytest.mark.asyncio
     async def test_format_user_message(self):
         """Test user message formatting function."""
         message = "Hello"
         history = []
-        empty_str, new_history = await format_user_message(message, None, history)
+        empty_str, new_history = await format_user_message(message, history, None)
         
         assert empty_str == ""
         assert len(new_history) == 1
         assert new_history[0]["role"] == "user"
         assert new_history[0]["content"] == message
-        
-    async def test_format_user_message_with_files(self, chat_assistant):
+    
+    @pytest.mark.asyncio
+    async def test_format_user_message_with_files(self):
+        """Test user message formatting with files."""
+        # Create mock files
         files = [MagicMock(spec=gr.File) for _ in range(2)]
         for i, f in enumerate(files):
             f.name = f"test{i}.txt"
 
-        result = await format_user_message("Check these files", files, [])
-        empty_str, history = result
+        # Initialize history as a list of dictionaries
+        history = []
 
+        # Call the function with the correct argument order
+        message = "Check these files"
+        empty_str, new_history = await format_user_message(message, history, files)
+
+        # Assertions
         assert empty_str == ""
-        assert len(history) == 3
-        assert isinstance(history[-1]["content"], str)
-        assert history[-1]["content"] == "Check these files"
+        assert len(new_history) == 1  # Only one message should be added to history
+        assert isinstance(new_history[-1]["content"], list)  # Content should be a list for files
+
+        # Verify the structure of the content
+        content = new_history[-1]["content"]
+        assert len(content) == 3  # Message + 2 files
+        assert content[0] == "Check these files"  # The message text
+        for i, file_content in enumerate(content[1:]):  # Check file entries
+            assert file_content["type"] == "file"
+            assert file_content["path"] == f"test{i}.txt"
+            assert file_content["alt_text"] == f"File: test{i}.txt"
+
+        # Verify the role of all entries in history
+        assert all(h["role"] == "user" for h in new_history)
 
     def test_format_assistant_message(self):
         content = "Test response"
@@ -181,7 +199,7 @@ class TestChatAssistant:
                     await chat_assistant._validate_files(files)
                                                                             
     @pytest.mark.asyncio
-    async def test_detect_file_type(self):
+    async def test_detect_file_type(self, chat_assistant):
         """Test file type detection logic"""
         test_cases = [
             ("doc.txt", "text"),
@@ -195,7 +213,7 @@ class TestChatAssistant:
         for filename, expected_type in test_cases:
             mock_file = MagicMock(spec=gr.File)
             mock_file.name = filename
-            detected_type = chat_assistant.detect_file_type(mock_file)
+            detected_type = await chat_assistant.detect_file_type(mock_file)
             assert detected_type == expected_type
         
     @pytest.mark.asyncio
@@ -268,6 +286,8 @@ class TestChatAssistant:
                 {"role": "assistant", "content": "Hi!"}], True),
         ("Test", [], False)
     ])
+    
+    @pytest.mark.asyncio
     async def test_chat_history_handling(self, chat_assistant, message, history, history_flag):
         chat_assistant.model = MockStreamingModel("Test response")
         

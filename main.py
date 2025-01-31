@@ -136,11 +136,14 @@ async def chat_wrapper(
             max_tokens=max_tokens,
             files=files
         ):
+            logger.debug(f"Yielding message from chat_wrapper: {msg}")
             yield msg
 
     except Exception as e:
         logger.error(f"Chat wrapper error: {str(e)}")
-        yield format_assistant_message(f"An error occurred: {str(e)}")
+        error_message = format_assistant_message(f"An error occurred: {str(e)}")
+        logger.debug(f"Yielding error message: {error_message}")  # Log the error message
+        yield error_message
         
 # Wrapper function for loading documents (RAG and summarization)
 def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):

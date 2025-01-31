@@ -44,9 +44,27 @@ import yt_dlp
 
 # Local imports
 from ai_model_core.config.settings import load_config
+from ai_model_core.model_helpers import (
+    ChatAssistant, 
+    RAGAssistant, 
+    SummarizationAssistant,
+    TranscriptionAssistant
+)
+from ai_model_core.shared_utils.factory import (
+    get_model,
+    get_embedding_model,
+    WHISPER_MODELS,
+    OUTPUT_FORMATS,
+    update_model
+)
 
 logger = logging.getLogger(__name__)
 
+# Initialize assistants with default models
+chat_assistant = ChatAssistant("Ollama (LLama3.2)")
+#rag_assistant = RAGAssistant("Ollama (LLama3.2)")
+summarization_assistant = SummarizationAssistant("Ollama (LLama3.2)")
+transcription_assistant = TranscriptionAssistant(model_size="base")
 class EnhancedContentLoader:
     """
     A versatile content loader that handles multiple file types including text, PDFs, 
@@ -404,8 +422,8 @@ def update_prompt_list(language: str):
 # Functions to support new messaging format Gradiov5
 async def format_user_message(
     message: str, 
-    history: List[Dict] = None, 
-    files: List = None
+    history: Optional[List[Dict]] = None, 
+    files: Optional[List[gr.File]] = None
 ) -> Tuple[str, List[Dict]]:
     """
     Format a user message, optionally including file attachments.
@@ -424,9 +442,8 @@ async def format_user_message(
     new_history = history.copy()
 
     if files:
-        # If we have files, create a list of content items
         content = []
-        if message:
+        if message and message.strip():
             content.append(message.strip())
             
         for file in files:
@@ -448,7 +465,7 @@ async def format_user_message(
                 })
                 
         new_history.append({"role": "user", "content": content})
-    elif message:
+    elif message and message.strip():  # Check if message is not empty
         # Simple text message
         new_history.append({"role": "user", "content": message.strip()})
     
@@ -471,6 +488,8 @@ def format_assistant_message(content: str, metadata: Dict = None) -> Dict:
     }
     if metadata:
         message["metadata"] = metadata
+        
+    logger.debug(f"Formatted assistant message: {message}")
     return message
 
 def format_file_content(file_path: str, alt_text: str = None, file_type: str = None) -> dict:
@@ -607,8 +626,12 @@ async def process_message(
         ):
             result.append(chunk)
             # Format each chunk as a proper message
-            yield format_assistant_message(''.join(result))
+            formatted_message = format_assistant_message(''.join(result))
+            logger.debug(f"Yielding message from process_message: {formatted_message}")  # Log the message
+            yield formatted_message
             
     except Exception as e:
         logger.error(f"Chat error: {str(e)}")
-        yield format_assistant_message(f"An error occurred: {str(e)}")
+        error_message = format_assistant_message(f"An error occurred: {str(e)}")
+        logger.debug(f"Yielding error message: {error_message}")  # Log the error message
+        yield error_message
