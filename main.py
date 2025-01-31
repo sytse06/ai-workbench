@@ -44,7 +44,6 @@ from ai_model_core.shared_utils.utils import (
     format_assistant_message,
     format_file_content,
     convert_history_to_messages,
-    process_files,
     process_message
 )
 from ai_model_core.model_helpers import (
@@ -437,16 +436,7 @@ with gr.Blocks() as demo:
                     file_count="multiple",
                     file_types=["txt", "md", "pdf", "py", "jpg", "png", "gif"]
                 )
-                with gr.Accordion("Chat Options", open=False):
-                    language_choice = gr.Dropdown(
-                        ["english", "dutch"],
-                        label="Choose Prompt Family",
-                        value="english"
-                    )
-                    prompt_info = gr.Dropdown(
-                        choices=get_prompt_list(language_choice.value),
-                        label="Prompt Template", interactive=True
-                    )
+                with gr.Accordion("Chat Options", open=True):
                     temperature = gr.Slider(
                         minimum=0, maximum=1, value=0.1, step=0.1,
                         label="Temperature"
@@ -455,64 +445,66 @@ with gr.Blocks() as demo:
                         minimum=150, maximum=4000, value=3000, step=100,
                         label="Max Tokens"
                     )
+                    language_choice = gr.Dropdown(
+                        ["english", "dutch"],
+                        label="Choose Prompt Family",
+                        value="english"
+                    )
+                    prompt_info = gr.Dropdown(
+                        choices=get_prompt_list(language_choice.value),
+                        label="Prompt Template", 
+                        interactive=True
+                    )
                     history_flag = gr.Checkbox(
-                    label="Include history", value=True
+                        label="Include history", 
+                        value=True
                     )                  
+
             with gr.Column(scale=4):
                 chatbot = gr.Chatbot(
-                    height=600,
-                    type="messages",
+                    height=500,
                     show_copy_button=True,
-                    show_copy_all_button=True,
-                    #avatar_images=("user", "assistant"),
-                    )
-                with gr.Row():
-                    text_input = gr.Textbox(
-                        label="User input",
-                        placeholder="Type your question here...",
-                        scale=8,
-                        submit_btn=True,
-                        stop_btn=True
-                    )                
-                text_input.submit(
-                    fn=format_user_message,
-                    inputs=[text_input, chatbot, file_input],
-                    outputs=[text_input, chatbot]
-                ).success(
-                    fn=process_message,  
-                    inputs=[
-                        text_input, chatbot, model_choice,
-                        temperature, max_tokens, file_input,
-                        prompt_info, language_choice, history_flag
-                    ],
-                    outputs=[chatbot]
+                    show_copy_all_button=True
                 )
-                # Connect the submit button to the chat_wrapper function        
-                submit_btn.click(
-                    fn=format_user_message,
-                    inputs=[text_input, chatbot, file_input],
-                    outputs=[text_input, chatbot]
-                ).success(
-                    fn=process_message,
-                    inputs=[
-                        text_input, chatbot, model_choice,
-                        temperature, max_tokens, file_input,
-                        prompt_info, language_choice, history_flag
-                    ],
-                    outputs=[chatbot]
-                )
-                loaded_docs = gr.State([])
-                file_input.change(
-                    fn=process_files,
-                    inputs=[file_input],
-                    outputs=[loaded_docs]
-                ).then(
-                    fn=process_message,
-                    inputs=[text_input, chatbot, model_choice, temperature, 
-                            max_tokens, loaded_docs],
-                    outputs=[chatbot]
+                textbox = gr.Textbox(
+                    label="User input",
+                    placeholder="Type your question here..."
                 )
                 
+                chat_interface = gr.ChatInterface(
+                    fn=chat_wrapper,
+                    type='messages',
+                    chatbot=chatbot,
+                    textbox=textbox,
+                    submit_btn=True,
+                    stop_btn=True,
+                    additional_inputs=[
+                        model_choice,
+                        temperature,
+                        max_tokens,
+                        file_input,
+                        prompt_info,
+                        language_choice,
+                        history_flag
+                    ],
+                )
+
+                # Handle file uploads
+                file_input.change(
+                    fn=chat_assistant.process_chat_context_files,
+                    inputs=[file_input],
+                    outputs=[chatbot]
+                )
+
+                clear = gr.ClearButton([textbox, chatbot])
+
+    # Update prompt list when language changes
+    language_choice.change(
+        fn=update_prompt_list,
+        inputs=[language_choice],
+        outputs=[prompt_info]
+    )
+                    
     # RAG Assistant Tab
     tabs = gr.TabItem("RAG")
     with tabs:
