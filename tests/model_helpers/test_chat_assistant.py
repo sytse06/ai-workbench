@@ -443,3 +443,21 @@ class TestIntegration:
         # Verify directory is clean except for .gitkeep
         remaining_files = [f for f in test_input_dir.glob("*") if f.name != ".gitkeep"]
         assert len(remaining_files) == 1  # Only our test file
+        
+class TestStreamingBehavior:
+    @pytest.mark.asyncio
+    async def test_streaming_with_large_response(self, chat_assistant):
+        test_response = "Long response " * 100
+        chat_assistant.model = MockStreamingModel(test_response)
+        
+        chunks = []
+        async for chunk in chat_assistant.chat(
+            message={"role": "user", "content": "Generate long response"},
+            history=[],
+            stream=True
+        ):
+            chunks.append(chunk)
+            
+        complete_response = "".join(chunks)
+        assert len(complete_response) > 0
+        assert complete_response == test_response
