@@ -34,11 +34,17 @@ from langgraph.graph import START, StateGraph, END
 
 # Local imports
 from ..config.settings import load_config
-from ..shared_utils.utils import (
-    EnhancedContentLoader,
-    get_prompt_template,
-    _format_history
+from ..shared_utils.utils import EnhancedContentLoader
+from ..shared_utils.prompt_utils import get_prompt_template
+from ..shared_utils.message_processing import (
+    format_user_message,
+    format_assistant_message,
+    format_file_content,
+    convert_history_to_messages,
+    _format_history,
+    process_message
 )
+
 from ..shared_utils.factory import get_model
 
 logger = logging.getLogger(__name__)

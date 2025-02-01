@@ -17,14 +17,14 @@ ai_workbench/
 │   │   ├── __init__.py
 │   │   ├── factory.py
 │   │   ├── utils.py
+│   │   ├── message_processing.py
+│   │   └── prompt_utils.py
 │   ├── model_helpers/
 │   │   ├── __init__.py
 │   │   ├── chat_assistant.py
-│   │   ├── prompt_assistant.py
 │   │   ├── RAG_assistant.py
 │   │   ├── summarize_assistant.py
 │   │   ├── transcription_assistant.py
-│   │   └── vision_assistant.py
 │   └── config/
 │       ├── __init__.py
 │       ├── credentials.py
@@ -34,11 +34,30 @@ ai_workbench/
 ├── output/
 ├── tests/
 │   ├── __init__.py
-│   ├── chat_assistant
-│   │   ├── test_chat_assistant.py
+│   └── chat_assistant/
+│       └── test_chat_assistant.py
 ├── .env
 └── main.py
 ```
+### Features
+
+Real-time chat interface
+Multiple model support (Ollama, Claude, Gemini, Openai, etc.)
+File upload and processing
+Audio transcription
+Document summarization
+RAG capabilities
+Vision processing
+Customizable prompts
+Conversation history management
+
+### Dependencies
+LangChain
+Gradio
+PyTorch
+Transformers
+Ollama
+
 ### Component flow ai_model_interface
 Contents __init.py
 from .factory import get_model, get_embedding_model

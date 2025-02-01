@@ -16,45 +16,41 @@ from typing import (
     AsyncGenerator
 )
 from pathlib import Path
-import traceback
 
 # Third-party imports
-from PIL import Image
 import gradio as gr
-from gradio import ChatMessage
 from langchain_core.documents import Document
 
 # Local imports
-from ai_model_core.config.settings import (
-    load_config,
-)
-from ai_model_core.shared_utils.factory import (
+from ai_model_core import (
+    # Core classes
+    ChatAssistant,
+    RAGAssistant,
+    SummarizationAssistant,
+    TranscriptionAssistant,
+    TranscriptionContext,
+    EnhancedContentLoader,
+    
+    # Factory functions
     get_model,
     get_embedding_model,
+    update_model,
     WHISPER_MODELS,
     OUTPUT_FORMATS,
-    update_model
-)
-from ai_model_core.shared_utils.utils import ( 
-    EnhancedContentLoader,
-    get_prompt_template,
-    get_prompt_list, 
-    update_prompt_list,
+    
+    # Message processing
     format_user_message,
     format_assistant_message,
     format_file_content,
-    convert_history_to_messages,
-    process_message
-)
-from ai_model_core.model_helpers import (
-    ChatAssistant, 
-    RAGAssistant, 
-    SummarizationAssistant,
-    TranscriptionAssistant
-)
-
-from ai_model_core.model_helpers.transcription_assistant import (
-    TranscriptionContext
+    process_message,
+    
+    # Prompt utilities
+    get_prompt_list,
+    update_prompt_list,
+    get_prompt_template,
+    
+    # Configuration
+    load_config
 )
 
 # Set environment variables

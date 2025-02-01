@@ -42,15 +42,24 @@ from ai_model_core.shared_utils.factory import (
 from ai_model_core.config.settings import (
     load_config
 )
-from ai_model_core.shared_utils.utils import (
-    EnhancedContentLoader,
-    get_prompt_template,
-    get_system_prompt,
-    _format_history,
-    format_assistant_message,
+from ..shared_utils.utils import EnhancedContentLoader
+from ..shared_utils.factory import get_model, update_model
+from ..config.settings import load_config
+from ..shared_utils.prompt_utils import (
+    get_prompt, 
+    get_prompt_list,
+    update_prompt_list,
+    get_prompt_template, 
+    get_system_prompt
+)
+
+from ..shared_utils.message_processing import (
     format_user_message,
+    format_assistant_message,
     format_file_content,
-    convert_history_to_messages
+    convert_history_to_messages,
+    _format_history,
+    process_message
 )
 
 # Set USER_AGENT environment variable
