@@ -18,14 +18,26 @@ from langchain.schema import (
 import gradio as gr
 
 from ai_model_core.model_helpers.chat_assistant import ChatAssistant
-from ai_model_core.shared_utils.utils import (
-    EnhancedContentLoader,
-    get_prompt_template,
-    format_user_message,
-    format_assistant_message,
-    convert_history_to_messages
+from ai_model_core.shared_utils.utils import EnhancedContentLoader
+from ai_model_core.shared_utils.utils import EnhancedContentLoader
+from ai_model_core.shared_utils.factory import get_model, update_model
+from ai_model_core.config.settings import load_config
+from ai_model_core.shared_utils.prompt_utils import (
+    get_prompt, 
+    get_prompt_list,
+    update_prompt_list,
+    get_prompt_template, 
+    get_system_prompt
 )
 
+from ai_model_core.shared_utils.message_processing import (
+    format_user_message,
+    format_assistant_message,
+    format_file_content,
+    convert_history_to_messages,
+    _format_history,
+    process_message
+)
 class MockStreamingModel:
     """Mock model that simulates LangChain streaming interface"""
     def __init__(self, response="Mock response"):
