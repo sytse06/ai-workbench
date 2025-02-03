@@ -330,62 +330,87 @@ class ChatAssistant:
 
     async def chat(
         self,
-        message: Dict,  # Gradio v5 message format
-        history: List[Dict],
+        message: Union[Dict, HumanMessage],
+        history: List[Union[Dict, BaseMessage]] = None,
         history_flag: bool = True,
         stream: bool = False,
         use_context: bool = True,
         prompt_info: Optional[str] = None,
         language_choice: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
-        """Unified chat function handling both text and vision inputs."""
+        """
+        Fixed chat method handling both Gradio and LangChain message formats.
+        
+        Args:
+            message: Input message (either Gradio dict or LangChain HumanMessage)
+            history: Chat history in either format
+            history_flag: Whether to include history
+            stream: Whether to stream responses
+            use_context: Whether to use context
+            prompt_info: Optional prompt template
+            language_choice: Optional language choice
+        """
         try:
-            # Process message content
-            message_text, image = self._process_message_content(message["content"])
-            
-            # Prepare base messages
+            # Convert message to LangChain format if it's a Gradio dict
+            if isinstance(message, dict):
+                content = message.get("content", "")
+                # Handle multimodal content
+                if isinstance(content, list):
+                    text_parts = []
+                    for item in content:
+                        if isinstance(item, str):
+                            text_parts.append(item)
+                        elif isinstance(item, dict) and "path" in item:
+                            text_parts.append(f"[File: {item['path']}]")
+                    content = " ".join(text_parts)
+                langchain_message = HumanMessage(content=content)
+            else:
+                langchain_message = message
+
+            # Convert history to LangChain format if needed
+            langchain_history = []
+            if history_flag and history:
+                for h in history:
+                    if isinstance(h, dict):
+                        role = h.get("role")
+                        content = h.get("content", "")
+                        if isinstance(content, list):
+                            # Handle multimodal content in history
+                            content = " ".join(
+                                item if isinstance(item, str) 
+                                else f"[File: {item['path']}]" 
+                                for item in content
+                            )
+                        if role == "user":
+                            langchain_history.append(HumanMessage(content=content))
+                        elif role == "assistant":
+                            langchain_history.append(AIMessage(content=content))
+                    else:
+                        langchain_history.append(h)
+
+            # Prepare messages list
             messages = []
             
             # Add system message if using prompts
             if prompt_info and language_choice:
                 system_prompt = get_system_prompt(language_choice, self.config)
                 messages.append(SystemMessage(content=system_prompt))
-                
-                # Format message with prompt template
-                prompt_template = get_prompt_template(prompt_info, self.config)
-                message_text = prompt_template.format(
-                    prompt_info=prompt_info,
-                    user_message=message_text
-                )
 
-            # Add history if enabled
-            if history_flag and history:
-                messages.extend(_format_history(history))
-
-            # Handle image content
-            if image:
-                image_b64 = self._convert_to_base64(image)
-                messages.append({
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": message_text},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{image_b64}"
-                            }
-                        }
-                    ]
-                })
-            else:
-                messages.append(HumanMessage(content=message_text))
+            # Add history
+            if history_flag and langchain_history:
+                messages.extend(langchain_history)
 
             # Add relevant context if enabled
             if use_context:
-                context = self.get_context_from_docs(message_text)
+                context = self.get_context_from_docs(
+                    langchain_message.content if isinstance(langchain_message, BaseMessage)
+                    else str(langchain_message)
+                )
                 if context:
-                    # Insert context before the user's message
-                    messages.insert(-1, SystemMessage(content=f"Context:\n{context}"))
+                    messages.append(SystemMessage(content=f"Context:\n{context}"))
+
+            # Add current message
+            messages.append(langchain_message)
 
             # Configure model parameters
             self._configure_model(stream)

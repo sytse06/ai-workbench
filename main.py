@@ -41,7 +41,10 @@ from ai_model_core import (
     # Message processing
     format_user_message,
     format_assistant_message,
-    format_file_content,
+    format_system_message,
+    convert_gradio_to_langchain,
+    convert_langchain_to_gradio,
+    convert_history,
     process_message,
     
     # Prompt utilities
@@ -89,7 +92,7 @@ transcription_assistant = TranscriptionAssistant(model_size="base")
 
 # Wrapper function to instantiate chat_assistant:
 async def chat_wrapper(
-    message: Dict,
+    message: Union[str, Dict],
     history: List[Dict],
     model_choice: str,
     temperature: float,
@@ -99,7 +102,7 @@ async def chat_wrapper(
     history_flag: bool = True,
     prompt_info: Optional[str] = None,
     language_choice: Optional[str] = None
-) -> AsyncGenerator[Dict, None]:
+) -> AsyncGenerator[Dict[str, str], None]:
     """Wrapper for chat functionality with proper message formatting."""
     global chat_assistant
     
@@ -114,12 +117,28 @@ async def chat_wrapper(
         chat_assistant.set_temperature(temperature)
         chat_assistant.set_max_tokens(max_tokens)
 
-        # Format message if it's not already formatted
+        # Format message based on input type
         if isinstance(message, str):
             formatted_message = {"role": "user", "content": message}
+        elif isinstance(message, dict) and "text" in message:
+            # Handle MultimodalTextbox input
+            text_content = message["text"] or ""
+            file_contents = []
+            
+            if files:
+                for file in files:
+                    file_contents.append({
+                        "path": file.name if hasattr(file, 'name') else str(file),
+                        "type": "file"
+                    })
+            
+            formatted_message = {
+                "role": "user",
+                "content": [text_content] + file_contents if text_content else file_contents
+            }
         else:
             formatted_message = message
-            
+
         # Process message and yield formatted responses
         async for msg in process_message(
             message=formatted_message,
@@ -132,14 +151,16 @@ async def chat_wrapper(
             max_tokens=max_tokens,
             files=files
         ):
-            logger.debug(f"Yielding message from chat_wrapper: {msg}")
-            yield msg
+            if isinstance(msg, str):
+                yield {"role": "assistant", "content": msg}
+            elif isinstance(msg, dict) and "role" in msg and "content" in msg:
+                yield msg
+            else:
+                yield {"role": "assistant", "content": str(msg)}
 
     except Exception as e:
         logger.error(f"Chat wrapper error: {str(e)}")
-        error_message = format_assistant_message(f"An error occurred: {str(e)}")
-        logger.debug(f"Yielding error message: {error_message}")  # Log the error message
-        yield error_message
+        yield {"role": "assistant", "content": f"An error occurred: {str(e)}"}
         
 # Wrapper function for loading documents (RAG and summarization)
 def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
@@ -472,7 +493,7 @@ with gr.Blocks() as demo:
                     file_types=["txt", "md", "pdf", "py", "jpg", "png", "gif"],
                     placeholder="Enter message or upload file...",
                     show_label=False,
-                    sources=["microphone", "upload"]
+                    sources=["upload"]
                 )
 
                 with gr.Row():
@@ -492,7 +513,9 @@ with gr.Blocks() as demo:
                     ],
                     outputs=chatbot
                 ).then(lambda: gr.MultimodalTextbox(interactive=True),
-                    None, [chat_input])
+                    None, 
+                    [chat_input]
+                )
             
     # Update prompt list when language changes
     language_choice.change(

@@ -4,10 +4,11 @@ from .utils import EnhancedContentLoader
 from .message_processing import (
     format_user_message,
     format_assistant_message,
-    format_file_content,
-    convert_history_to_messages,
-    _format_history,
-    process_message
+    format_system_message,
+    convert_gradio_to_langchain,
+    convert_langchain_to_gradio,
+    convert_history,
+    process_message,
 )
 
 from .prompt_utils import (
