@@ -9,7 +9,8 @@ from typing import (
     Tuple,
     Dict,
     Generator, 
-    AsyncGenerator
+    AsyncGenerator,
+    Literal
 )
 import logging
 import os
@@ -24,21 +25,14 @@ from langchain.schema import (
     BaseMessage
 )
 
-from ai_model_core import (
-    # Core classes
-    ChatAssistant,
-    RAGAssistant,
-    SummarizationAssistant,
-    TranscriptionAssistant,
-    TranscriptionContext,
-    EnhancedContentLoader
+# Local imports
+from .message_types import (
+    BaseMessageProcessor,
+    GradioMessage,
+    GradioContent,
+    GradioFileContent,
+    GradioRole
 )
-
-# Initialize assistants with default models
-chat_assistant = ChatAssistant("Ollama (LLama3.2)")
-#rag_assistant = RAGAssistant("Ollama (LLama3.2)")
-summarization_assistant = SummarizationAssistant("Ollama (LLama3.2)")
-transcription_assistant = TranscriptionAssistant(model_size="base")
 
 logger = logging.getLogger(__name__)
 
