@@ -22,38 +22,28 @@ import gradio as gr
 from langchain_core.documents import Document
 
 # Local imports
-from ai_model_core import (
-    # Core classes
-    ChatAssistant,
-    RAGAssistant,
-    SummarizationAssistant,
-    TranscriptionAssistant,
-    TranscriptionContext,
-    EnhancedContentLoader,
-    
-    # Factory functions
-    get_model,
-    get_embedding_model,
-    update_model,
-    WHISPER_MODELS,
-    OUTPUT_FORMATS,
-    
-    # Message processing
-    format_user_message,
-    format_assistant_message,
-    format_system_message,
-    convert_gradio_to_langchain,
-    convert_langchain_to_gradio,
-    convert_history,
-    process_message,
-    
-    # Prompt utilities
-    get_prompt_list,
-    update_prompt_list,
-    get_prompt_template,
-    
-    # Configuration
-    load_config
+from ai_model_core.model_helpers.chat_assistant import ChatAssistant
+from ai_model_core.model_helpers.RAG_assistant import RAGAssistant
+from ai_model_core.model_helpers.summarize_assistant import SummarizationAssistant
+from ai_model_core.model_helpers.transcription_assistant import (
+    TranscriptionAssistant, 
+    TranscriptionContext
+)
+from ai_model_core.shared_utils.utils import EnhancedContentLoader
+from ai_model_core.shared_utils.message_processing import MessageProcessor
+from ai_model_core.shared_utils.factory import (
+    get_model, 
+    get_embedding_model, 
+    update_model
+)
+from ai_model_core.shared_utils.prompt_utils import (
+    get_prompt_list, 
+    update_prompt_list
+)
+from ai_model_core.config.settings import (
+    load_config, 
+    WHISPER_MODELS, 
+    OUTPUT_FORMATS
 )
 
 # Set environment variables
@@ -117,46 +107,33 @@ async def chat_wrapper(
         chat_assistant.set_temperature(temperature)
         chat_assistant.set_max_tokens(max_tokens)
 
-        # Format message based on input type
-        if isinstance(message, str):
-            formatted_message = {"role": "user", "content": message}
-        elif isinstance(message, dict) and "text" in message:
-            # Handle MultimodalTextbox input
-            text_content = message["text"] or ""
-            file_contents = []
-            
-            if files:
-                for file in files:
-                    file_contents.append({
-                        "path": file.name if hasattr(file, 'name') else str(file),
-                        "type": "file"
-                    })
-            
-            formatted_message = {
-                "role": "user",
-                "content": [text_content] + file_contents if text_content else file_contents
-            }
-        else:
-            formatted_message = message
+        # Convert message to GradioMessage format
+        formatted_message = MessageProcessor().format_user_message(message, files)
 
-        # Process message and yield formatted responses
+        # Format history to GradioMessage format
+        formatted_history = []
+        if history and history_flag:
+            for h in history:
+                if h["role"] == "user":
+                    formatted_history.append(MessageProcessor().format_user_message(h))
+                else:
+                    formatted_history.append(MessageProcessor().format_assistant_message(h["content"]))
+
+        # Process message using MessageProcessor
         async for msg in process_message(
+            chat_assistant=chat_assistant,
             message=formatted_message,
-            history=history,
+            history=formatted_history,
             model_choice=model_choice,
             prompt_info=prompt_info,
             language_choice=language_choice,
             history_flag=history_flag,
             temperature=temperature,
             max_tokens=max_tokens,
-            files=files
+            files=files,
+            use_context=use_context
         ):
-            if isinstance(msg, str):
-                yield {"role": "assistant", "content": msg}
-            elif isinstance(msg, dict) and "role" in msg and "content" in msg:
-                yield msg
-            else:
-                yield {"role": "assistant", "content": str(msg)}
+            yield {"role": msg.role, "content": msg.content}
 
     except Exception as e:
         logger.error(f"Chat wrapper error: {str(e)}")

@@ -1,5 +1,6 @@
 # ai_model_core/__init__.py
 from .shared_utils.utils import EnhancedContentLoader
+from .shared_utils.message_processing import MessageProcessor
 from .shared_utils.message_processing import (
     format_user_message,
     format_assistant_message,
@@ -43,6 +44,7 @@ from .model_helpers.embeddings import E5Embeddings
 __all__ = [
     # Core functionality
     'EnhancedContentLoader',
+    'MessageProcessor',
     'ChatAssistant',
     'RAGAssistant',
     'VisionAssistant',

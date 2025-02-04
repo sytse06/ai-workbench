@@ -5,9 +5,9 @@ from .message_processing import (
     format_user_message,
     format_assistant_message,
     format_system_message,
-    convert_gradio_to_langchain,
-    convert_langchain_to_gradio,
-    convert_history,
+    gradio_to_langchain,
+    langchain_to_gradio,
+    process_message_content,
     process_message,
 )
 
@@ -38,9 +38,11 @@ from ..config.settings import (
 __all__ = [
     format_user_message,
     format_assistant_message,
-    format_file_content,
-    convert_history_to_messages,
-    _format_history,
+    format_system_message,
+    process_message_content,
+    gradio_to_langchain,
+    langchain_to_gradio,
+    convert_history,
     process_message,
     get_prompt, 
     get_prompt_list,

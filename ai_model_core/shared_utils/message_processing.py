@@ -37,316 +37,155 @@ from .message_types import (
 logger = logging.getLogger(__name__)
 
 # Functions to support new messaging format Gradiov5
-async def format_user_message(
-    message: str, 
-    history: Optional[List[Dict]] = None, 
-    files: Optional[List[gr.File]] = None
-)  -> Dict[str, Any]:
-    """
-    Format a user message, optionally including file attachments.
+class MessageProcessor(BaseMessageProcessor):
+    """Implementation of message processing logic"""
     
-    Args:
-        message: User's text message
-        history: Optional chat history
-        files: Optional list of file objects
-        
-    Returns:
-        Tuple of (empty string, new history list)
-    """
-    # Initialize content list for multimodal messages
-    content: Union[str, List[Union[str, Dict]]] = []
-    
-    # Handle text content
-    if isinstance(message, str):
-        if message.strip():
-            content = message.strip()
-    elif isinstance(message, dict):
-        if "text" in message and message["text"]:
-            content = message["text"].strip()
+    async def process_message_content(
+        self,
+        content: GradioContent
+    ) -> str:
+        """Convert Gradio's flexible content types to LangChain string format"""
+        if isinstance(content, str):
+            return content.strip()
             
-    # Handle file attachments
-    if files:
-        # Convert content to list if it's a string and not empty
-        if isinstance(content, str) and content:
-            content = [content]
-        elif isinstance(content, str):
-            content = []
-            
-        # Add file content
-        for file in files:
-            file_path = file.name if hasattr(file, 'name') else str(file)
-            file_ext = Path(file_path).suffix.lower()
-            
-            file_content = {
-                "path": file_path,
-                "type": "image" if file_ext in ['.jpg', '.jpeg', '.png', '.gif'] else "file",
-                "alt_text": f"{'Image' if file_ext in ['.jpg', '.jpeg', '.png', '.gif'] else 'File'}: {os.path.basename(file_path)}"
-            }
-            
-            if isinstance(content, list):
-                content.append(file_content)
-            else:
-                content = [content, file_content]
-
-    return {
-        "role": "user",
-        "content": content if isinstance(content, list) else (content or "")
-    }
-
-def format_assistant_message(
-    content: str, 
-    metadata: Optional[Dict] = None
-    ) -> Dict[str, Any]:
-    """
-    Format an assistant message into Gradio v5 format.
-    
-    Args:
-        content: Message content
-        metadata: Optional metadata
-        
-    Returns:
-        Formatted message dictionary
-    """
-    message = {
-        "role": "assistant",
-        "content": content
-    }
-    if metadata:
-        message["metadata"] = metadata
-        
-    logger.debug(f"Formatted assistant message: {message}")
-    return message
-
-def format_system_message(content: str) -> Dict[str, str]:
-    """
-    Format a system message into Gradio v5 format.
-    
-    Args:
-        content: System message content
-        
-    Returns:
-        Formatted message dictionary
-    """
-    return {
-        "role": "system",
-        "content": content
-    }
-
-def convert_gradio_to_langchain(
-    message: Dict[str, Any]
-) -> BaseMessage:
-    """
-    Convert a Gradio message to LangChain format.
-    
-    Args:
-        message: Message in Gradio v5 format
-        
-    Returns:
-        LangChain message object
-    """
-    role = message["role"]
-    content = message["content"]
-
-    # Handle multimodal content
-    if isinstance(content, list):
-        processed_content = []
-        for item in content:
-            if isinstance(item, str):
-                processed_content.append(item)
-            elif isinstance(item, dict):
-                if "path" in item:
-                    processed_content.append(f"[{item.get('type', 'File')}: {item['path']}]")
-                elif "text" in item:
-                    processed_content.append(item["text"])
-        content = " ".join(processed_content)
-
-    # Create appropriate message type
-    if role == "user":
-        return HumanMessage(content=content)
-    elif role == "assistant":
-        return AIMessage(content=content)
-    elif role == "system":
-        return SystemMessage(content=content)
-    else:
-        raise ValueError(f"Unknown role type: {role}")
-
-def convert_langchain_to_gradio(
-    message: BaseMessage
-) -> Dict[str, str]:
-    """
-    Convert a LangChain message to Gradio format.
-    
-    Args:
-        message: LangChain message object
-        
-    Returns:
-        Message in Gradio v5 format
-    """
-    role_mapping = {
-        HumanMessage: "user",
-        AIMessage: "assistant",
-        SystemMessage: "system"
-    }
-    
-    role = role_mapping.get(type(message))
-    if not role:
-        raise ValueError(f"Unsupported message type: {type(message)}")
-        
-    return {
-        "role": role,
-        "content": message.content
-    }
-
-def convert_history(
-    history: List[Union[BaseMessage, Dict, tuple]],
-    to_format: str = "gradio"
-) -> List[Union[Dict, BaseMessage]]:
-    """
-    Unified function to convert chat history between formats.
-    Replaces convert_history_to_messages and _format_history.
-    
-    Args:
-        history: Chat history in any supported format
-        to_format: Target format ("gradio" or "langchain")
-        
-    Returns:
-        Converted message list in specified format
-    """
-    if not history:
-        return []
-
-    converted_history = []
-    
-    for entry in history:
-        if to_format == "gradio":
-            if isinstance(entry, BaseMessage):
-                # LangChain message to Gradio format
-                role = {
-                    HumanMessage: "user",
-                    AIMessage: "assistant",
-                    SystemMessage: "system"
-                }.get(type(entry))
-                converted_history.append({
-                    "role": role,
-                    "content": entry.content
-                })
-            elif isinstance(entry, tuple):
-                # Tuple format to Gradio format
-                user_msg, assistant_msg = entry
-                if user_msg:
-                    converted_history.append({
-                        "role": "user",
-                        "content": user_msg
-                    })
-                if assistant_msg:
-                    converted_history.append({
-                        "role": "assistant",
-                        "content": assistant_msg
-                    })
-            elif isinstance(entry, dict) and "role" in entry and "content" in entry:
-                # Already in Gradio format
-                converted_history.append(entry.copy())
+        if isinstance(content, dict) and "path" in content:
+            # Single file content
+            try:
+                async with aiofiles.open(content["path"], 'rb') as f:
+                    await f.read(1)  # Verify file is readable
+                return f"[File: {content['path']}]"
+            except Exception as e:
+                logger.error(f"Error accessing file {content['path']}: {str(e)}")
+                return ""
                 
-        elif to_format == "langchain":
-            if isinstance(entry, dict):
-                # Gradio format to LangChain
-                role = entry["role"]
-                content = entry["content"]
-                
-                if isinstance(content, list):
-                    # Handle multimodal content
-                    content = " ".join(
-                        item if isinstance(item, str)
-                        else f"[{item.get('type', 'File')}: {item['path']}]"
-                        for item in content
-                    )
-                    
-                if role == "user":
-                    converted_history.append(HumanMessage(content=content))
-                elif role == "assistant":
-                    converted_history.append(AIMessage(content=content))
-                elif role == "system":
-                    converted_history.append(SystemMessage(content=content))
-                    
-            elif isinstance(entry, BaseMessage):
-                # Already in LangChain format
-                converted_history.append(entry)
-            elif isinstance(entry, tuple):
-                # Tuple format to LangChain
-                user_msg, assistant_msg = entry
-                if user_msg:
-                    converted_history.append(HumanMessage(content=user_msg))
-                if assistant_msg:
-                    converted_history.append(AIMessage(content=assistant_msg))
-                    
-    return converted_history
-
-async def process_message(
-    message: Dict[str, Any],
-    history: List[Dict],
-    model_choice: str,
-    prompt_info: Optional[str] = None,
-    language_choice: Optional[str] = None,
-    history_flag: bool = True,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
-    files: Optional[List[gr.File]] = None,
-    use_context: bool = True
-) -> AsyncGenerator[Union[str, Dict[str, str]], None]:
-    """Process messages ensuring proper format for both Gradio and LangChain."""
-    try:
-        # Convert Gradio message to LangChain format
-        content = message.get("content", "")
         if isinstance(content, list):
-            # Handle multimodal content
-            text_parts = []
+            # Mixed content (text + files)
+            processed_parts = []
             for item in content:
                 if isinstance(item, str):
-                    text_parts.append(item)
+                    processed_parts.append(item.strip())
                 elif isinstance(item, dict) and "path" in item:
-                    text_parts.append(f"[File: {item['path']}]")
-            content = " ".join(text_parts)
-        langchain_message = HumanMessage(content=content)
+                    try:
+                        async with aiofiles.open(item["path"], 'rb') as f:
+                            await f.read(1)
+                        processed_parts.append(f"[File: {item['path']}]")
+                    except Exception as e:
+                        logger.error(f"Error accessing file {item['path']}: {str(e)}")
+                        continue
+            return " ".join(processed_parts)
+            
+        return ""  # Return empty string for unsupported content types
 
-        # Convert history to LangChain format
-        langchain_history = []
-        if history_flag and history:
-            for h in history:
-                if not isinstance(h, dict):
-                    continue
+    async def gradio_to_langchain(
+        self,
+        message: GradioMessage
+    ) -> BaseMessage:
+        """Convert Gradio message to LangChain format"""
+        content = await self.process_message_content(message.content)
+        
+        if message.role == "user":
+            return HumanMessage(content=content)
+        elif message.role == "assistant":
+            return AIMessage(content=content)
+        elif message.role == "system":
+            return SystemMessage(content=content)
+        else:
+            raise ValueError(f"Unsupported role: {message.role}")
+
+    def langchain_to_gradio(
+        self,
+        message: BaseMessage
+    ) -> GradioMessage:
+        """Convert LangChain message to Gradio format"""
+        role: GradioRole
+        if isinstance(message, HumanMessage):
+            role = "user"
+        elif isinstance(message, AIMessage):
+            role = "assistant"
+        elif isinstance(message, SystemMessage):
+            role = "system"
+        else:
+            raise ValueError(f"Unsupported message type: {type(message)}")
+            
+        return GradioMessage(role=role, content=message.content)
+        
+    async def convert_history(
+        self,
+        history: List[Union[GradioMessage, BaseMessage]],
+        to_format: Literal["gradio", "langchain"] = "gradio"
+    ) -> List[Union[GradioMessage, BaseMessage]]:
+        """Convert chat history between formats"""
+        if not history:
+            return []
+            
+        converted_history = []
+        
+        for message in history:
+            if to_format == "gradio":
+                if isinstance(message, BaseMessage):
+                    converted_history.append(self.langchain_to_gradio(message))
+                elif isinstance(message, GradioMessage):
+                    converted_history.append(message)
+                else:
+                    raise ValueError(f"Unsupported message type: {type(message)}")
+            else:  # to_format == "langchain"
+                if isinstance(message, GradioMessage):
+                    converted_history.append(await self.gradio_to_langchain(message))
+                elif isinstance(message, BaseMessage):
+                    converted_history.append(message)
+                else:
+                    raise ValueError(f"Unsupported message type: {type(message)}")
                     
-                h_content = h.get("content", "")
-                if isinstance(h_content, list):
-                    # Handle multimodal content in history
-                    h_content = " ".join(
-                        item if isinstance(item, str)
-                        else f"[File: {item['path']}]"
-                        for item in h_content
+        return converted_history
+        
+    async def process_message(
+        chat_assistant,
+        message: GradioMessage,
+        history: List[GradioMessage],
+        model_choice: str,
+        prompt_info: Optional[str] = None,
+        language_choice: Optional[str] = None,
+        history_flag: bool = True,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        use_context: bool = True
+    ) -> AsyncGenerator[GradioMessage, None]:
+        """Process messages with proper format handling"""
+        try:
+            # Convert current message to LangChain format
+            langchain_message = await self.gradio_to_langchain(message)
+            
+            # Convert history if needed
+            langchain_history = []
+            if history_flag and history:
+                langchain_history = await self.convert_history(history, to_format="langchain")
+            
+            # Get streaming response from chat assistant
+            async for chunk in chat_assistant.chat(
+                message=langchain_message,
+                history=langchain_history,
+                prompt_info=prompt_info,
+                language_choice=language_choice,
+                history_flag=history_flag,
+                stream=True,
+                use_context=use_context
+            ):
+                # Convert response chunks to Gradio format
+                if isinstance(chunk, str):
+                    yield GradioMessage(role="assistant", content=chunk)
+                elif isinstance(chunk, BaseMessage):
+                    yield self.langchain_to_gradio(chunk)
+                elif isinstance(chunk, dict) and "role" in chunk and "content" in chunk:
+                    yield GradioMessage(
+                        role=chunk["role"],
+                        content=chunk["content"]
                     )
-                
-                if h["role"] == "user":
-                    langchain_history.append(HumanMessage(content=h_content))
-                elif h["role"] == "assistant":
-                    langchain_history.append(AIMessage(content=h_content))
-
-        # Get response from chat assistant
-        async for chunk in chat_assistant.chat(
-            message=langchain_message,
-            history=langchain_history,
-            prompt_info=prompt_info,
-            language_choice=language_choice,
-            history_flag=history_flag,
-            stream=True,
-            use_context=use_context
-        ):
-            # Return properly formatted messages
-            if isinstance(chunk, str):
-                yield {"role": "assistant", "content": chunk}
-            elif isinstance(chunk, dict):
-                yield chunk
-            else:
-                yield {"role": "assistant", "content": str(chunk)}
-
-    except Exception as e:
-        logger.error(f"Process message error: {str(e)}")
-        yield {"role": "assistant", "content": f"An error occurred: {str(e)}"}
+                else:
+                    yield GradioMessage(role="assistant", content=str(chunk))
+                    
+        except Exception as e:
+            logger.error(f"Process message error: {str(e)}")
+            yield GradioMessage(
+                role="assistant",
+                content=f"An error occurred: {str(e)}"
+            )
