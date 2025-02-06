@@ -15,14 +15,23 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 # Local imports
+from ..config.settings import load_config
+from ..shared_utils.utils import EnhancedContentLoader
+from ..shared_utils.prompt_utils import get_prompt_template
+from ..shared_utils.message_types import (
+    BaseMessageProcessor,
+    GradioMessage
+)
+from ..shared_utils.message_processing import MessageProcessor
 from ai_model_core import (
     get_model,
     get_embedding_model,
-    get_prompt_template,
-    _format_history
+    update_model
 )
 from ai_model_core.config.settings import load_config
-from ai_model_core.shared_utils import EnhancedContentLoader
+from ..shared_utils.utils import EnhancedContentLoader
+
+message_processor = MessageProcessor()
 
 logger = logging.getLogger(__name__)
 

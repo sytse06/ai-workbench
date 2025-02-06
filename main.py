@@ -34,17 +34,15 @@ from ai_model_core.shared_utils.message_processing import MessageProcessor
 from ai_model_core.shared_utils.factory import (
     get_model, 
     get_embedding_model, 
-    update_model
+    update_model,
+    WHISPER_MODELS, 
+    OUTPUT_FORMATS
 )
 from ai_model_core.shared_utils.prompt_utils import (
     get_prompt_list, 
     update_prompt_list
 )
-from ai_model_core.config.settings import (
-    load_config, 
-    WHISPER_MODELS, 
-    OUTPUT_FORMATS
-)
+from ai_model_core.config.settings import load_config
 
 # Set environment variables
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
@@ -599,6 +597,7 @@ with gr.Blocks() as demo:
                 )
                 chat_interface = gr.ChatInterface(
                     fn=rag_wrapper,
+                    type='messages',
                     chatbot=rag_chat_bot,
                     textbox=rag_text_box,
                     additional_inputs=[

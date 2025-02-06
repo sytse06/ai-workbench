@@ -1,15 +1,13 @@
 # ai_model_core/__init__.py
 from .shared_utils.utils import EnhancedContentLoader
-from .shared_utils.message_processing import MessageProcessor
-from .shared_utils.message_processing import (
-    format_user_message,
-    format_assistant_message,
-    format_system_message,
-    convert_gradio_to_langchain,
-    convert_langchain_to_gradio,
-    convert_history,
-    process_message,
+from .shared_utils.message_types import (
+    BaseMessageProcessor,
+    GradioMessage,
+    GradioContent,
+    GradioFileContent,
+    GradioRole
 )
+from .shared_utils.message_processing import MessageProcessor
 from .shared_utils.prompt_utils import (
     get_prompt, 
     get_prompt_list,
@@ -45,6 +43,11 @@ __all__ = [
     # Core functionality
     'EnhancedContentLoader',
     'MessageProcessor',
+    'BaseMessageProcessor',
+    'GradioMessage',
+    'GradioContent',
+    'GradioFileContent',
+    'GradioRole',
     'ChatAssistant',
     'RAGAssistant',
     'VisionAssistant',
@@ -60,21 +63,6 @@ __all__ = [
     'get_embedding_model',
     'WHISPER_MODELS',
     'OUTPUT_FORMATS',
-    
-    # Message processing
-    'format_user_message',
-    'format_assistant_message',
-    'format_file_content',
-    'convert_history_to_messages',
-    '_format_history',
-    'process_message',
-    
-    # Prompt handling
-    'get_prompt',
-    'get_prompt_list',
-    'update_prompt_list',
-    'get_prompt_template',
-    'get_system_prompt',
     
     # Configuration
     'load_credentials',

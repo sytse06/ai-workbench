@@ -11,14 +11,17 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 # Local imports
-from ..shared_utils import (
+from ..shared_utils.factory import (
     get_model,
     get_embedding_model,
-    get_prompt_template,
-    _format_history
+    update_model
 )
-from ..config.settings import load_config
+from ..shared_utils.prompt_utils import get_prompt_template
+from ..shared_utils.message_processing import MessageProcessor
 from ..shared_utils.utils import EnhancedContentLoader
+from ..config.settings import load_config
+
+message_processor = MessageProcessor()
 
 
 class State(TypedDict):

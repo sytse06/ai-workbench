@@ -52,15 +52,14 @@ from ..shared_utils.prompt_utils import (
     get_prompt_template, 
     get_system_prompt
 )
-
-from ..shared_utils.message_processing import (
-    format_user_message,
-    format_assistant_message,
-    format_file_content,
-    convert_history_to_messages,
-    _format_history,
-    process_message
+from ..shared_utils.message_types import (
+    BaseMessageProcessor,
+    GradioMessage,
+    GradioContent,
+    GradioFileContent,
+    GradioRole
 )
+from ..shared_utils.message_processing import MessageProcessor
 
 # Set USER_AGENT environment variable
 os.environ["USER_AGENT"] = "AI-Workbench/1.0"

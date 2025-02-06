@@ -36,16 +36,14 @@ from langgraph.graph import START, StateGraph, END
 from ..config.settings import load_config
 from ..shared_utils.utils import EnhancedContentLoader
 from ..shared_utils.prompt_utils import get_prompt_template
-from ..shared_utils.message_processing import (
-    format_user_message,
-    format_assistant_message,
-    format_file_content,
-    convert_history_to_messages,
-    _format_history,
-    process_message
+from ..shared_utils.message_types import (
+    BaseMessageProcessor,
+    GradioMessage
 )
-
+from ..shared_utils.message_processing import MessageProcessor
 from ..shared_utils.factory import get_model
+
+message_processor = MessageProcessor()
 
 logger = logging.getLogger(__name__)
 
