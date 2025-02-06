@@ -22,12 +22,13 @@ import gradio as gr
 from langchain_core.documents import Document
 
 # Local imports
-from ai_model_core.model_helpers.chat_assistant import ChatAssistant
-from ai_model_core.model_helpers.RAG_assistant import RAGAssistant
-from ai_model_core.model_helpers.summarize_assistant import SummarizationAssistant
-from ai_model_core.model_helpers.transcription_assistant import (
-    TranscriptionAssistant, 
-    TranscriptionContext
+from ai_model_core.model_helpers import (
+    ChatAssistant,
+    RAGAssistant, 
+    SummarizationAssistant,
+    TranscriptionAssistant,
+    TranscriptionContext,
+    BaseAssistantUI
 )
 from ai_model_core.shared_utils.utils import EnhancedContentLoader
 from ai_model_core.shared_utils.message_processing import MessageProcessor
@@ -74,6 +75,7 @@ logger.propagate = False
 
 # Initialize assistants with default models
 chat_assistant = ChatAssistant("Ollama (LLama3.2)")
+chat_assistant.ui = BaseAssistantUI(chat_assistant)
 #rag_assistant = RAGAssistant("Ollama (LLama3.2)")
 summarization_assistant = SummarizationAssistant("Ollama (LLama3.2)")
 transcription_assistant = TranscriptionAssistant(model_size="base")
@@ -475,7 +477,7 @@ with gr.Blocks() as demo:
                     clear = gr.ClearButton([chatbot])
 
                 chat_input.submit(
-                    fn=chat_wrapper,
+                    fn=chat_assistant.ui.process_gradio_message,
                     inputs=[
                         chat_input,
                         chatbot,

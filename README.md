@@ -21,7 +21,9 @@ ai_workbench/
 │   │   └── prompt_utils.py
 │   ├── model_helpers/
 │   │   ├── __init__.py
+│   │   ├── base_assistant_ui.py
 │   │   ├── chat_assistant.py
+│   │   ├── chat_assistant_ui.py
 │   │   ├── RAG_assistant.py
 │   │   ├── summarize_assistant.py
 │   │   ├── transcription_assistant.py

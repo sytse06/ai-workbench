@@ -1,5 +1,6 @@
 # ai_model_core/model_helpers/__init__.py
 from .chat_assistant import ChatAssistant
+from .chat_assistant_ui import ChatAssistantUI, BaseAssistantUI
 from .RAG_assistant import RAGAssistant
 from .summarize_assistant import SummarizationAssistant
 from .transcription_assistant import (
@@ -23,7 +24,9 @@ from ..shared_utils.message_processing import MessageProcessor
 
 # Create a list of actually imported items
 __all__ = [
+    'BaseAssistantUI',
     'ChatAssistant',
+    'ChatAssistantUI',
     'RAGAssistant',
     'SummarizationAssistant',
     'TranscriptionAssistant',
@@ -35,7 +38,6 @@ __all__ = [
     'GradioContent',
     'GradioFileContent',
     'GradioRole',
-    # Errors
     'TranscriptionError',
     'FileError',
     'ModelError',
