@@ -76,7 +76,7 @@ def get_model(choice: str, **kwargs):
             model_kwargs=model_kwargs,
             **kwargs
         )
-    if choice == "Deepseek r1":
+    elif choice == "Ollama (Deepseek r1)":
         return ChatOllama(
             model="deepseek-r1:14b",
             base_url="http://localhost:11434",
