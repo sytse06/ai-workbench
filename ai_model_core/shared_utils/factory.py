@@ -76,23 +76,11 @@ def get_model(choice: str, **kwargs):
             model_kwargs=model_kwargs,
             **kwargs
         )
-    elif choice == "deepseek r1":
-        api_key = get_api_key('openrouter')
-        model_kwargs = {}
-        if 'http_referer' in kwargs:
-            model_kwargs["headers"] = model_kwargs.get("headers", {})
-            model_kwargs["headers"]["HTTP-Referer"] = kwargs.pop('http_referer')
-        if 'x_title' in kwargs:
-            model_kwargs["headers"] = model_kwargs.get("headers", {})
-            model_kwargs["headers"]["X-Title"] = kwargs.pop('ai-workbench')
-        
-        return OpenAI(
-            model="deepseek/deepseek-r1-distill-qwen-32b",
-            api_key=api_key,
-            base_url="https://openrouter.ai/api/v1",
-            model_kwargs=model_kwargs,
-            **kwargs
-        )
+    if choice == "Deepseek r1":
+        return ChatOllama(
+            model="deepseek-r1:14b",
+            base_url="http://localhost:11434",
+            verbose=True)
     elif choice == "Claude Sonnet beta":
         api_key = get_api_key('openrouter')
         model_kwargs = {}
