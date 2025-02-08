@@ -6,7 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 def load_credentials():
-    cred_path = os.getenv('CREDENTIALS_PATH', os.path.abspath(os.path.join('..', '..', '..', 'credentials.json')))
+    cred_path = os.getenv('CREDENTIALS_PATH', os.path.abspath(os.path.join('..', '..', 'credentials.json')))
     
     try:
         with open(cred_path, 'r', encoding='utf-8') as f:

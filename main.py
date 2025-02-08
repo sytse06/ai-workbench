@@ -82,63 +82,104 @@ transcription_assistant = TranscriptionAssistant(model_size="base")
 
 # Wrapper function to instantiate chat_assistant:
 async def chat_wrapper(
-    message: Union[str, Dict],
+    message: Union[str, Dict, List],
     history: List[Dict],
     model_choice: str,
     temperature: float,
     max_tokens: int,
-    files: Optional[List[gr.File]] = None,
-    use_context: bool = True,
+    use_context: bool,
     history_flag: bool = True,
     prompt_info: Optional[str] = None,
     language_choice: Optional[str] = None
-) -> AsyncGenerator[Dict[str, str], None]:
-    """Wrapper for chat functionality with proper message formatting."""
-    global chat_assistant
-    
+) -> AsyncGenerator[List[Dict[str, str]], None]:
+    """Wrapper for chat functionality with handling of context files."""
     try:
-        # Update model if needed
-        if model_choice != chat_assistant.model_choice:
-            new_model = await update_model(model_choice, chat_assistant.model_choice)
-            if new_model:
-                chat_assistant.model = new_model
-                chat_assistant.model_choice = model_choice
-                
-        chat_assistant.set_temperature(temperature)
-        chat_assistant.set_max_tokens(max_tokens)
+        # Extract files and text from multimodal message
+        files = []
+        message_text = ""
+        
+        if isinstance(message, list):
+            for item in message:
+                if isinstance(item, str):
+                    message_text += item + " "
+                elif isinstance(item, dict) and "path" in item:
+                    files.append(item["path"])
+        else:
+            message_text = str(message)
 
-        # Convert message to GradioMessage format
-        formatted_message = MessageProcessor().format_user_message(message, files)
-
-        # Format history to GradioMessage format
-        formatted_history = []
-        if history and history_flag:
-            for h in history:
-                if h["role"] == "user":
-                    formatted_history.append(MessageProcessor().format_user_message(h))
+        message_text = message_text.strip()
+        
+        # Start building the chat history
+        current_history = list(history) if history else []
+        
+        # Add the user message
+        current_history.append({"role": "user", "content": message_text})
+        
+        # Process files if present and context is enabled
+        if files and use_context:
+            try:
+                await chat_assistant.process_chat_context_files(files)
+                # Add system message about files
+                if language_choice and language_choice.lower() == "dutch":
+                    system_msg = f"Ik heb de volgende bestanden geladen als context: {', '.join(files)}"
                 else:
-                    formatted_history.append(MessageProcessor().format_assistant_message(h["content"]))
+                    system_msg = f"I've loaded the following files as context: {', '.join(files)}"
+                current_history.append({"role": "system", "content": system_msg})
+            except Exception as e:
+                logger.error(f"Error processing files: {str(e)}")
+                error_msg = (
+                    f"Er is een fout opgetreden bij het verwerken van de bestanden: {str(e)}."
+                    if language_choice and language_choice.lower() == "dutch"
+                    else f"Error processing files: {str(e)}."
+                )
+                current_history.append({"role": "assistant", "content": error_msg})
+                yield current_history
+                return
 
-        # Process message using MessageProcessor
-        async for msg in process_message(
-            chat_assistant=chat_assistant,
-            message=formatted_message,
-            history=formatted_history,
-            model_choice=model_choice,
-            prompt_info=prompt_info,
-            language_choice=language_choice,
-            history_flag=history_flag,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            files=files,
-            use_context=use_context
-        ):
-            yield {"role": msg.role, "content": msg.content}
+        # Prepare the message for the model
+        try:
+            assistant_message = {"role": "assistant", "content": ""}
+            current_history.append(assistant_message)
+            
+            async for response in chat_assistant.ui.process_gradio_message(
+                message=message_text,
+                history=history if history_flag else [],
+                model_choice=model_choice,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                files=files if files else None,
+                use_context=use_context,
+                history_flag=history_flag,
+                prompt_info=prompt_info,
+                language_choice=language_choice
+            ):
+                if isinstance(response, dict) and "content" in response:
+                    # Update the assistant's message
+                    assistant_message["content"] = response["content"]
+                    # Yield the full history with the updated assistant message
+                    yield current_history
+                elif isinstance(response, str):
+                    # Handle string responses
+                    assistant_message["content"] = response
+                    yield current_history
+
+        except Exception as e:
+            logger.error(f"Error in model response: {str(e)}")
+            error_msg = (
+                "Er is een fout opgetreden. Probeer het opnieuw."
+                if language_choice and language_choice.lower() == "dutch"
+                else "An error occurred. Please try again."
+            )
+            current_history[-1] = {"role": "assistant", "content": error_msg}
+            yield current_history
 
     except Exception as e:
-        logger.error(f"Chat wrapper error: {str(e)}")
-        yield {"role": "assistant", "content": f"An error occurred: {str(e)}"}
-        
+        logger.error(f"General chat wrapper error: {str(e)}")
+        yield [
+            {"role": "user", "content": message_text},
+            {"role": "assistant", "content": "An error occurred. Please try again."}
+        ]
+                
 # Wrapper function for loading documents (RAG and summarization)
 def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
     try:
@@ -439,6 +480,10 @@ with gr.Blocks() as demo:
                         minimum=150, maximum=4000, value=3000, step=100,
                         label="Max Tokens"
                     )
+                    use_context = gr.Checkbox(  # Add this component
+                        label="Use context from files",
+                        value=True
+                    )
                     language_choice = gr.Dropdown(
                         ["english", "dutch"],
                         label="Choose Prompt Family",
@@ -477,16 +522,17 @@ with gr.Blocks() as demo:
                     clear = gr.ClearButton([chatbot])
 
                 chat_input.submit(
-                    fn=chat_assistant.ui.process_gradio_message,
+                    fn=chat_wrapper,
                     inputs=[
                         chat_input,
                         chatbot,
                         model_choice,
                         temperature,
                         max_tokens,
+                        use_context,
+                        history_flag,
                         prompt_info,
-                        language_choice,
-                        history_flag
+                        language_choice,                        
                     ],
                     outputs=chatbot
                 ).then(lambda: gr.MultimodalTextbox(interactive=True),

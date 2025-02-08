@@ -9,13 +9,10 @@ from io import BytesIO
 from PIL import Image
 from typing import (
     List,
-    Generator,
-    Any,
     Optional,
     Union,
     Tuple,
     Dict,
-    Generator, 
     AsyncGenerator
 )
 
@@ -27,19 +24,10 @@ from langchain.schema import (
     BaseMessage,
     SystemMessage
 )
-from langchain_community.document_loaders import (
-    TextLoader, 
-    UnstructuredMarkdownLoader, 
-    Docx2txtLoader
-)
 import gradio as gr
 
 # Local imports
-from ai_model_core.shared_utils.factory import (
-    get_model,
-    update_model
-)
-from ai_model_core.config.settings import (
+from ..config.settings import (
     load_config
 )
 from ..shared_utils.utils import EnhancedContentLoader

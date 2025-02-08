@@ -2,8 +2,11 @@
 from typing import Optional, List, Dict, Union, AsyncGenerator
 import gradio as gr
 import logging
+
+#Local imports
 from .chat_assistant import ChatAssistant
 from .base_assistant_ui import BaseAssistantUI
+from ..shared_utils.message_processing import MessageProcessor
 
 logger = logging.getLogger(__name__)
 

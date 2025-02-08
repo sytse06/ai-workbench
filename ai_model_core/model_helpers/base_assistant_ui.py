@@ -2,6 +2,15 @@
 from typing import Optional, List, Dict, Union, AsyncGenerator, Any
 import gradio as gr
 import logging
+
+#local imports
+from ..shared_utils.message_types import (
+    BaseMessageProcessor,
+    GradioMessage,
+    GradioContent,
+    GradioFileContent,
+    GradioRole
+)
 from ..shared_utils.message_processing import MessageProcessor
 
 logger = logging.getLogger(__name__)
@@ -29,21 +38,42 @@ class BaseAssistantUI:
             await self.assistant.update_model(model_choice)
             self.assistant.set_temperature(temperature)
             self.assistant.set_max_tokens(max_tokens)
+            
+            # Convert string message to proper format
+            if isinstance(message, str):
+                formatted_message = {"role": "user", "content": message}
+            else:
+                formatted_message = message
 
-            formatted_message = self.message_processor.format_user_message(message, files)
-            formatted_history = self._format_history(history) if history and history_flag else []
+            # Create GradioMessage
+            message = GradioMessage(role="user", content=formatted_message.get("content", ""))
+            langchain_message = await self.message_processor.gradio_to_langchain(message)
 
-            async for response in self.assistant.process(
-                message=formatted_message,
-                history=formatted_history,
+            # Format history properly
+            langchain_history = []
+            if history and history_flag:
+                for h in history:
+                    if isinstance(h, str):
+                        h = {"role": "user", "content": h}
+                    if isinstance(h, dict) and "role" in h:
+                        msg = GradioMessage(role=h["role"], content=h["content"])
+                        langchain_history.append(await self.message_processor.gradio_to_langchain(msg))
+
+            async for response in self.assistant.chat(
+                message=langchain_message,
+                history=langchain_history,
                 prompt_info=prompt_info,
                 language_choice=language_choice,
                 history_flag=history_flag,
                 stream=True,
-                use_context=use_context,
-                **kwargs
+                use_context=use_context
             ):
-                yield self.format_gradio_response(response)
+                # Handle string or BaseMessage response types
+                if isinstance(response, str):
+                    yield {"role": "assistant", "content": response}
+                else:
+                    gradio_message = self.message_processor.langchain_to_gradio(response)
+                    yield {"role": gradio_message.role, "content": gradio_message.content}
 
         except Exception as e:
             logger.error(f"Gradio processing error: {str(e)}")
