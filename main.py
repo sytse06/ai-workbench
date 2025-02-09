@@ -94,25 +94,27 @@ async def chat_wrapper(
 ) -> AsyncGenerator[List[Dict[str, str]], None]:
     """Wrapper for chat functionality with handling of context files."""
     try:
-        # Extract files and text from multimodal message
-        files = []
-        message_text = ""
-        
-        if isinstance(message, list):
+        # Handle MultimodalTextbox message format
+        if isinstance(message, dict) and "text" in message:
+            message_text = message["text"]
+            files = message.get("files", [])
+        elif isinstance(message, list):
+            message_text = ""
+            files = []
             for item in message:
                 if isinstance(item, str):
                     message_text += item + " "
                 elif isinstance(item, dict) and "path" in item:
                     files.append(item["path"])
+            message_text = message_text.strip()
         else:
             message_text = str(message)
+            files = []
 
-        message_text = message_text.strip()
-        
         # Start building the chat history
         current_history = list(history) if history else []
         
-        # Add the user message
+        # Add the user message with proper format
         current_history.append({"role": "user", "content": message_text})
         
         # Process files if present and context is enabled
@@ -136,11 +138,11 @@ async def chat_wrapper(
                 yield current_history
                 return
 
-        # Prepare the message for the model
+        # Initialize assistant's response
+        assistant_response = ""
+        current_history.append({"role": "assistant", "content": assistant_response})
+        
         try:
-            assistant_message = {"role": "assistant", "content": ""}
-            current_history.append(assistant_message)
-            
             async for response in chat_assistant.ui.process_gradio_message(
                 message=message_text,
                 history=history if history_flag else [],
@@ -154,14 +156,15 @@ async def chat_wrapper(
                 language_choice=language_choice
             ):
                 if isinstance(response, dict) and "content" in response:
-                    # Update the assistant's message
-                    assistant_message["content"] = response["content"]
-                    # Yield the full history with the updated assistant message
-                    yield current_history
+                    # Accumulate the streamed content
+                    assistant_response += response["content"]
                 elif isinstance(response, str):
                     # Handle string responses
-                    assistant_message["content"] = response
-                    yield current_history
+                    assistant_response += response
+
+                # Update the assistant's message with accumulated content
+                current_history[-1] = {"role": "assistant", "content": assistant_response}
+                yield current_history
 
         except Exception as e:
             logger.error(f"Error in model response: {str(e)}")
@@ -507,7 +510,7 @@ with gr.Blocks() as demo:
                     show_copy_button=True,
                     show_copy_all_button=True
                 )
-                chatbot.like(print_like_dislike, None, None, like_user_message=True)
+                chatbot.like(print_like_dislike, None, None, like_user_message=False)
 
                 chat_input = gr.MultimodalTextbox(
                     interactive=True,
@@ -532,13 +535,14 @@ with gr.Blocks() as demo:
                         use_context,
                         history_flag,
                         prompt_info,
-                        language_choice,                        
+                        language_choice,
                     ],
                     outputs=chatbot
-                ).then(lambda: gr.MultimodalTextbox(interactive=True),
-                    None, 
-                    [chat_input]
-                )
+                ).then(
+                    fn=lambda: "",
+                    inputs=None,
+                    outputs=[chat_input]
+            )      
             
     # Update prompt list when language changes
     language_choice.change(
