@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 class EnhancedContentLoader:
     """
     A versatile content loader that handles multiple file types including text, PDFs, 
-    audio, and URLs with appropriate preprocessing and document splitting capabilities.
+    audio, images and URLs with appropriate preprocessing and document splitting capabilities.
     """
     
     def __init__(
@@ -53,14 +53,19 @@ class EnhancedContentLoader:
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
         temp_dir: str = "input/tmp",
-        audio_sample_rate: int = 16000
+        audio_sample_rate: int = 16000,
+        perform_ocr: bool = True
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.temp_dir = Path(temp_dir)
         self.audio_sample_rate = audio_sample_rate
+        self.perform_ocr = perform_ocr
+        
+        #Supported formats
         self.supported_audio_formats = {'.mp4', '.mp3', '.wav', '.m4a', '.ogg', '.flac'}
         self.supported_text_formats = {'.txt', '.pdf', '.docx', '.md', '.py'}
+        self.supported_image_formats = {'.jpg', '.jpeg', '.png', '.gif'}
         
         # Create temporary directory if it doesn't exist
         self.temp_dir.mkdir(parents=True, exist_ok=True)
@@ -140,6 +145,69 @@ class EnhancedContentLoader:
                 logger.error(f"Error processing file {file_obj}: {str(e)}")
                 
         return docs
+    
+    def _process_image_file(self, file_path: str) -> List[Document]:
+        """Process image files for both visual and textual content."""
+        try:
+            mime_type = mimetypes.guess_type(file_path)[0]
+            file_name = Path(file_path).name
+            metadata = {
+                "source": file_path,
+                "type": "image",
+                "mime_type": mime_type,
+                "file_path": str(file_path),
+                "file_name": file_name,
+                "has_ocr": False
+            }
+            
+            # Create initial document for the image itself
+            docs = [Document(
+                page_content=f"Image file: {file_name}",
+                metadata=metadata.copy()
+            )]
+            
+            # Perform OCR if enabled
+            if self.perform_ocr:
+                try:
+                    with Image.open(file_path) as img:
+                        ocr_text = pytesseract.image_to_string(img)
+                        if ocr_text.strip():
+                            # Create a separate document for OCR text
+                            ocr_metadata = metadata.copy()
+                            ocr_metadata.update({
+                                "content_type": "ocr_text",
+                                "has_ocr": True
+                            })
+                            docs.append(Document(
+                                page_content=ocr_text.strip(),
+                                metadata=ocr_metadata
+                            ))
+                except Exception as ocr_error:
+                    logger.warning(f"OCR failed for {file_path}: {str(ocr_error)}")
+            
+            return docs
+
+        except Exception as e:
+            logger.error(f"Error processing image file {file_path}: {str(e)}")
+            return []
+
+    def is_valid_file_type(self, file_path: str) -> bool:
+        """Validate file type against all supported formats."""
+        ext = Path(file_path).suffix.lower()
+        return ext in (
+            self.supported_audio_formats |
+            self.supported_text_formats |
+            self.supported_image_formats
+        )
+
+    def get_supported_extensions(self) -> List[str]:
+        """Get list of all supported file extensions."""
+        all_formats = (
+            self.supported_audio_formats |
+            self.supported_text_formats |
+            self.supported_image_formats
+        )
+        return sorted(list(all_formats))
 
     def _load_text_document(self, file_path: str, file_extension: str) -> List[Document]:
         """Load text-based documents (txt, pdf, docx)."""

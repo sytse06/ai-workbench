@@ -139,7 +139,7 @@ class MessageProcessor(BaseMessageProcessor):
         return converted_history
         
     async def process_message(
-        chat_assistant,
+        self,
         message: GradioMessage,
         history: List[GradioMessage],
         model_choice: str,

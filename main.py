@@ -1,6 +1,7 @@
 # Main Gradio AI workbench app
 # Standard library imports
 import os
+import datetime
 import logging
 import sys
 import asyncio
@@ -32,6 +33,14 @@ from ai_model_core.model_helpers import (
 )
 from ai_model_core.shared_utils.utils import EnhancedContentLoader
 from ai_model_core.shared_utils.message_processing import MessageProcessor
+from ai_model_core.shared_utils.message_types import (
+    GradioMessage,
+    GradioContent,
+    GradioFileContent,
+    GradioRole
+)
+from ai_model_core.model_helpers.chat_assistant import ChatAssistant
+from ai_model_core.model_helpers.base_assistant_ui import BaseAssistantUI
 from ai_model_core.shared_utils.factory import (
     get_model, 
     get_embedding_model, 
@@ -94,56 +103,47 @@ async def chat_wrapper(
 ) -> AsyncGenerator[List[Dict[str, str]], None]:
     """Wrapper for chat functionality with handling of context files."""
     try:
-        # Handle MultimodalTextbox message format
-        if isinstance(message, dict) and "text" in message:
-            message_text = message["text"]
+        # Extract files and text from multimodal message
+        files = []
+        message_text = ""
+        
+        if isinstance(message, dict):
+            message_text = message.get("text", "")
             files = message.get("files", [])
         elif isinstance(message, list):
-            message_text = ""
-            files = []
             for item in message:
                 if isinstance(item, str):
                     message_text += item + " "
                 elif isinstance(item, dict) and "path" in item:
                     files.append(item["path"])
-            message_text = message_text.strip()
         else:
             message_text = str(message)
-            files = []
 
+        message_text = message_text.strip()
+        
         # Start building the chat history
         current_history = list(history) if history else []
         
-        # Add the user message with proper format
+        # Add the user message
         current_history.append({"role": "user", "content": message_text})
         
-        # Process files if present and context is enabled
-        if files and use_context:
-            try:
-                await chat_assistant.process_chat_context_files(files)
-                # Add system message about files
-                if language_choice and language_choice.lower() == "dutch":
-                    system_msg = f"Ik heb de volgende bestanden geladen als context: {', '.join(files)}"
-                else:
-                    system_msg = f"I've loaded the following files as context: {', '.join(files)}"
-                current_history.append({"role": "system", "content": system_msg})
-            except Exception as e:
-                logger.error(f"Error processing files: {str(e)}")
-                error_msg = (
-                    f"Er is een fout opgetreden bij het verwerken van de bestanden: {str(e)}."
-                    if language_choice and language_choice.lower() == "dutch"
-                    else f"Error processing files: {str(e)}."
-                )
-                current_history.append({"role": "assistant", "content": error_msg})
-                yield current_history
-                return
-
-        # Initialize assistant's response
-        assistant_response = ""
-        current_history.append({"role": "assistant", "content": assistant_response})
-        
+        # Prepare the message for the model
         try:
-            async for response in chat_assistant.ui.process_gradio_message(
+            # Add empty assistant message that we'll update
+            accumulated_response = ""
+            assistant_message = {"role": "assistant", "content": accumulated_response}
+            current_history.append(assistant_message)
+            
+            # Initialize chat assistant
+            chat_assistant = ChatAssistant(
+                model_choice=model_choice,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            chat_ui = BaseAssistantUI(chat_assistant)
+            
+            # Process through UI
+            async for response in chat_ui.process_gradio_message(
                 message=message_text,
                 history=history if history_flag else [],
                 model_choice=model_choice,
@@ -156,15 +156,15 @@ async def chat_wrapper(
                 language_choice=language_choice
             ):
                 if isinstance(response, dict) and "content" in response:
-                    # Accumulate the streamed content
-                    assistant_response += response["content"]
+                    # Accumulate the response
+                    accumulated_response += response["content"]
+                    assistant_message["content"] = accumulated_response
+                    yield current_history
                 elif isinstance(response, str):
                     # Handle string responses
-                    assistant_response += response
-
-                # Update the assistant's message with accumulated content
-                current_history[-1] = {"role": "assistant", "content": assistant_response}
-                yield current_history
+                    accumulated_response += response
+                    assistant_message["content"] = accumulated_response
+                    yield current_history
 
         except Exception as e:
             logger.error(f"Error in model response: {str(e)}")
@@ -182,7 +182,7 @@ async def chat_wrapper(
             {"role": "user", "content": message_text},
             {"role": "assistant", "content": "An error occurred. Please try again."}
         ]
-                
+                            
 # Wrapper function for loading documents (RAG and summarization)
 def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
     try:
@@ -508,16 +508,26 @@ with gr.Blocks() as demo:
                     bubble_full_width=False,
                     type="messages",
                     show_copy_button=True,
-                    show_copy_all_button=True
+                    show_copy_all_button=True,
+                    height=600,
+                    avatar_images=None,
+                    render_markdown=True,
+                    layout="bubble"
                 )
                 chatbot.like(print_like_dislike, None, None, like_user_message=False)
 
                 chat_input = gr.MultimodalTextbox(
                     interactive=True,
                     file_count="multiple",
-                    file_types=["txt", "md", "pdf", "py", "jpg", "png", "gif"],
+                    file_types=[
+                        "txt", "md", "pdf", "py", "docx",
+                        "mp3", "wav", "m4a", "ogg", "flac",
+                        "jpg", "jpeg", "png", "gif"
+                    ],
                     placeholder="Enter message or upload file...",
                     show_label=False,
+                    container=True,
+                    scale=4,
                     sources=["upload"]
                 )
 
