@@ -107,37 +107,45 @@ async def chat_wrapper(
         content_loader = EnhancedContentLoader()
         
         # Extract files and text from multimodal message
-        files = []
         message_text = ""
+        file_paths = []
         
         if isinstance(message, dict):
-            message_text = message.get("text", "")
+            message_text = message.get("text", "").strip()
             file_paths = message.get("files", [])
             
             # Process files if any and use_context is True
             if file_paths and use_context:
                 try:
-                    # Load and process the documents
-                    documents = content_loader.load_and_split_documents(file_paths=file_paths)
+                    # Use the enhanced content loader to process files
+                    context = content_loader.load_and_process_files(file_paths=file_paths)
                     
-                    # Extract text content from documents
-                    context_text = "\n".join(doc.page_content for doc in documents)
+                    # Get formatted context as string, excluding empty content types
+                    formatted_context = content_loader.get_formatted_context(
+                        context,
+                        format_type="string"
+                    )
                     
-                    # Append context to message if there's meaningful content
-                    if context_text.strip():
-                        message_text = f"{message_text}\n\nContext from files:\n{context_text}"
+                    # Start building the chat history
+                    current_history = list(history) if history else []
+                    
+                    # Add context as system message if there's content
+                    if formatted_context:
+                        current_history.append({
+                            "role": "system",
+                            "content": "Context from uploaded files:\n" + formatted_context
+                        })
                         
                 except Exception as e:
                     logger.error(f"Error processing files: {str(e)}")
-                    # Continue with just the message text if file processing fails
-                    pass
+                    current_history = list(history) if history else []
+            else:
+                current_history = list(history) if history else []
         else:
-            message_text = str(message)
-
-        message_text = message_text.strip()
+            message_text = str(message).strip()
+            current_history = list(history) if history else []
         
-        # Start building the chat history
-        current_history = list(history) if history else []
+        # Add the user message (without file content)
         current_history.append({"role": "user", "content": message_text})
         
         try:
@@ -157,7 +165,7 @@ async def chat_wrapper(
             # Process through UI
             async for response in chat_ui.process_gradio_message(
                 message=message_text,
-                history=history if history_flag else [],
+                history=current_history if history_flag else [],
                 model_choice=model_choice,
                 temperature=temperature,
                 max_tokens=max_tokens,

@@ -15,6 +15,7 @@ from typing import (
 import gradio as gr
 import os
 import logging
+import mimetypes
 import tempfile
 from urllib.parse import urlparse, parse_qs
 
@@ -92,12 +93,14 @@ class EnhancedContentLoader:
             # Process URLs if provided
             if urls:
                 url_docs = self._load_from_urls(urls)
-                docs.extend(url_docs)
+                if url_docs:
+                    docs.extend(url_docs)
 
             # Process files if provided
             if file_paths:
                 file_docs = self._load_from_files(file_paths)
-                docs.extend(file_docs)
+                if file_docs:
+                    docs.extend(file_docs)
 
             if not docs:
                 raise ValueError("No documents were successfully loaded.")
@@ -125,68 +128,106 @@ class EnhancedContentLoader:
         """Load documents from file paths."""
         if not isinstance(file_paths, list):
             file_paths = [file_paths]
-            
+        
         docs = []
         for file_obj in file_paths:
             try:
                 file_path = file_obj if isinstance(file_obj, str) else file_obj.name
                 file_extension = Path(file_path).suffix.lower()
                 
-                # Handle text documents first
+                # Handle different file types
                 if file_extension in self.supported_text_formats:
-                    docs.extend(self._load_text_document(file_path, file_extension))
-                # Then handle audio files
+                    loaded_docs = self._load_text_document(file_path, file_extension)
                 elif file_extension in self.supported_audio_formats:
-                    docs.extend(self._process_audio_file(file_path))
+                    loaded_docs = self._process_audio_file(file_path)
+                elif file_extension in self.supported_image_formats:
+                    loaded_docs = self._process_image_file(file_path)
                 else:
                     logger.warning(f"Unsupported file type: {file_extension}")
+                    continue
+                    
+                # Only extend docs if documents were actually loaded
+                if loaded_docs:
+                    docs.extend(loaded_docs)
                     
             except Exception as e:
                 logger.error(f"Error processing file {file_obj}: {str(e)}")
                 
+        if not docs:
+            raise ValueError("No documents were successfully loaded.")
+            
         return docs
     
     def _process_image_file(self, file_path: str) -> List[Document]:
-        """Process image files for both visual and textual content."""
+        """
+        Process image files for both visual and textual content.
+        
+        Args:
+            file_path: Path to the image file
+            
+        Returns:
+            List of Document objects containing image information and OCR text
+        """
         try:
             mime_type = mimetypes.guess_type(file_path)[0]
             file_name = Path(file_path).name
+            
+            # Basic metadata for the image
             metadata = {
-                "source": file_path,
+                "source": str(file_path),
                 "type": "image",
                 "mime_type": mime_type,
-                "file_path": str(file_path),
                 "file_name": file_name,
                 "has_ocr": False
             }
             
-            # Create initial document for the image itself
-            docs = [Document(
+            documents = []
+            
+            # Create document for image metadata
+            img_doc = Document(
                 page_content=f"Image file: {file_name}",
                 metadata=metadata.copy()
-            )]
+            )
+            documents.append(img_doc)
             
             # Perform OCR if enabled
             if self.perform_ocr:
                 try:
                     with Image.open(file_path) as img:
+                        # Convert image to RGB if necessary
+                        if img.mode not in ('L', 'RGB'):
+                            img = img.convert('RGB')
+                        
+                        # Get image dimensions
+                        width, height = img.size
+                        metadata.update({
+                            "width": width,
+                            "height": height,
+                            "mode": img.mode
+                        })
+                        
+                        # Perform OCR
                         ocr_text = pytesseract.image_to_string(img)
+                        
                         if ocr_text.strip():
-                            # Create a separate document for OCR text
+                            # Create document for OCR text
                             ocr_metadata = metadata.copy()
                             ocr_metadata.update({
                                 "content_type": "ocr_text",
                                 "has_ocr": True
                             })
-                            docs.append(Document(
+                            ocr_doc = Document(
                                 page_content=ocr_text.strip(),
                                 metadata=ocr_metadata
-                            ))
+                            )
+                            documents.append(ocr_doc)
+                            
                 except Exception as ocr_error:
                     logger.warning(f"OCR failed for {file_path}: {str(ocr_error)}")
+                    # Still return the image document even if OCR fails
             
-            return docs
-
+            return documents
+            
         except Exception as e:
             logger.error(f"Error processing image file {file_path}: {str(e)}")
             return []

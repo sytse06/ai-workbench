@@ -133,7 +133,7 @@ def get_model(choice: str, **kwargs):
         return ChatGoogleGenerativeAI(
             model="gemini-1.5-flash",
             google_api_key=api_key,
-            convert_system_message_to_human=True,
+            convert_messages_to_human=True,
             **kwargs
         )
     elif choice == "Ollama (LLama3.2)":
