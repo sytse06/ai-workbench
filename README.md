@@ -17,6 +17,7 @@ ai_workbench/
 │   │   ├── __init__.py
 │   │   ├── factory.py
 │   │   ├── utils.py
+│   │   ├── message_types.py
 │   │   ├── message_processing.py
 │   │   └── prompt_utils.py
 │   ├── model_helpers/
@@ -36,7 +37,7 @@ ai_workbench/
 ├── output/
 ├── tests/
 │   ├── __init__.py
-│   └── chat_assistant/
+│   └── test_model_helpers/
 │       └── test_chat_assistant.py
 ├── .env
 └── main.py
