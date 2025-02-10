@@ -419,7 +419,159 @@ class EnhancedContentLoader:
         except Exception as e:
             logger.error(f"Error downloading platform audio: {str(e)}")
             raise
+    
+    def process_files_for_context(
+        self,
+        documents: List[Document]
+    ) -> Dict[str, List[str]]:
+        """
+        Organize processed documents by content type and prepare them for context usage.
         
+        Args:
+            documents: List of processed Document objects
+            
+        Returns:
+            Dict containing organized content by type:
+            {
+                "text_content": List of text content from documents
+                "image_descriptions": List of image descriptions and OCR text
+                "audio_content": List of audio processing results
+                "other_content": List of other content types
+            }
+        """
+        context = {
+            "text_content": [],
+            "image_descriptions": [],
+            "audio_content": [],
+            "other_content": []
+        }
+        
+        for doc in documents:
+            try:
+                # Get file extension from source if available
+                source = doc.metadata.get('source', '')
+                file_extension = Path(source).suffix.lower() if source else ''
+                
+                # Process based on content type
+                if doc.metadata.get('type') == 'image':
+                    if doc.metadata.get('has_ocr', False):
+                        context['image_descriptions'].append(
+                            f"OCR text from {doc.metadata['file_name']}: {doc.page_content}"
+                        )
+                    else:
+                        context['image_descriptions'].append(
+                            f"Image file {doc.metadata['file_name']}: {doc.page_content}"
+                        )
+                elif file_extension in self.supported_text_formats:
+                    context['text_content'].append(
+                        f"Content from {Path(source).name}:\n{doc.page_content}"
+                    )
+                elif file_extension in self.supported_audio_formats:
+                    context['audio_content'].append(
+                        f"Audio file {Path(source).name}: {doc.page_content}"
+                    )
+                else:
+                    context['other_content'].append(doc.page_content)
+                    
+            except Exception as e:
+                logger.error(f"Error processing document for context: {str(e)}")
+                continue
+                
+        return context
+
+    def load_and_process_files(
+        self,
+        file_paths: Optional[Union[str, List[str]]] = None,
+        urls: Optional[str] = None,
+        chunk_size: Optional[int] = None,
+        chunk_overlap: Optional[int] = None,
+        return_raw_documents: bool = False
+    ) -> Union[Dict[str, List[str]], Tuple[Dict[str, List[str]], List[Document]]]:
+        """
+        Load, split, and organize documents from various sources.
+        
+        Args:
+            file_paths: Single file path or list of file paths
+            urls: String containing URLs (one per line)
+            chunk_size: Optional custom chunk size for splitting
+            chunk_overlap: Optional custom chunk overlap for splitting
+            return_raw_documents: If True, also returns the raw document list
+            
+        Returns:
+            If return_raw_documents is False:
+                Dict containing organized content by type
+            If return_raw_documents is True:
+                Tuple of (organized content dict, raw document list)
+        """
+        try:
+            # Load and split documents
+            documents = self.load_and_split_documents(
+                file_paths=file_paths,
+                urls=urls,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap
+            )
+            
+            # Process documents into organized context
+            context = self.process_files_for_context(documents)
+            
+            if return_raw_documents:
+                return context, documents
+            return context
+            
+        except Exception as e:
+            logger.error(f"Error in load_and_process_files: {str(e)}")
+            empty_context = {
+                "text_content": [],
+                "image_descriptions": [],
+                "audio_content": [],
+                "other_content": []
+            }
+            if return_raw_documents:
+                return empty_context, []
+            return empty_context
+
+    def get_formatted_context(
+        self,
+        context: Dict[str, List[str]],
+        include_types: Optional[List[str]] = None,
+        format_type: Literal["string", "list", "dict"] = "string"
+    ) -> Union[str, List[str], Dict[str, List[str]]]:
+        """
+        Format the processed context in the desired output format.
+        
+        Args:
+            context: Dict containing organized content by type
+            include_types: Optional list of content types to include
+            format_type: Desired output format ("string", "list", or "dict")
+            
+        Returns:
+            Formatted context in the specified format
+        """
+        if include_types is None:
+            include_types = ["text_content", "image_descriptions", "audio_content", "other_content"]
+            
+        # Filter context based on included types
+        filtered_context = {
+            k: v for k, v in context.items() 
+            if k in include_types and v
+        }
+        
+        if format_type == "dict":
+            return filtered_context
+            
+        # Flatten content into list
+        flattened_content = []
+        for content_type, content_list in filtered_context.items():
+            if content_list:
+                flattened_content.extend(content_list)
+                
+        if format_type == "list":
+            return flattened_content
+            
+        # Return as formatted string
+        return "\n\n".join(flattened_content) if flattened_content else ""
+          
     def cleanup(self):
         """Clean up temporary files."""
         try:

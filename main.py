@@ -103,19 +103,34 @@ async def chat_wrapper(
 ) -> AsyncGenerator[List[Dict[str, str]], None]:
     """Wrapper for chat functionality with handling of context files."""
     try:
+        # Initialize the content loader
+        content_loader = EnhancedContentLoader()
+        
         # Extract files and text from multimodal message
         files = []
         message_text = ""
         
         if isinstance(message, dict):
             message_text = message.get("text", "")
-            files = message.get("files", [])
-        elif isinstance(message, list):
-            for item in message:
-                if isinstance(item, str):
-                    message_text += item + " "
-                elif isinstance(item, dict) and "path" in item:
-                    files.append(item["path"])
+            file_paths = message.get("files", [])
+            
+            # Process files if any and use_context is True
+            if file_paths and use_context:
+                try:
+                    # Load and process the documents
+                    documents = content_loader.load_and_split_documents(file_paths=file_paths)
+                    
+                    # Extract text content from documents
+                    context_text = "\n".join(doc.page_content for doc in documents)
+                    
+                    # Append context to message if there's meaningful content
+                    if context_text.strip():
+                        message_text = f"{message_text}\n\nContext from files:\n{context_text}"
+                        
+                except Exception as e:
+                    logger.error(f"Error processing files: {str(e)}")
+                    # Continue with just the message text if file processing fails
+                    pass
         else:
             message_text = str(message)
 
@@ -123,11 +138,8 @@ async def chat_wrapper(
         
         # Start building the chat history
         current_history = list(history) if history else []
-        
-        # Add the user message
         current_history.append({"role": "user", "content": message_text})
         
-        # Prepare the message for the model
         try:
             # Add empty assistant message that we'll update
             accumulated_response = ""
@@ -149,19 +161,16 @@ async def chat_wrapper(
                 model_choice=model_choice,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                files=files if files else None,
                 use_context=use_context,
                 history_flag=history_flag,
                 prompt_info=prompt_info,
                 language_choice=language_choice
             ):
                 if isinstance(response, dict) and "content" in response:
-                    # Accumulate the response
                     accumulated_response += response["content"]
                     assistant_message["content"] = accumulated_response
                     yield current_history
                 elif isinstance(response, str):
-                    # Handle string responses
                     accumulated_response += response
                     assistant_message["content"] = accumulated_response
                     yield current_history
@@ -182,6 +191,10 @@ async def chat_wrapper(
             {"role": "user", "content": message_text},
             {"role": "assistant", "content": "An error occurred. Please try again."}
         ]
+    finally:
+        # Cleanup temporary files
+        if 'content_loader' in locals():
+            content_loader.cleanup()
                             
 # Wrapper function for loading documents (RAG and summarization)
 def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
@@ -468,9 +481,9 @@ with gr.Blocks() as demo:
             with gr.Column(scale=1):
                 model_choice = gr.Dropdown(
                     ["Ollama (LLama3.2)", "Gemini 1.5 flash",
+                     "Ollama (llama3.2-vision)", "OpenAI GPT-4o-mini"],
                     "Claude Sonnet", "Claude Sonnet beta", 
                     "Deepseek v3", "Mistral (large)", "Mistral (small)",
-                    "Ollama (LLama3.1)", "OpenAI GPT-4o-mini"],
                     label="Choose Model",
                     value="Ollama (LLama3.2)"
                 )
@@ -515,15 +528,15 @@ with gr.Blocks() as demo:
                     layout="bubble"
                 )
                 chatbot.like(print_like_dislike, None, None, like_user_message=False)
+                
+                # Get supported file types from EnhancedContentLoader
+                content_loader = EnhancedContentLoader()
+                supported_extensions = content_loader.get_supported_extensions()
 
                 chat_input = gr.MultimodalTextbox(
                     interactive=True,
                     file_count="multiple",
-                    file_types=[
-                        "txt", "md", "pdf", "py", "docx",
-                        "mp3", "wav", "m4a", "ogg", "flac",
-                        "jpg", "jpeg", "png", "gif"
-                    ],
+                    file_types=supported_extensions,
                     placeholder="Enter message or upload file...",
                     show_label=False,
                     container=True,
