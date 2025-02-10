@@ -180,9 +180,9 @@ def get_model(choice: str, **kwargs):
             base_url="https://api.mistral.ai/v1",
             **kwargs
         )
-    elif choice == "Ollama (phi3.5)":
+    elif choice == "Ollama (phi4)":
         return ChatOllama(
-            model="phi3.5",
+            model="phi4",
             base_url="http://localhost:11434",
             verbose=True)
     elif choice == "Ollama (LLaVA)":
