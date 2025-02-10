@@ -72,9 +72,9 @@ def get_model(choice: str, **kwargs):
                 
         return TestModel()
     
-    elif choice == "Ollama (LLama3.1)":
+    elif choice == "Ollama (llama3.2)":
         return ChatOllama(
-            model="llama3.1",
+            model="llama3.2:latest",
             base_url="http://localhost:11434",
             verbose=True)
     elif choice == "Claude Sonnet":
@@ -136,11 +136,6 @@ def get_model(choice: str, **kwargs):
             convert_messages_to_human=True,
             **kwargs
         )
-    elif choice == "Ollama (LLama3.2)":
-        return ChatOllama(
-            model="llama3.2",
-            base_url="http://localhost:11434",
-            **kwargs)
     elif choice == "Ollama (llama3.2-vision)":
         return ChatOllama(
             model="llama3.2-vision",
@@ -182,12 +177,17 @@ def get_model(choice: str, **kwargs):
         )
     elif choice == "Ollama (phi4)":
         return ChatOllama(
-            model="phi4",
+            model="phi4:latest",
             base_url="http://localhost:11434",
-            verbose=True)
-    elif choice == "Ollama (LLaVA)":
+            **kwargs)
+    elif choice == "Ollama (qwen2.5:14b)":
         return ChatOllama(
-            model="llava",
+            model="qwen2.5:14b",
+            base_url="http://localhost:11434",
+            **kwargs)
+    elif choice == "Ollama (llava)":
+        return ChatOllama(
+            model="llava:latest",
             base_url="http://localhost:11434",
             **kwargs)
     elif choice == "Ollama (llava:7b-v1.6)":
@@ -195,20 +195,22 @@ def get_model(choice: str, **kwargs):
             model="llava:7b-v1.6",
             base_url="http://localhost:11434",
             **kwargs)
-    elif choice == "Ollama (Deepseek-coder-v2)":
-        return ChatOllama( 
-            model="deepseek-coder-v2",
-            base_url="http://localhost:11434",
-            **kwargs)
-    elif choice == "Ollama (YI-coder)":
-        return ChatOllama( 
-            model="yi-coder",
-            base_url="http://localhost:11434",
+    elif choice == "OpenAI o3-mini":
+        api_key = get_api_key('openai')
+        return ChatOpenAI(
+            model="o3-mini", 
+            api_key=api_key, 
             **kwargs)
     elif choice == "OpenAI GPT-4o-mini":
         api_key = get_api_key('openai')
         return ChatOpenAI(
             model="gpt-4o-mini", 
+            api_key=api_key, 
+            **kwargs)
+    elif choice == "OpenAI GPT-4o":
+        api_key = get_api_key('openai')
+        return ChatOpenAI(
+            model="gpt-4o", 
             api_key=api_key, 
             **kwargs)
     else:

@@ -83,10 +83,10 @@ logger.propagate = False
 
 
 # Initialize assistants with default models
-chat_assistant = ChatAssistant("Ollama (LLama3.2)")
+chat_assistant = ChatAssistant("Ollama (llama3.2)")
 chat_assistant.ui = BaseAssistantUI(chat_assistant)
-#rag_assistant = RAGAssistant("Ollama (LLama3.2)")
-summarization_assistant = SummarizationAssistant("Ollama (LLama3.2)")
+#rag_assistant = RAGAssistant("Ollama (llama3.2)")
+summarization_assistant = SummarizationAssistant("Ollama (llama3.2)")
 transcription_assistant = TranscriptionAssistant(model_size="base")
 
 # Wrapper function to instantiate chat_assistant:
@@ -160,6 +160,18 @@ async def chat_wrapper(
                 temperature=temperature,
                 max_tokens=max_tokens
             )
+            
+            # Update model if needed
+            if model_choice != chat_assistant.model_choice:
+                new_model = await update_model(model_choice, chat_assistant.model_choice)
+                if new_model:
+                    chat_assistant.model = new_model
+                    chat_assistant.model_choice = model_choice
+                    
+            # Update temperature and max_tokens
+            chat_assistant.set_temperature(temperature)
+            chat_assistant.set_max_tokens(max_tokens)
+            
             chat_ui = BaseAssistantUI(chat_assistant)
             
             # Process through UI
@@ -488,12 +500,22 @@ with gr.Blocks() as demo:
         with gr.Row():
             with gr.Column(scale=1):
                 model_choice = gr.Dropdown(
-                    ["Ollama (LLama3.2)", "Gemini 1.5 flash",
-                     "Ollama (llama3.2-vision)", "OpenAI GPT-4o-mini"],
-                    "Claude Sonnet", "Claude Sonnet beta", 
-                    "Deepseek v3", "Mistral (large)", "Mistral (small)",
+                    choices=[
+                        "Ollama (llama3.2)",
+                        "Ollama (llama3.2-vision)",
+                        "Ollama (phi4)",
+                        "Ollama (llava)",
+                        "Ollama (qwen2.5:14b)",
+                        "Deepseek v3",
+                        "OpenAI GPT-4o-mini",
+                        "OpenAI o3-mini",
+                        "Claude Sonnet",
+                        "Claude Sonnet beta",
+                        "Mistral (large)",
+                        "Mistral (pixtral)"
+                    ],
                     label="Choose Model",
-                    value="Ollama (LLama3.2)"
+                    value="Ollama (llama3.2)"
                 )
                 with gr.Accordion("Chat Options", open=True):
                     temperature = gr.Slider(
