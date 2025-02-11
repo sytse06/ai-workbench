@@ -85,7 +85,7 @@ logger.propagate = False
 # Initialize assistants with default models
 chat_assistant = ChatAssistant("Ollama (llama3.2)")
 chat_assistant.ui = BaseAssistantUI(chat_assistant)
-#rag_assistant = RAGAssistant("Ollama (llama3.2)")
+rag_assistant = RAGAssistant("Ollama (llama3.2)")
 summarization_assistant = SummarizationAssistant("Ollama (llama3.2)")
 transcription_assistant = TranscriptionAssistant(model_size="base")
 
