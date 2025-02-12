@@ -228,50 +228,89 @@ def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
         return f"An error occurred while loading documents: {str(e)}", None
 
 # Wrapper function for Gradio interface RAG_assistant:
-async def rag_wrapper(message, history, model_choice, embedding_choice,
-                      chunk_size, chunk_overlap, temperature, num_similar_docs,
-                      max_tokens, urls, files, language, prompt_info,
-                      history_flag, retrieval_method):
-
-    # Create the embedding model based on the choice
-    embedding_model = get_embedding_model(embedding_choice)
-
-    rag_assistant = RAGAssistant(
-        model_name=model_choice,
-        embedding_model=embedding_choice,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        temperature=temperature,
-        num_similar_docs=num_similar_docs,
-        language=language,
-        max_tokens=max_tokens
-    )
-
+async def rag_wrapper(
+    message: Union[str, Dict],
+    history: List[Dict],
+    model_choice: str,
+    embedding_choice: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    temperature: float,
+    num_similar_docs: int,
+    max_tokens: int,
+    urls: str,
+    files: List[gr.File],
+    language_choice: str,
+    prompt_info: Optional[str],
+    history_flag: bool,
+    retrieval_method: str
+) -> AsyncGenerator[List[Dict[str, str]], None]:
+    """
+    Updated RAG wrapper to match chat implementation style and Gradio v5 features.
+    """
     try:
-        logger.info("Setting up vectorstore")
-        content_loader = EnhancedContentLoader(chunk_size, chunk_overlap)
-        
-        logger.debug(f"Type of files: {type(files)}")
-        if files:
-            logger.debug(f"Number of files: {len(files)}")
-            logger.debug(f"Type of first file: {type(files[0])}")
-            logger.debug(f"Attributes of first file: {dir(files[0])}")
-            
-        docs = content_loader.load_and_split_documents(
-            file_paths=files, urls=urls, chunk_size=chunk_size, 
-            chunk_overlap=chunk_overlap)        
-        rag_assistant.setup_vectorstore(docs)
-        rag_assistant.prompt_template = prompt_info
-        rag_assistant.use_history = history_flag
-
-        logger.info("Querying RAG assistant")
-        result = await rag_assistant.query(
-            message, history if history_flag else None
+        # Initialize RAG assistant (singleton ensures persistence)
+        rag_assistant = RAGAssistant(
+            model_name=model_choice,
+            embedding_model=embedding_choice,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            temperature=temperature,
+            num_similar_docs=num_similar_docs,
+            language=language_choice,
+            max_tokens=max_tokens,
+            retrieval_method=retrieval_method
         )
-        return result
+
+        # Create UI wrapper
+        rag_ui = RAGAssistantUI(rag_assistant)
+
+        # Initialize message processor
+        message_processor = MessageProcessor()
+
+        # Process message and history to Gradio format
+        if isinstance(message, str):
+            gradio_message = GradioMessage(role="user", content=message)
+        else:
+            gradio_message = GradioMessage(role="user", content=message.get("content", ""))
+
+        # Convert history to proper format if needed
+        current_history = list(history) if history else []
+
+        # Process through UI layer
+        async for response in rag_ui.process_gradio_message(
+            message=gradio_message,
+            history=current_history,
+            model_choice=model_choice,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            files=files,
+            use_context=True,
+            history_flag=history_flag,
+            prompt_info=prompt_info,
+            language_choice=language_choice
+        ):
+            if isinstance(response, dict) and "content" in response:
+                current_history.append(response)
+                yield current_history
+            elif isinstance(response, str):
+                current_history.append({
+                    "role": "assistant",
+                    "content": response
+                })
+                yield current_history
+
     except Exception as e:
-        logger.error(f"Error in RAG function: {str(e)}")
-        return f"An error occurred: {str(e)}"
+        logger.error(f"Error in RAG wrapper: {str(e)}")
+        error_msg = (
+            "Er is een fout opgetreden. Probeer het opnieuw."
+            if language_choice.lower() == "dutch"
+            else "An error occurred. Please try again."
+        )
+        yield [
+            {"role": "user", "content": str(message)},
+            {"role": "assistant", "content": error_msg}
+        ]
 
 # Wrapper function for Gradio interface summarize_assistant:
 async def summarize_wrapper(

@@ -141,6 +141,7 @@ class MessageProcessor(BaseMessageProcessor):
     async def process_message(
         self,
         message: GradioMessage,
+        assistant: Any,
         history: List[GradioMessage],
         model_choice: str,
         prompt_info: Optional[str] = None,
@@ -150,7 +151,21 @@ class MessageProcessor(BaseMessageProcessor):
         max_tokens: Optional[int] = None,
         use_context: bool = True
     ) -> AsyncGenerator[GradioMessage, None]:
-        """Process messages with proper format handling"""
+        """
+        Process messages with proper format handling
+        
+        Args:
+            message: The message to process
+            assistant: The assistant instance that will handle the message
+            history: Chat history in Gradio format
+            model_choice: Name of the model to use
+            prompt_info: Optional prompt template name
+            language_choice: Optional language selection
+            history_flag: Whether to include chat history
+            temperature: Optional temperature parameter
+            max_tokens: Optional max tokens parameter
+            use_context: Whether to use document context
+        """
         try:
             # Convert current message to LangChain format
             langchain_message = await self.gradio_to_langchain(message)
@@ -161,7 +176,7 @@ class MessageProcessor(BaseMessageProcessor):
                 langchain_history = await self.convert_history(history, to_format="langchain")
             
             # Get streaming response from chat assistant
-            async for chunk in chat_assistant.chat(
+            async for chunk in assistant.query(
                 message=langchain_message,
                 history=langchain_history,
                 prompt_info=prompt_info,

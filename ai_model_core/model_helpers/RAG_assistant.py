@@ -40,6 +40,7 @@ from ..config.settings import load_config
 
 message_processor = MessageProcessor()
 
+logger = logging.getLogger(__name__)
 
 class State(TypedDict):
     input: str
@@ -139,6 +140,16 @@ class RAGAssistant:
     def graph(self):
         """Access the class-level graph."""
         return self._graph
+    
+    @property
+    def vectorstore(self):
+        """Access the class-level vectorstore."""
+        return self._vectorstore
+
+    @property
+    def is_vectorstore_ready(self):
+        """Check if vectorstore is initialized and ready."""
+        return self._vectorstore is not None and self.retriever is not None
 
     def process_content(
         self,
@@ -147,7 +158,7 @@ class RAGAssistant:
     ) -> str:
         """
         Direct document processing method. Alternative to using the wrapper.
-        Useful for different RAG techniques that might need direct control.
+        Useful for applying other RAG techniques that might need direct control.
         
         Args:
             url_input: URLs to process
@@ -182,7 +193,7 @@ class RAGAssistant:
 
     def setup_vectorstore_sync(self, docs: List[Document]) -> None:
         """
-        Synchronous version of vectorstore setup.
+        Synchronous version of vectorstore setup for direct use in gradio app.
         Useful for direct integration and simpler RAG techniques.
         
         Args:
@@ -373,6 +384,7 @@ class RAGAssistant:
         self,
         message: Union[str, Dict, GradioMessage, BaseMessage],
         history: Optional[List[Union[Dict, GradioMessage, BaseMessage]]] = None,
+        prompt_template: Optional[str] = None,
         stream: bool = True
     ) -> AsyncGenerator[GradioMessage, None]:
         """
@@ -381,6 +393,7 @@ class RAGAssistant:
         Args:
             message: User message in various formats
             history: Optional chat history
+            prompt_template: Optional custom prompt template name
             stream: Whether to stream the response
         """
         try:
@@ -427,7 +440,18 @@ class RAGAssistant:
             context_text = "\n\n".join(doc.page_content for doc in relevant_docs)
             initial_state["context"] = context_text
 
-            # Run graph workflow
+            # Select appropriate prompt template
+            if prompt_template:
+                # Use custom prompt template if provided
+                custom_prompt = get_prompt_template(prompt_template, self.config)
+                chain = custom_prompt | self._get_model_chain()
+            else:
+                # Fall back to base RAG template
+                base_template = self._get_base_rag_template()
+                base_prompt = ChatPromptTemplate.from_template(base_template)
+                chain = base_prompt | self._get_model_chain()
+
+            # Run graph workflow with selected prompt
             if stream:
                 async for event in self.graph_runnable.astream(initial_state):
                     if "answer" in event:
@@ -448,22 +472,6 @@ class RAGAssistant:
                 role="assistant", 
                 content=f"An error occurred: {str(e)}"
             )
-
-    def setup_graph(self):
-        """Set up the processing graph for the assistant."""
-        try:
-            self.graph.add_node("retrieve_context", self.retrieve_context)
-            self.graph.add_node("generate_answer", self.generate_answer)
-
-            self.graph.add_edge("retrieve_context", "generate_answer")
-            self.graph.add_edge("generate_answer", END)
-
-            self.graph_runnable = self.graph.compile()
-            logger.info("Graph workflow setup completed")
-                
-        except Exception as e:
-            logger.error(f"Error setting up graph: {str(e)}")
-            raise
     
     def _get_base_rag_template(self):
         return (
@@ -489,3 +497,18 @@ class RAGAssistant:
             "I apologize, but I couldn't generate a response. "
             "Please try rephrasing your question or providing more context."
         )
+
+    def reset_vectorstore(self) -> None:
+            """
+            Reset the vectorstore and retriever to their initial state.
+            This will clear all documents and embeddings from memory.
+            """
+            try:
+                logger.info("Resetting vectorstore and retriever")
+                # Reset class-level vectorstore (since we're using singleton pattern)
+                self.__class__._vectorstore = None
+                self.retriever = None
+                return "Vectorstore and retriever have been reset successfully."
+            except Exception as e:
+                logger.error(f"Error resetting vectorstore: {str(e)}")
+                raise ValueError(f"Failed to reset vectorstore: {str(e)}")

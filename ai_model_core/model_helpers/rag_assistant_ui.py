@@ -9,6 +9,7 @@ from .RAG_assistant import RAGAssistant
 from .base_assistant_ui import BaseAssistantUI
 from ..shared_utils.message_processing import MessageProcessor
 from ..shared_utils.message_types import GradioMessage
+from ..shared_utils.factory import update_model as factory_update_model
 
 logger = logging.getLogger(__name__)
 
@@ -173,22 +174,22 @@ class RAGAssistantUI(RAGAssistant, BaseAssistantUI):
             return {"role": response.role, "content": response.content}
         return {"role": "assistant", "content": str(response)}
 
-    async def update_model(
-        self,
-        model_choice: str
-    ) -> None:
+    async def update_model(self, model_choice: str) -> None:
         """
         Update the model if a different one is selected.
         
         Args:
             model_choice: Name of the model to use
         """
-        # Only update if model changed
-        if self.model_choice != model_choice:
-            new_model = await self.update_model(model_choice)
+        try:
+            new_model = await factory_update_model(model_choice, self.model_choice)
             if new_model:
                 self.model_local = new_model
                 self.model_choice = model_choice
+                logger.info(f"Model updated to {model_choice}")
+        except Exception as e:
+            logger.error(f"Error updating model: {str(e)}")
+            raise
 
     def set_temperature(
         self,
