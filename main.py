@@ -247,30 +247,38 @@ async def rag_wrapper(
     language_choice: str,
     prompt_info: Optional[str],
     history_flag: bool,
-    retrieval_method: str
+    retrieval_method: str,
+    documents: Optional[List[Document]] = None
 ) -> AsyncGenerator[List[Dict[str, str]], None]:
     """
     Updated RAG wrapper to comply with Gradio v5 message structure and features.
     """
     try:
-        # Initialize content loader
-        content_loader = EnhancedContentLoader(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
-        )
+        # Initialize message processor
+        message_processor = MessageProcessor()
         
-        # Extract message text and handle files
-        message_text = ""
+        # Format the input message using MessageProcessor
         if isinstance(message, dict):
-            message_text = message.get("text", "").strip()
+            gradio_message = GradioMessage(
+                role="user",
+                content=message.get("text", "").strip()
+            )
         else:
-            message_text = str(message).strip()
+            gradio_message = GradioMessage(
+                role="user",
+                content=str(message).strip()
+            )
 
         # Start building chat history
         current_history = list(history) if history else []
         
-        # Add user and assistant messages to history
-        current_history.append({"role": "user", "content": message_text})
+        # Add the user message using proper format
+        current_history.append({
+            "role": gradio_message.role,
+            "content": gradio_message.content
+        })
+        
+        # Add initial empty assistant message
         accumulated_response = ""
         assistant_message = {"role": "assistant", "content": accumulated_response}
         current_history.append(assistant_message)
@@ -305,35 +313,17 @@ async def rag_wrapper(
                 retrieval_method=retrieval_method
             )
             
-            # Process files
-            if files:
-                file_paths = [f.name for f in files if hasattr(f, 'name')]
-                if file_paths:
-                    # Load and split documents
-                    try:
-                        docs = content_loader.load_and_split_documents(
-                            file_paths=file_paths,
-                            urls=urls if urls else None,
-                            chunk_size=chunk_size,
-                            chunk_overlap=chunk_overlap
-                        )
-                        
-                        # Setup vectorstore asynchronously
-                        await rag_ui.setup_vectorstore(
-                            docs,
-                            chunk_size=chunk_size,
-                            chunk_overlap=chunk_overlap
-                        )
-                        
-                    except Exception as e:
-                        logger.error(f"Error processing documents: {str(e)}")
-                        assistant_message["content"] = f"Error processing documents: {str(e)}"
-                        yield current_history
-                        return
+            # Setup vectorstore with provided documents if any
+            if documents:
+                await rag_ui.setup_vectorstore(
+                    documents,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap
+                )
             
-            # Process through UI layer using accumulated response pattern
+            # Process through UI layer using message processor
             async for response in rag_ui.query(
-                message=message_text,
+                message=gradio_message,  # Pass the properly formatted GradioMessage
                 history=current_history if history_flag else [],
                 prompt_template=prompt_info,
                 stream=True
@@ -346,7 +336,7 @@ async def rag_wrapper(
                     accumulated_response += response
                     assistant_message["content"] = accumulated_response
                     yield current_history
-
+                                            
         except Exception as e:
             logger.error(f"Error in model response: {str(e)}")
             error_msg = (
