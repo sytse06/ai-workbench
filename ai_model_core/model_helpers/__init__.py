@@ -2,6 +2,7 @@
 from .chat_assistant import ChatAssistant
 from .chat_assistant_ui import ChatAssistantUI, BaseAssistantUI
 from .RAG_assistant import RAGAssistant
+from .rag_assistant_ui import RAGAssistantUI
 from .summarize_assistant import SummarizationAssistant
 from .transcription_assistant import (
     TranscriptionAssistant,
@@ -28,6 +29,7 @@ __all__ = [
     'ChatAssistant',
     'ChatAssistantUI',
     'RAGAssistant',
+    'RAGAssistantUI',
     'SummarizationAssistant',
     'TranscriptionAssistant',
     'TranscriptionContext',

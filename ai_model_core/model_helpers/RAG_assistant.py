@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 # Third-party imports
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, START, END
 from langchain.schema import (
     Document,
     Document, 
@@ -35,6 +35,13 @@ from ..shared_utils.factory import (
 )
 from ..shared_utils.prompt_utils import get_prompt_template
 from ..shared_utils.message_processing import MessageProcessor
+from ..shared_utils.message_types import (
+    BaseMessageProcessor,
+    GradioMessage,
+    GradioContent,
+    GradioFileContent,
+    GradioRole
+)
 from ..shared_utils.utils import EnhancedContentLoader
 from ..config.settings import load_config
 
@@ -56,7 +63,8 @@ class RAGAssistant:
     Implements singleton pattern to maintain vectorstore persistence across instances.
     """
     _instance = None
-    _vectorstore = None  # Class-level vectorstore for persistence
+    _vectorstore = None
+    _graph = None
     
     def __new__(cls, *args, **kwargs):
         """Ensure single instance to maintain vectorstore persistence."""
@@ -119,13 +127,34 @@ class RAGAssistant:
         self.setup_graph()
         
         self._initialized = True
+    
+    @classmethod
+    def get_graph(cls):
+        """Class method to access the graph."""
+        return cls._graph
 
     def setup_graph(self):
         """Set up the processing graph for the assistant."""
         try:
-            self.graph.add_node("retrieve_context", self.retrieve_context)
-            self.graph.add_node("generate_answer", self.generate_answer)
-
+            # Define nodes with lambda functions for state handling
+            self.graph.add_node(
+                "retrieve_context",
+                lambda state: {
+                    **state,
+                    "context": self.retrieve_context(state["question"])
+                }
+            )
+            
+            self.graph.add_node(
+                "generate_answer",
+                lambda state: {
+                    **state,
+                    **self.generate_answer(state)
+                }
+            )
+            
+            # Define the flow
+            self.graph.add_edge(START, "retrieve_context")
             self.graph.add_edge("retrieve_context", "generate_answer")
             self.graph.add_edge("generate_answer", END)
 
@@ -139,7 +168,7 @@ class RAGAssistant:
     @property
     def graph(self):
         """Access the class-level graph."""
-        return self._graph
+        return self.__class__._graph
     
     @property
     def vectorstore(self):

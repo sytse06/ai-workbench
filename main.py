@@ -24,12 +24,14 @@ from langchain_core.documents import Document
 
 # Local imports
 from ai_model_core.model_helpers import (
+    BaseAssistantUI,
+    ChatAssistantUI,
     ChatAssistant,
+    RAGAssistantUI, 
     RAGAssistant, 
     SummarizationAssistant,
     TranscriptionAssistant,
-    TranscriptionContext,
-    BaseAssistantUI
+    TranscriptionContext
 )
 from ai_model_core.shared_utils.utils import EnhancedContentLoader
 from ai_model_core.shared_utils.message_processing import MessageProcessor
@@ -39,8 +41,6 @@ from ai_model_core.shared_utils.message_types import (
     GradioFileContent,
     GradioRole
 )
-from ai_model_core.model_helpers.chat_assistant import ChatAssistant
-from ai_model_core.model_helpers.base_assistant_ui import BaseAssistantUI
 from ai_model_core.shared_utils.factory import (
     get_model, 
     get_embedding_model, 
@@ -85,7 +85,16 @@ logger.propagate = False
 # Initialize assistants with default models
 chat_assistant = ChatAssistant("Ollama (llama3.2)")
 chat_assistant.ui = BaseAssistantUI(chat_assistant)
-rag_assistant = RAGAssistant("Ollama (llama3.2)")
+#The RAGAssistantUI class inherits from RAGAssistant (and BaseAssistantUI)
+#It handles all the parameter updates internally through its process_gradio_message method
+rag_assistant = RAGAssistant(
+    model_name="Ollama (llama3.2)",  # Only specify what's really needed as default
+    embedding_model="nomic-embed-text"
+)
+rag_ui = RAGAssistantUI(
+    model_name="Ollama (llama3.2)",
+    embedding_model="nomic-embed-text"
+)
 summarization_assistant = SummarizationAssistant("Ollama (llama3.2)")
 transcription_assistant = TranscriptionAssistant(model_size="base")
 
@@ -249,21 +258,8 @@ async def rag_wrapper(
     Updated RAG wrapper to match chat implementation style and Gradio v5 features.
     """
     try:
-        # Initialize RAG assistant (singleton ensures persistence)
-        rag_assistant = RAGAssistant(
-            model_name=model_choice,
-            embedding_model=embedding_choice,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            temperature=temperature,
-            num_similar_docs=num_similar_docs,
-            language=language_choice,
-            max_tokens=max_tokens,
-            retrieval_method=retrieval_method
-        )
-
-        # Create UI wrapper
-        rag_ui = RAGAssistantUI(rag_assistant)
+        # Update the existing singleton instance's parameters
+        await rag_ui.update_model(model_choice)
 
         # Initialize message processor
         message_processor = MessageProcessor()
@@ -660,12 +656,18 @@ with gr.Blocks() as demo:
                 )
                 with gr.Accordion("RAG Options", open=False):
                     model_choice = gr.Dropdown(
-                        ["Ollama (LLama3.2)", "Claude Sonnet",
-                            "Claude Sonnet beta", "Deepseek v3",
-                            "Mistral (large)", "Mistral (small)",
-                            "Ollama (phi3.5)", "OpenAI GPT-4o-mini"],
+                    choices=[
+                        "Ollama (llama3.2)",
+                        "Ollama (phi4)",
+                        "Ollama (llava)",
+                        "Ollama (qwen2.5:14b)",
+                        "Deepseek v3",
+                        "OpenAI GPT-4o-mini",
+                        "OpenAI o3-mini",
+                        "Claude Sonnet",
+                    ],
                         label="Choose Model",
-                        value="Ollama (LLama3.2)"
+                        value="Ollama (llama3.2)"
                     )
                     embedding_choice = gr.Dropdown(
                         [
