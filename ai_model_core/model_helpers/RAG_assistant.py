@@ -34,6 +34,7 @@ from ..shared_utils.factory import (
     update_model
 )
 from ..shared_utils.prompt_utils import get_prompt_template
+from ..shared_utils.factory import get_model, update_model
 from ..shared_utils.message_processing import MessageProcessor
 from ..shared_utils.message_types import (
     BaseMessageProcessor,
@@ -127,6 +128,19 @@ class RAGAssistant:
         self.setup_graph()
         
         self._initialized = True
+    
+    async def update_model(self, model_choice: str) -> None:
+        """Update the model if a different one is selected."""
+        try:
+            if self.model_choice != model_choice:
+                new_model = await factory_update_model(model_choice, self.model_choice)
+                if new_model:
+                    self.model_local = new_model
+                    self.model_choice = model_choice
+                    logger.info(f"Model updated to {model_choice}")
+        except Exception as e:
+            logger.error(f"Error updating model: {str(e)}")
+            raise
     
     @classmethod
     def get_graph(cls):

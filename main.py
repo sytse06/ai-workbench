@@ -85,16 +85,11 @@ logger.propagate = False
 # Initialize assistants with default models
 chat_assistant = ChatAssistant("Ollama (llama3.2)")
 chat_assistant.ui = BaseAssistantUI(chat_assistant)
-#The RAGAssistantUI class inherits from RAGAssistant (and BaseAssistantUI)
-#It handles all the parameter updates internally through its process_gradio_message method
 rag_assistant = RAGAssistant(
-    model_name="Ollama (llama3.2)",  # Only specify what's really needed as default
-    embedding_model="nomic-embed-text"
-)
-rag_ui = RAGAssistantUI(
     model_name="Ollama (llama3.2)",
     embedding_model="nomic-embed-text"
 )
+rag_assistant.ui = RAGAssistantUI(rag_assistant)
 summarization_assistant = SummarizationAssistant("Ollama (llama3.2)")
 transcription_assistant = TranscriptionAssistant(model_size="base")
 
@@ -255,59 +250,124 @@ async def rag_wrapper(
     retrieval_method: str
 ) -> AsyncGenerator[List[Dict[str, str]], None]:
     """
-    Updated RAG wrapper to match chat implementation style and Gradio v5 features.
+    Updated RAG wrapper to comply with Gradio v5 message structure and features.
     """
     try:
-        # Update the existing singleton instance's parameters
-        await rag_ui.update_model(model_choice)
-
-        # Initialize message processor
-        message_processor = MessageProcessor()
-
-        # Process message and history to Gradio format
-        if isinstance(message, str):
-            gradio_message = GradioMessage(role="user", content=message)
+        # Initialize content loader
+        content_loader = EnhancedContentLoader(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap
+        )
+        
+        # Extract message text and handle files
+        message_text = ""
+        if isinstance(message, dict):
+            message_text = message.get("text", "").strip()
         else:
-            gradio_message = GradioMessage(role="user", content=message.get("content", ""))
+            message_text = str(message).strip()
 
-        # Convert history to proper format if needed
+        # Start building chat history
         current_history = list(history) if history else []
+        
+        # Add user and assistant messages to history
+        current_history.append({"role": "user", "content": message_text})
+        accumulated_response = ""
+        assistant_message = {"role": "assistant", "content": accumulated_response}
+        current_history.append(assistant_message)
+        
+        # Initial yield to ensure the generator starts
+        yield current_history
+        
+        try:
+           # Initialize RAG assistant with UI
+            rag_assistant = RAGAssistant(
+                model_name=model_choice,
+                embedding_model=embedding_choice,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                temperature=temperature,
+                num_similar_docs=num_similar_docs,
+                language=language_choice,
+                max_tokens=max_tokens,
+                retrieval_method=retrieval_method
+            )
+            
+            # Create UI layer
+            rag_ui = RAGAssistantUI(
+                model_name=model_choice,
+                embedding_model=embedding_choice,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                temperature=temperature,
+                num_similar_docs=num_similar_docs,
+                language=language_choice,
+                max_tokens=max_tokens,
+                retrieval_method=retrieval_method
+            )
+            
+            # Process files
+            if files:
+                file_paths = [f.name for f in files if hasattr(f, 'name')]
+                if file_paths:
+                    # Load and split documents
+                    try:
+                        docs = content_loader.load_and_split_documents(
+                            file_paths=file_paths,
+                            urls=urls if urls else None,
+                            chunk_size=chunk_size,
+                            chunk_overlap=chunk_overlap
+                        )
+                        
+                        # Setup vectorstore asynchronously
+                        await rag_ui.setup_vectorstore(
+                            docs,
+                            chunk_size=chunk_size,
+                            chunk_overlap=chunk_overlap
+                        )
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing documents: {str(e)}")
+                        assistant_message["content"] = f"Error processing documents: {str(e)}"
+                        yield current_history
+                        return
+            
+            # Process through UI layer using accumulated response pattern
+            async for response in rag_ui.query(
+                message=message_text,
+                history=current_history if history_flag else [],
+                prompt_template=prompt_info,
+                stream=True
+            ):
+                if isinstance(response, dict) and "content" in response:
+                    accumulated_response += response["content"]
+                    assistant_message["content"] = accumulated_response
+                    yield current_history
+                elif isinstance(response, str):
+                    accumulated_response += response
+                    assistant_message["content"] = accumulated_response
+                    yield current_history
 
-        # Process through UI layer
-        async for response in rag_ui.process_gradio_message(
-            message=gradio_message,
-            history=current_history,
-            model_choice=model_choice,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            files=files,
-            use_context=True,
-            history_flag=history_flag,
-            prompt_info=prompt_info,
-            language_choice=language_choice
-        ):
-            if isinstance(response, dict) and "content" in response:
-                current_history.append(response)
-                yield current_history
-            elif isinstance(response, str):
-                current_history.append({
-                    "role": "assistant",
-                    "content": response
-                })
-                yield current_history
+        except Exception as e:
+            logger.error(f"Error in model response: {str(e)}")
+            error_msg = (
+                "Er is een fout opgetreden. Probeer het opnieuw."
+                if language_choice.lower() == "dutch"
+                else "An error occurred. Please try again."
+            )
+            current_history[-1] = {"role": "assistant", "content": error_msg}
+            yield current_history
 
     except Exception as e:
-        logger.error(f"Error in RAG wrapper: {str(e)}")
-        error_msg = (
-            "Er is een fout opgetreden. Probeer het opnieuw."
-            if language_choice.lower() == "dutch"
-            else "An error occurred. Please try again."
-        )
+        logger.error(f"General RAG wrapper error: {str(e)}")
         yield [
-            {"role": "user", "content": str(message)},
-            {"role": "assistant", "content": error_msg}
+            {"role": "user", "content": message_text},
+            {"role": "assistant", "content": "An error occurred. Please try again."}
         ]
-
+    finally:
+        # Cleanup temporary files
+        if 'content_loader' in locals():
+            content_loader.cleanup()
+            
 # Wrapper function for Gradio interface summarize_assistant:
 async def summarize_wrapper(
     loaded_docs: Union[List[Document], List[str], None],
@@ -670,7 +730,7 @@ with gr.Blocks() as demo:
                         value="Ollama (llama3.2)"
                     )
                     embedding_choice = gr.Dropdown(
-                        [
+                        choices=[
                                 "nomic-embed-text",
                                 "e5-base",
                                 "bge-large",
