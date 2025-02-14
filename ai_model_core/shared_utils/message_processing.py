@@ -24,6 +24,7 @@ from langchain.schema import (
     SystemMessage, 
     BaseMessage
 )
+import asyncio
 
 # Local imports
 from .message_types import (
@@ -40,6 +41,68 @@ logger = logging.getLogger(__name__)
 class MessageProcessor(BaseMessageProcessor):
     """Implementation of message processing logic"""
     
+    async def get_message_text(
+        self,
+        message: Union[str, Dict[str, Any], GradioMessage, BaseMessage]
+    ) -> str:
+        """Extract the text content from various message formats."""
+        try:
+            if isinstance(message, str):
+                return message.strip()
+                
+            if isinstance(message, dict):
+                # Handle both Gradio's chat format and our custom format
+                if isinstance(message.get("content"), dict):
+                    return message["content"].get("text", "").strip()
+                return message.get("content", message.get("text", "")).strip()
+                
+            if isinstance(message, GradioMessage):
+                if isinstance(message.content, str):
+                    return message.content.strip()
+                if isinstance(message.content, dict):
+                    return message.content.get("text", "").strip()
+                return ""
+                
+            if isinstance(message, BaseMessage):
+                return message.content.strip()
+                
+            return str(message).strip()
+            
+        except Exception as e:
+            logger.error(f"Error extracting message text: {str(e)}")
+            return ""
+        
+        async def format_user_message(
+            self,
+            message: Union[str, Dict[str, Any], GradioMessage],
+            files: Optional[List[Any]] = None
+        ) -> GradioMessage:
+            """Format raw user input into a GradioMessage"""
+            if isinstance(message, GradioMessage):
+                return message
+                
+            if isinstance(message, str):
+                return GradioMessage(role="user", content=message.strip())
+                
+            if isinstance(message, dict):
+                return GradioMessage.from_dict(message)
+                
+            raise ValueError(f"Unsupported message format: {type(message)}")
+
+    async def format_assistant_message(
+        self,
+        content: Union[str, Dict[str, Any]],
+        metadata: Optional[Dict] = None
+    ) -> GradioMessage:
+        """Format assistant response into a GradioMessage"""
+        if isinstance(content, str):
+            return GradioMessage(role="assistant", content=content)
+            
+        if isinstance(content, dict) and "content" in content:
+            return GradioMessage(role="assistant", content=content["content"])
+            
+        raise ValueError(f"Unsupported assistant content format: {type(content)}")
+
     async def process_message_content(
         self,
         content: GradioContent
@@ -49,7 +112,7 @@ class MessageProcessor(BaseMessageProcessor):
             return content.strip()
             
         if isinstance(content, dict) and "path" in content:
-            # Single file content
+            # Handle file content
             try:
                 async with aiofiles.open(content["path"], 'rb') as f:
                     await f.read(1)  # Verify file is readable
@@ -59,7 +122,7 @@ class MessageProcessor(BaseMessageProcessor):
                 return ""
                 
         if isinstance(content, list):
-            # Mixed content (text + files)
+            # Handle mixed content (text + files)
             processed_parts = []
             for item in content:
                 if isinstance(item, str):
@@ -74,15 +137,21 @@ class MessageProcessor(BaseMessageProcessor):
                         continue
             return " ".join(processed_parts)
             
-        return ""  # Return empty string for unsupported content types
+        return ""
 
     async def gradio_to_langchain(
         self,
-        message: GradioMessage
+        message: Union[GradioMessage, Dict[str, Any], str]
     ) -> BaseMessage:
         """Convert Gradio message to LangChain format"""
+        # First ensure we have a GradioMessage
+        if not isinstance(message, GradioMessage):
+            message = await self.format_user_message(message)
+            
+        # Process the content
         content = await self.process_message_content(message.content)
         
+        # Convert to appropriate LangChain message type
         if message.role == "user":
             return HumanMessage(content=content)
         elif message.role == "assistant":
@@ -97,7 +166,6 @@ class MessageProcessor(BaseMessageProcessor):
         message: BaseMessage
     ) -> GradioMessage:
         """Convert LangChain message to Gradio format"""
-        role: GradioRole
         if isinstance(message, HumanMessage):
             role = "user"
         elif isinstance(message, AIMessage):
@@ -111,7 +179,7 @@ class MessageProcessor(BaseMessageProcessor):
         
     async def convert_history(
         self,
-        history: List[Union[GradioMessage, BaseMessage]],
+        history: List[Union[Dict, GradioMessage, BaseMessage]],
         to_format: Literal["gradio", "langchain"] = "gradio"
     ) -> List[Union[GradioMessage, BaseMessage]]:
         """Convert chat history between formats"""
@@ -124,12 +192,15 @@ class MessageProcessor(BaseMessageProcessor):
             if to_format == "gradio":
                 if isinstance(message, BaseMessage):
                     converted_history.append(self.langchain_to_gradio(message))
+                elif isinstance(message, (dict, str)):
+                    gradio_message = await self.format_user_message(message)
+                    converted_history.append(gradio_message)
                 elif isinstance(message, GradioMessage):
                     converted_history.append(message)
                 else:
                     raise ValueError(f"Unsupported message type: {type(message)}")
             else:  # to_format == "langchain"
-                if isinstance(message, GradioMessage):
+                if isinstance(message, (GradioMessage, dict, str)):
                     converted_history.append(await self.gradio_to_langchain(message))
                 elif isinstance(message, BaseMessage):
                     converted_history.append(message)

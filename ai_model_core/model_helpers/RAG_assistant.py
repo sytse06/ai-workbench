@@ -34,6 +34,7 @@ from ..shared_utils.factory import (
     update_model
 )
 from ..shared_utils.prompt_utils import get_prompt_template
+from ..shared_utils.factory import update_model as factory_update_model
 from ..shared_utils.factory import get_model, update_model
 from ..shared_utils.message_processing import MessageProcessor
 from ..shared_utils.message_types import (
@@ -423,97 +424,48 @@ class RAGAssistant:
         answer = chain.invoke({"context": context, "question": question})
         return {"answer": answer, "all_actions": ["answer_generated"]}
 
-async def query(
-    self,
-    message: Union[str, Dict, GradioMessage, BaseMessage],
-    history: Optional[List[Union[Dict, GradioMessage, BaseMessage]]] = None,
-    prompt_template: Optional[str] = None,
-    stream: bool = True
-) -> AsyncGenerator[GradioMessage, None]:
-    """
-    Process a query through the RAG pipeline using Langgraph workflow.
-    """
-    try:
-        if not self.is_vectorstore_ready:
-            yield GradioMessage(
-                role="assistant",
-                content="Vector store not initialized. Please load documents first."
-            )
-            return
+    async def query(
+        self,
+        message: Union[str, Dict, GradioMessage, BaseMessage],
+        history: Optional[List[Union[Dict, GradioMessage, BaseMessage]]] = None,
+        prompt_template: Optional[str] = None,
+        stream: bool = True
+    ) -> AsyncGenerator[Union[str, Dict[str, str]], None]:
+        """Process a query through the RAG pipeline using Langgraph workflow."""
+        try:
+            if not self.is_vectorstore_ready:
+                yield {"role": "assistant", "content": "Vector store not initialized. Please load documents first."}
+                return
 
-        # Convert message to LangChain format
-        if isinstance(message, dict):
-            # Handle dict messages with potential 'text' field
-            message_content = message.get("text", message.get("content", ""))
-            if isinstance(message_content, dict):
-                message_content = message_content.get("text", "")
-            gradio_message = GradioMessage(role="user", content=str(message_content).strip())
-            langchain_message = await self.message_processor.gradio_to_langchain(gradio_message)
-        elif isinstance(message, str):
-            gradio_message = GradioMessage(role="user", content=message)
-            langchain_message = await self.message_processor.gradio_to_langchain(gradio_message)
-        elif isinstance(message, GradioMessage):
-            langchain_message = await self.message_processor.gradio_to_langchain(message)
-        elif isinstance(message, BaseMessage):
-            langchain_message = message
-        else:
-            raise ValueError(f"Unsupported message type: {type(message)}")
+            # Get the raw message content
+            message_text = await self.message_processor.get_message_text(message)
 
-        # Convert history if provided
-        langchain_history = []
-        if history and self.use_history:
-            langchain_history = await self.message_processor.convert_history(
-                history,
-                to_format="langchain"
+            # Initialize graph state
+            initial_state = State(
+                input=message_text,
+                context=[],
+                question=message_text,
+                answer="",
+                all_actions=[]
             )
 
-        # Get query text
-        query = langchain_message.content
+            # Retrieve context and update state
+            relevant_docs = await self.retrieve_context(message_text)
+            context_text = "\n\n".join(doc.page_content for doc in relevant_docs)
+            initial_state["context"] = context_text
 
-        # Initialize graph state
-        initial_state = State(
-            input=query,
-            context=[],
-            question=query,
-            answer="",
-            all_actions=[]
-        )
+            # Run graph workflow
+            if stream:
+                async for event in self.graph_runnable.astream(initial_state):
+                    if "answer" in event:
+                        yield {"role": "assistant", "content": event["answer"]}
+            else:
+                final_state = await self.graph_runnable.ainvoke(initial_state)
+                yield {"role": "assistant", "content": final_state["answer"]}
 
-        # Retrieve context and update state
-        relevant_docs = await self.retrieve_context(query)
-        context_text = "\n\n".join(doc.page_content for doc in relevant_docs)
-        initial_state["context"] = context_text
-
-        # Select appropriate prompt template
-        if prompt_template:
-            custom_prompt = get_prompt_template(prompt_template, self.config)
-            chain = custom_prompt | self._get_model_chain()
-        else:
-            base_template = self._get_base_rag_template()
-            base_prompt = ChatPromptTemplate.from_template(base_template)
-            chain = base_prompt | self._get_model_chain()
-
-        # Run graph workflow with selected prompt
-        if stream:
-            async for event in self.graph_runnable.astream(initial_state):
-                if "answer" in event:
-                    yield GradioMessage(
-                        role="assistant",
-                        content=event["answer"]
-                    )
-        else:
-            final_state = await self.graph_runnable.ainvoke(initial_state)
-            yield GradioMessage(
-                role="assistant",
-                content=final_state["answer"]
-            )
-
-    except Exception as e:
-        logger.error(f"Error processing query: {str(e)}")
-        yield GradioMessage(
-            role="assistant", 
-            content=f"An error occurred: {str(e)}"
-        )
+        except Exception as e:
+            logger.error(f"Error in query method: {str(e)}")
+            yield {"role": "assistant", "content": f"An error occurred: {str(e)}"}
             
     def _get_base_rag_template(self):
         return (

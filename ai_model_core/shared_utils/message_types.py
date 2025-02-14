@@ -21,7 +21,7 @@ from langchain.schema import (
 
 # Type definitions for Gradio message structure
 GradioRole = Literal["user", "assistant", "system"]
-GradioFileContent = Dict[str, str]  # {"path": str, "type": str, ...}
+GradioFileContent = Dict[str, str]
 GradioContent = Union[str, GradioFileContent, List[Union[str, GradioFileContent]]]
 
 @dataclass
@@ -29,6 +29,14 @@ class GradioMessage:
     """Type-safe representation of a Gradio message"""
     role: GradioRole
     content: GradioContent
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'GradioMessage':
+        """Create GradioMessage from dictionary format"""
+        return cls(
+            role=data.get("role", "user"),
+            content=data.get("content", "") or data.get("text", "")
+        )
 
 class BaseMessageProcessor:
     """Base class defining the interface for message processing"""

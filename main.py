@@ -250,113 +250,79 @@ async def rag_wrapper(
     retrieval_method: str,
     documents: Optional[List[Document]] = None
 ) -> AsyncGenerator[List[Dict[str, str]], None]:
-    """
-    Updated RAG wrapper to comply with Gradio v5 message structure and features.
-    """
+    """Updated RAG wrapper to comply with Gradio v5 message structure and features."""
     try:
-        # Initialize message processor
-        message_processor = MessageProcessor()
+        # Initialize RAGAssistantUI with all parameters
+        rag_ui = RAGAssistantUI(
+            model_name=model_choice,
+            embedding_model=embedding_choice,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            temperature=temperature,
+            num_similar_docs=num_similar_docs,
+            language=language_choice,
+            max_tokens=max_tokens,
+            retrieval_method=retrieval_method
+        )
         
-        # Format the input message using MessageProcessor
-        if isinstance(message, dict):
-            gradio_message = GradioMessage(
-                role="user",
-                content=message.get("text", "").strip()
+        # Setup vectorstore if documents provided
+        if documents:
+            await rag_ui.setup_vectorstore(
+                documents,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap
             )
-        else:
-            gradio_message = GradioMessage(
-                role="user",
-                content=str(message).strip()
-            )
-
-        # Start building chat history
+        
+        # Process message and maintain chat history
         current_history = list(history) if history else []
+        message_text = (
+            message.get("text", "").strip()
+            if isinstance(message, dict)
+            else str(message).strip()
+        )
         
-        # Add the user message using proper format
+        # Add user message to history
         current_history.append({
-            "role": gradio_message.role,
-            "content": gradio_message.content
+            "role": "user",
+            "content": message_text
         })
         
-        # Add initial empty assistant message
+        # Initialize empty assistant message
         accumulated_response = ""
-        assistant_message = {"role": "assistant", "content": accumulated_response}
+        assistant_message = {
+            "role": "assistant",
+            "content": accumulated_response
+        }
         current_history.append(assistant_message)
         
-        # Initial yield to ensure the generator starts
+        # Initial yield
         yield current_history
         
-        try:
-           # Initialize RAG assistant with UI
-            rag_assistant = RAGAssistant(
-                model_name=model_choice,
-                embedding_model=embedding_choice,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                temperature=temperature,
-                num_similar_docs=num_similar_docs,
-                language=language_choice,
-                max_tokens=max_tokens,
-                retrieval_method=retrieval_method
-            )
-            
-            # Create UI layer
-            rag_ui = RAGAssistantUI(
-                model_name=model_choice,
-                embedding_model=embedding_choice,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                temperature=temperature,
-                num_similar_docs=num_similar_docs,
-                language=language_choice,
-                max_tokens=max_tokens,
-                retrieval_method=retrieval_method
-            )
-            
-            # Setup vectorstore with provided documents if any
-            if documents:
-                await rag_ui.setup_vectorstore(
-                    documents,
-                    chunk_size=chunk_size,
-                    chunk_overlap=chunk_overlap
-                )
-            
-            # Process through UI layer using message processor
-            async for response in rag_ui.query(
-                message=gradio_message,  # Pass the properly formatted GradioMessage
-                history=current_history if history_flag else [],
-                prompt_template=prompt_info,
-                stream=True
-            ):
-                if isinstance(response, dict) and "content" in response:
-                    accumulated_response += response["content"]
-                    assistant_message["content"] = accumulated_response
-                    yield current_history
-                elif isinstance(response, str):
-                    accumulated_response += response
-                    assistant_message["content"] = accumulated_response
-                    yield current_history
-                                            
-        except Exception as e:
-            logger.error(f"Error in model response: {str(e)}")
-            error_msg = (
-                "Er is een fout opgetreden. Probeer het opnieuw."
-                if language_choice.lower() == "dutch"
-                else "An error occurred. Please try again."
-            )
-            current_history[-1] = {"role": "assistant", "content": error_msg}
-            yield current_history
+        # Process through UI layer
+        async for response in rag_ui.query(
+            message=message_text,
+            history=current_history if history_flag else [],
+            prompt_template=prompt_info,
+            stream=True
+        ):
+            if isinstance(response, dict) and "content" in response:
+                accumulated_response += response["content"]
+                assistant_message["content"] = accumulated_response
+                yield current_history
+            elif isinstance(response, str):
+                accumulated_response += response
+                assistant_message["content"] = accumulated_response
+                yield current_history
 
     except Exception as e:
-        logger.error(f"General RAG wrapper error: {str(e)}")
-        yield [
-            {"role": "user", "content": message_text},
-            {"role": "assistant", "content": "An error occurred. Please try again."}
-        ]
-    finally:
-        # Cleanup temporary files
-        if 'content_loader' in locals():
-            content_loader.cleanup()
+        logger.error(f"Error in RAG wrapper: {str(e)}")
+        error_msg = (
+            "Er is een fout opgetreden. Probeer het opnieuw."
+            if language_choice.lower() == "dutch"
+            else "An error occurred. Please try again."
+        )
+        current_history[-1] = {"role": "assistant", "content": error_msg}
+        yield current_history
             
 # Wrapper function for Gradio interface summarize_assistant:
 async def summarize_wrapper(
