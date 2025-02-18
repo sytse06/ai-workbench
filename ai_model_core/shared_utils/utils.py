@@ -2,6 +2,7 @@
 # Standard library imports
 from pathlib import Path
 from typing import (
+    Callable,
     List,
     Generator,
     Literal,
@@ -13,14 +14,16 @@ from typing import (
     Generator, 
     AsyncGenerator
 )
-import gradio as gr
 import os
 import logging
 import mimetypes
 import tempfile
 from urllib.parse import urlparse, parse_qs
+from enum import Enum
+from dataclasses import dataclass
 
 # Third-party imports
+import gradio as gr
 from langchain.schema import Document
 from langchain_community.document_loaders import (
     TextLoader, 
@@ -31,6 +34,7 @@ from langchain_community.document_loaders import (
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
+from langchain.schema import Document
 from pydub import AudioSegment
 import fitz  # PyMuPDF
 from PIL import Image
@@ -38,6 +42,7 @@ import pytesseract
 from urllib.parse import urlparse
 import requests
 import yt_dlp
+import gradio as gr
 
 # Local imports
 from ..config.settings import load_config
@@ -46,8 +51,7 @@ logger = logging.getLogger(__name__)
 
 class EnhancedContentLoader:
     """
-    A versatile content loader that handles multiple file types including text, PDFs, 
-    audio, images and URLs with appropriate preprocessing and document splitting capabilities.
+    A versatile content loader that handles multiple file types.
     """
     
     def __init__(
@@ -79,7 +83,57 @@ class EnhancedContentLoader:
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
-
+    def validate_file_input(
+        self,
+        file_input: Optional[Union[str, List[str], List[Any]]]
+    ) -> Optional[List[str]]:
+        """
+        Validate and process file input into a consistent format.
+        Handles various input types including Gradio file objects.
+        
+        Args:
+            file_input: Raw file input (string, list, or Gradio file objects)
+            
+        Returns:
+            List of validated file paths or None if no valid input
+        """
+        if not file_input:
+            return None
+            
+        # Convert to list if single input
+        if isinstance(file_input, (str, Path)):
+            file_input = [file_input]
+            
+        # Process list of inputs
+        processed_files = []
+        for file_obj in file_input:
+            try:
+                # Handle different input types
+                if isinstance(file_obj, (str, Path)):
+                    file_path = str(file_obj)
+                elif hasattr(file_obj, 'name'):  # Gradio file object
+                    file_path = file_obj.name
+                else:
+                    logger.warning(f"Unsupported file input type: {type(file_obj)}")
+                    continue
+                
+                # Validate file exists and type is supported
+                if not Path(file_path).exists():
+                    logger.warning(f"File not found: {file_path}")
+                    continue
+                    
+                if not self.is_valid_file_type(file_path):
+                    logger.warning(f"Unsupported file type: {file_path}")
+                    continue
+                    
+                processed_files.append(file_path)
+                
+            except Exception as e:
+                logger.error(f"Error processing file input {file_obj}: {str(e)}")
+                continue
+                
+        return processed_files if processed_files else None
+    
     def load_documents(
         self,
         file_paths: Optional[Union[str, List[str], List[Any]]] = None,
@@ -622,3 +676,159 @@ class EnhancedContentLoader:
             logger.info("Temporary files cleaned up successfully")
         except Exception as e:
             logger.error(f"Error cleaning up temporary files: {str(e)}")
+class AssistantType(Enum):
+    """
+    Enum defining different types of assistants that can process content.
+    Each type may have different processing requirements and configurations.
+    
+    Types:
+    CHAT: Basic chat assistant using LLMs
+    RAG: Retrieval-augmented generation assistant
+    SUMMARIZATION: Document summarization assistant
+    TRANSCRIPTION: Audio/video transcription assistant
+    AGENTS: Task-specific agent-based assistants
+    """
+    CHAT = "chat"
+    RAG = "rag"
+    SUMMARIZATION = "summarization"
+    TRANSCRIPTION = "transcription"
+    AGENTS = "agents"
+
+@dataclass
+class ProcessingConfig:
+    """Configuration for content processing per assistant type."""
+    chunk_size: int
+    chunk_overlap: int
+    process_callback: Optional[Callable] = None
+    
+class ContentProcessingComponent:
+    """
+    Component that manages content processing for different assistant types.
+    Handles the transformation and preparation of loaded documents for specific use cases.
+    
+    Works in conjunction with EnhancedContentLoader to:
+    1. Load raw content through EnhancedContentLoader
+    2. Process and prepare content according to assistant-specific requirements
+    3. Apply appropriate processing strategies based on assistant type
+    """
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(ContentProcessingComponent, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
+    def __init__(self):
+        if self._initialized:
+            return
+            
+        self._configs = {}
+        self._content_loader = None
+        self._initialized = True
+        
+    def initialize_loader(
+        self,
+        temp_dir: str = "input/tmp",
+        audio_sample_rate: int = 16000,
+        perform_ocr: bool = True
+    ):
+        """Initialize the underlying EnhancedContentLoader."""
+        self._content_loader = EnhancedContentLoader(
+            temp_dir=temp_dir,
+            audio_sample_rate=audio_sample_rate,
+            perform_ocr=perform_ocr
+        )
+    
+    def register_assistant(
+        self,
+        assistant_type: AssistantType,
+        config: LoaderConfig
+    ):
+        """Register an assistant with its specific configuration."""
+        try:
+            self._configs[assistant_type] = config
+            
+            # Update content loader settings if this is the first registration
+            if self._content_loader is None:
+                self.initialize_loader()
+            
+        except Exception as e:
+            logger.error(f"Error registering assistant {assistant_type}: {str(e)}")
+            raise
+    
+    
+    async def process_documents(
+        self,
+        assistant_type: AssistantType,
+        url_input: Optional[str] = None,
+        file_input: Optional[Union[str, List[str]]] = None,
+        chunk_size: Optional[int] = None,
+        chunk_overlap: Optional[int] = None
+    ) -> Tuple[str, Optional[List[Document]]]:
+        """
+        Process documents according to assistant-specific requirements.
+        
+        Args:
+            assistant_type: Type of assistant
+            url_input: Optional URLs to process
+            file_input: Optional files to process
+            chunk_size: Optional override for chunk size
+            chunk_overlap: Optional override for chunk overlap
+            
+        Returns:
+            Tuple of (status message, processed documents)
+        """
+        try:
+            if assistant_type not in self._configs:
+                return f"Assistant type {assistant_type} not registered.", None
+                
+            config = self._configs[assistant_type]
+            
+            # Process file input
+            processed_files = (
+                file_input if isinstance(file_input, list)
+                else [file_input] if file_input
+                else None
+            )
+
+            # Use provided parameters or fall back to config defaults
+            effective_chunk_size = chunk_size or config.chunk_size
+            effective_chunk_overlap = chunk_overlap or config.chunk_overlap
+            
+            # Update loader parameters
+            self._content_loader.chunk_size = effective_chunk_size
+            self._content_loader.chunk_overlap = effective_chunk_overlap
+            
+            # Load and split documents
+            docs = self._content_loader.load_and_split_documents(
+                file_paths=processed_files,
+                urls=url_input,
+                chunk_size=effective_chunk_size,
+                chunk_overlap=effective_chunk_overlap
+            )
+            
+            if not docs:
+                return "No documents were loaded", None
+            
+            # Call assistant-specific callback if registered
+            if config.process_callback:
+                await config.process_callback(docs)
+            
+            return f"Successfully loaded {len(docs)} document chunks", docs
+            
+        except Exception as e:
+            logger.error(f"Error loading documents: {str(e)}")
+            return f"Error loading documents: {str(e)}", None
+    
+    def get_loader_config(self, assistant_type: AssistantType) -> Optional[LoaderConfig]:
+        """Get the current configuration for an assistant type."""
+        return self._configs.get(assistant_type)
+    
+    @property
+    def content_loader(self) -> EnhancedContentLoader:
+        """Access the underlying EnhancedContentLoader."""
+        if self._content_loader is None:
+            self.initialize_loader()
+        return self._content_loader
+

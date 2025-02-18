@@ -33,7 +33,13 @@ from ai_model_core.model_helpers import (
     TranscriptionAssistant,
     TranscriptionContext
 )
-from ai_model_core.shared_utils.utils import EnhancedContentLoader
+from ai_model_core.shared_utils.utils import (
+    EnhancedContentLoader,
+    EnhancedContentLoader,
+    ContentProcessingComponent,
+    AssistantType,
+    ProcessingConfig
+)
 from ai_model_core.shared_utils.message_processing import MessageProcessor
 from ai_model_core.shared_utils.message_types import (
     GradioMessage,
@@ -81,6 +87,27 @@ logger.addHandler(c_handler)
 logger.addHandler(f_handler)
 logger.propagate = False
 
+# Initialize document loading component during app startup
+def setup_content_processing(app_config: dict) -> ContentProcessingComponent:
+    processor = ContentProcessingComponent()
+    
+    # Register RAG configuration
+    rag_config = ProcessingConfig(
+        chunk_size=app_config.get("rag_chunk_size", 500),
+        chunk_overlap=app_config.get("rag_chunk_overlap", 50),
+        process_callback=rag_assistant.setup_vectorstore_sync
+    )
+    processor.register_assistant(AssistantType.RAG, rag_config)
+    
+    # Register Summarization configuration
+    summary_config = ProcessingConfig(
+        chunk_size=app_config.get("summary_chunk_size", 1000),
+        chunk_overlap=app_config.get("summary_chunk_overlap", 100),
+        process_callback=summarization_assistant.process_documents
+    )
+    processor.register_assistant(AssistantType.SUMMARIZATION, summary_config)
+    
+    return processor
 
 # Initialize assistants with default models
 chat_assistant = ChatAssistant("Ollama (llama3.2)")
@@ -90,6 +117,8 @@ rag_assistant = RAGAssistant(
     embedding_model="nomic-embed-text"
 )
 rag_assistant.ui = RAGAssistantUI(rag_assistant)
+assistant_type_state = gr.State(AssistantType.RAG)
+assistant_type_state = gr.State(AssistantType.SUMMARIZATION)
 summarization_assistant = SummarizationAssistant("Ollama (llama3.2)")
 transcription_assistant = TranscriptionAssistant(model_size="base")
 
@@ -221,14 +250,41 @@ async def chat_wrapper(
             content_loader.cleanup()
                             
 # Wrapper function for loading documents (RAG and summarization)
-def load_documents_wrapper(url_input, file_input, chunk_size, chunk_overlap):
+async def load_documents_wrapper(
+    url_input: str,
+    file_input: Union[str, List[str]],
+    chunk_size: int,
+    chunk_overlap: int,
+    assistant_type: Optional[AssistantType] = None
+) -> Tuple[str, Optional[List[Document]]]:
+    """Wrapper function for loading documents through the component."""
     try:
-        loader = EnhancedContentLoader(chunk_size, chunk_overlap)
-        file_paths = file_input if isinstance(file_input, list) else [file_input] if file_input else None
-        docs = loader.load_and_split_documents(file_paths=file_paths, urls=url_input, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-        return f"Successfully loaded {len(docs)} chunks of text.", docs
+        doc_loader = DocumentLoadingComponent()
+        
+        # Validate inputs
+        if not url_input and not file_input:
+            return "No input provided. Please provide either URLs or files to process.", None
+            
+        # Determine assistant type based on context if not provided
+        if assistant_type is None:
+            # You can determine this based on which tab is active or other context
+            current_tab = gr.Context.current_tab
+            assistant_type = (
+                AssistantType.RAG if "RAG" in current_tab
+                else AssistantType.SUMMARIZATION if "Summarization" in current_tab
+                else AssistantType.RAG  # Default to RAG if unclear
+            )
+            
+        return await doc_loader.load_documents(
+            assistant_type=assistant_type,
+            url_input=url_input,
+            file_input=file_input,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap
+        )
+        
     except Exception as e:
-        logger.error(f"Error in load_documents: {str(e)}")
+        logger.error(f"Error in load_documents_wrapper: {str(e)}")
         return f"An error occurred while loading documents: {str(e)}", None
 
 # Wrapper function for Gradio interface RAG_assistant:
@@ -250,9 +306,9 @@ async def rag_wrapper(
     retrieval_method: str,
     documents: Optional[List[Document]] = None
 ) -> AsyncGenerator[List[Dict[str, str]], None]:
-    """Updated RAG wrapper to comply with Gradio v5 message structure and features."""
+    """RAG wrapper with proper message handling between Gradio and LangChain."""
     try:
-        # Initialize RAGAssistantUI with all parameters
+        # Initialize RAGAssistantUI
         rag_ui = RAGAssistantUI(
             model_name=model_choice,
             embedding_model=embedding_choice,
@@ -265,53 +321,34 @@ async def rag_wrapper(
             retrieval_method=retrieval_method
         )
         
-        # Setup vectorstore if documents provided
-        if documents:
-            await rag_ui.setup_vectorstore(
-                documents,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap
-            )
-        
-        # Process message and maintain chat history
+        # Process message through RAGAssistantUI's process_gradio_message
         current_history = list(history) if history else []
-        message_text = (
-            message.get("text", "").strip()
-            if isinstance(message, dict)
-            else str(message).strip()
-        )
         
+        # Format the current message
+        if isinstance(message, str):
+            message = {"role": "user", "content": message}
+            
         # Add user message to history
-        current_history.append({
-            "role": "user",
-            "content": message_text
-        })
+        current_history.append(message)
         
-        # Initialize empty assistant message
-        accumulated_response = ""
-        assistant_message = {
-            "role": "assistant",
-            "content": accumulated_response
-        }
+        # Initialize assistant message
+        assistant_message = {"role": "assistant", "content": ""}
         current_history.append(assistant_message)
         
-        # Initial yield
-        yield current_history
-        
         # Process through UI layer
-        async for response in rag_ui.query(
-            message=message_text,
-            history=current_history if history_flag else [],
-            prompt_template=prompt_info,
+        async for response in rag_ui.process_gradio_message(
+            message=message,
+            history=current_history[:-2] if history_flag else [],
+            prompt_info=prompt_info,
+            language_choice=language_choice,
+            history_flag=history_flag,
             stream=True
         ):
             if isinstance(response, dict) and "content" in response:
-                accumulated_response += response["content"]
-                assistant_message["content"] = accumulated_response
+                assistant_message["content"] = response["content"]
                 yield current_history
             elif isinstance(response, str):
-                accumulated_response += response
-                assistant_message["content"] = accumulated_response
+                assistant_message["content"] = response
                 yield current_history
 
     except Exception as e:
@@ -321,7 +358,7 @@ async def rag_wrapper(
             if language_choice.lower() == "dutch"
             else "An error occurred. Please try again."
         )
-        current_history[-1] = {"role": "assistant", "content": error_msg}
+        current_history[-1]["content"] = error_msg
         yield current_history
             
 # Wrapper function for Gradio interface summarize_assistant:
@@ -763,10 +800,18 @@ with gr.Blocks() as demo:
                     chatbot=rag_chat_bot,
                     textbox=rag_text_box,
                     additional_inputs=[
-                        model_choice, embedding_choice, chunk_size,
-                        chunk_overlap, temperature, num_similar_docs,
-                        max_tokens, url_input, file_input,
-                        language_choice, prompt_info, history_flag,
+                        model_choice, 
+                        embedding_choice, 
+                        chunk_size,
+                        chunk_overlap, 
+                        temperature, 
+                        num_similar_docs,
+                        max_tokens, 
+                        url_input, 
+                        file_input,
+                        language_choice, 
+                        prompt_info, 
+                        history_flag,
                         retrieval_method
                     ],
                     submit_btn="Submit",
@@ -782,7 +827,12 @@ with gr.Blocks() as demo:
         loaded_docs = gr.State()
         load_button.click(
             fn=load_documents_wrapper,
-            inputs=[url_input, file_input, chunk_size, chunk_overlap],
+            inputs=[
+                url_input, 
+                file_input, 
+                chunk_size, 
+                chunk_overlap,
+                assistant_type_state],
             outputs=[load_output, loaded_docs]
         )
         
@@ -861,7 +911,11 @@ with gr.Blocks() as demo:
         loaded_docs = gr.State()
         load_button.click(
             fn=load_documents_wrapper,
-            inputs=[url_input, file_input, chunk_size, chunk_overlap],
+            inputs=[url_input, 
+                    file_input, 
+                    chunk_size, 
+                    chunk_overlap,
+                    assistant_type_state],
             outputs=[load_output, loaded_docs]
         )
 
