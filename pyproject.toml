@@ -37,7 +37,7 @@ langchain-ollama = "^0.2.2"
 google-genai = "^1.0.0"
 unstructured = "^0.16.20"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^8.2"
 pytest-mock = "^3.10.0"
 
