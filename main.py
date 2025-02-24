@@ -91,7 +91,7 @@ logger.propagate = False
 def setup_content_processing(app_config: dict) -> ContentProcessingComponent:
     """
     Initialize and configure the content processing component.
-    Handles various types of content including documents, images, and audio for future multimodal support.
+    Handles various types of content including documents, images, and audio for multimodal support.
     """
     processor = ContentProcessingComponent()
     
@@ -335,36 +335,58 @@ async def rag_wrapper(
 ) -> AsyncGenerator[List[Dict[str, str]], None]:
     """RAG wrapper with proper message handling between Gradio and LangChain."""
     try:
-        # Initialize RAGAssistantUI
-        rag_ui = RAGAssistantUI(
+        # Extract message text and files
+        message_text = ""
+        file_paths = []
+        
+        if isinstance(message, dict):
+            message_text = message.get("text", "").strip()
+            file_paths = message.get("files", [])
+        else:
+            message_text = str(message).strip()
+        
+        # Process uploaded files if any
+        if file_paths or files:
+            # Process files through content processor
+            processor = ContentProcessingComponent()
+            status_msg, docs = await processor.process_documents(
+                assistant_type=AssistantType.RAG,
+                file_input=file_paths or files,
+                url_input=urls if urls else None,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap
+            )
+            logger.info(f"File processing: {status_msg}")
+        
+        # Format current history
+        current_history = list(history) if history else []
+        
+        # Add user message to history
+        current_history.append({"role": "user", "content": message_text})
+        
+        # Initialize assistant message
+        accumulated_response = ""
+        assistant_message = {"role": "assistant", "content": accumulated_response}
+        current_history.append(assistant_message)
+        
+        # Initialize the RAG assistant with current parameters
+        rag_assistant = RAGAssistant(
             model_name=model_choice,
             embedding_model=embedding_choice,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             temperature=temperature,
             num_similar_docs=num_similar_docs,
-            language=language_choice,
             max_tokens=max_tokens,
             retrieval_method=retrieval_method
         )
         
-        # Process message through RAGAssistantUI's process_gradio_message
-        current_history = list(history) if history else []
-        
-        # Format the current message
-        if isinstance(message, str):
-            message = {"role": "user", "content": message}
-            
-        # Add user message to history
-        current_history.append(message)
-        
-        # Initialize assistant message
-        assistant_message = {"role": "assistant", "content": ""}
-        current_history.append(assistant_message)
+        # Create UI layer
+        rag_ui = RAGAssistantUI(rag_assistant)
         
         # Process through UI layer
         async for response in rag_ui.process_gradio_message(
-            message=message,
+            message=message_text,
             history=current_history[:-2] if history_flag else [],
             prompt_info=prompt_info,
             language_choice=language_choice,
@@ -372,10 +394,12 @@ async def rag_wrapper(
             stream=True
         ):
             if isinstance(response, dict) and "content" in response:
-                assistant_message["content"] = response["content"]
+                accumulated_response += response["content"]
+                assistant_message["content"] = accumulated_response
                 yield current_history
             elif isinstance(response, str):
-                assistant_message["content"] = response
+                accumulated_response += response
+                assistant_message["content"] = accumulated_response
                 yield current_history
 
     except Exception as e:

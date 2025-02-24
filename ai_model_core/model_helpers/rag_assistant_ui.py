@@ -13,15 +13,23 @@ from ..shared_utils.factory import update_model as factory_update_model
 
 logger = logging.getLogger(__name__)
 
-class RAGAssistantUI(RAGAssistant, BaseAssistantUI):
+class RAGAssistantUI(BaseAssistantUI):
     """
     UI class for RAG Assistant that implements Gradio v5 message structure
     and integrates with the base UI components.
     """
-    def __init__(self, *args, **kwargs):
-        RAGAssistant.__init__(self, *args, **kwargs)
-        BaseAssistantUI.__init__(self)
-        self.message_processor = MessageProcessor()
+    def __init__(self, rag_assistant: RAGAssistant):
+        """
+        Initialize the RAG Assistant UI with a reference to the core RAG assistant.
+        
+        Args:
+            rag_assistant: RAGAssistant instance to wrap
+        """
+        super().__init__(rag_assistant)
+        # Store a direct reference to the RAG assistant for easier access
+        self.rag_assistant = rag_assistant
+        
+        # No need to create our own MessageProcessor - use the one from BaseAssistantUI
 
     async def process_gradio_message(
         self,
@@ -29,15 +37,13 @@ class RAGAssistantUI(RAGAssistant, BaseAssistantUI):
         history: List[Dict],
         **kwargs
     ) -> AsyncGenerator[Dict[str, str], None]:
-        """
-        Process messages using Gradio v5 format and generate responses.
-        """
+        """Process messages using Gradio v5 format and generate responses."""
         try:
-            # Extract message text using message processor
+            # Use message processor from BaseAssistantUI
             message_text = await self.message_processor.get_message_text(message)
             
-            # Process through query method
-            async for response in self.query(
+            # Forward to the RAG assistant's query method
+            async for response in self.rag_assistant.query(
                 message=message_text,
                 history=history,
                 stream=True,
@@ -54,17 +60,10 @@ class RAGAssistantUI(RAGAssistant, BaseAssistantUI):
                 "role": "assistant",
                 "content": f"An error occurred: {str(e)}"
             }
-
-    async def _process_uploaded_files(
-        self,
-        files: List[gr.File]
-    ) -> None:
-        """
-        Process uploaded files and update the vector store.
-        
-        Args:
-            files: List of Gradio file components
-        """
+            
+    # Enable RAG operations to the underlying RAG assistant
+    async def _process_uploaded_files(self, files: List[gr.File]) -> None:
+        """Process uploaded files and update the vector store."""
         try:
             file_paths = []
             for file in files:
@@ -74,100 +73,32 @@ class RAGAssistantUI(RAGAssistant, BaseAssistantUI):
                         file_paths.append(str(file_path))
 
             if file_paths:
-                result = await self.process_content(
+                # Use the RAG assistant's method
+                result = await asyncio.to_thread(
+                    self.rag_assistant.process_content,
                     url_input="",
                     file_input=file_paths
                 )
                 logger.info(f"File processing result: {result}")
-
         except Exception as e:
             logger.error(f"Error processing uploaded files: {str(e)}")
             raise
-
-    async def _format_history(
-        self,
-        history: List[Dict]
-    ) -> List:
-        """
-        Convert Gradio message history to LangChain format.
+            
+    # Property methods to access RAG assistant functionality
+    @property
+    def is_vectorstore_ready(self):
+        """Check if vectorstore is initialized and ready."""
+        return self.rag_assistant.is_vectorstore_ready
         
-        Args:
-            history: List of message dictionaries in Gradio format
+    def reset_vectorstore(self) -> str:
+        """Reset the vectorstore and retriever."""
+        return self.rag_assistant.reset_vectorstore()
         
-        Returns:
-            List of messages in LangChain format
-        """
-        formatted_history = []
-        for h in history:
-            if isinstance(h, dict) and "role" in h:
-                gradio_message = GradioMessage(
-                    role=h["role"],
-                    content=h.get("content", "")
-                )
-                langchain_message = await self.message_processor.gradio_to_langchain(
-                    gradio_message
-                )
-                formatted_history.append(langchain_message)
-        return formatted_history
-
-    def format_gradio_response(
-        self,
-        response: Union[str, Dict]
-    ) -> Dict[str, str]:
-        """
-        Format the response in Gradio v5 message structure.
+    # Enable configuration methods for the RAG assistant
+    def set_temperature(self, temperature: float):
+        """Set temperature for generation."""
+        self.rag_assistant.temperature = temperature
         
-        Args:
-            response: Response string or dictionary
-        
-        Returns:
-            Dictionary with role and content keys
-        """
-        if isinstance(response, str):
-            return {"role": "assistant", "content": response}
-        elif isinstance(response, dict) and "role" in response:
-            return response
-        elif hasattr(response, "role") and hasattr(response, "content"):
-            return {"role": response.role, "content": response.content}
-        return {"role": "assistant", "content": str(response)}
-
-    async def update_model(self, model_choice: str) -> None:
-        """
-        Update the model if a different one is selected.
-        
-        Args:
-            model_choice: Name of the model to use
-        """
-        try:
-            new_model = await factory_update_model(model_choice, self.model_choice)
-            if new_model:
-                self.model_local = new_model
-                self.model_choice = model_choice
-                logger.info(f"Model updated to {model_choice}")
-        except Exception as e:
-            logger.error(f"Error updating model: {str(e)}")
-            raise
-
-    def set_temperature(
-        self,
-        temperature: float
-    ) -> None:
-        """
-        Set the temperature parameter for generation.
-        
-        Args:
-            temperature: Temperature value between 0 and 1
-        """
-        self.temperature = temperature
-
-    def set_max_tokens(
-        self,
-        max_tokens: int
-    ) -> None:
-        """
-        Set the maximum tokens for generation.
-        
-        Args:
-            max_tokens: Maximum number of tokens
-        """
-        self.max_tokens = max_tokens
+    def set_max_tokens(self, max_tokens: int):
+        """Set max tokens for generation."""
+        self.rag_assistant.max_tokens = max_tokens
