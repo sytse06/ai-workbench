@@ -38,7 +38,7 @@ from ai_model_core.shared_utils.utils import (
     EnhancedContentLoader,
     ContentProcessingComponent,
     AssistantType,
-    ProcessingConfig
+    LoaderConfig
 )
 from ai_model_core.shared_utils.message_processing import MessageProcessor
 from ai_model_core.shared_utils.message_types import (
@@ -89,23 +89,34 @@ logger.propagate = False
 
 # Initialize document loading component during app startup
 def setup_content_processing(app_config: dict) -> ContentProcessingComponent:
+    """
+    Initialize and configure the content processing component.
+    Handles various types of content including documents, images, and audio for future multimodal support.
+    """
     processor = ContentProcessingComponent()
     
-    # Register RAG configuration
-    rag_config = ProcessingConfig(
-        chunk_size=app_config.get("rag_chunk_size", 500),
-        chunk_overlap=app_config.get("rag_chunk_overlap", 50),
-        process_callback=rag_assistant.setup_vectorstore_sync
+    # Configure RAG processing
+    rag_config = LoaderConfig(
+        chunk_size=app_config.get("rag", {}).get("chunk_size", 500),
+        chunk_overlap=app_config.get("rag", {}).get("chunk_overlap", 50),
+        process_callback=None  # Will be set after RAG assistant initialization
     )
     processor.register_assistant(AssistantType.RAG, rag_config)
     
-    # Register Summarization configuration
-    summary_config = ProcessingConfig(
-        chunk_size=app_config.get("summary_chunk_size", 1000),
-        chunk_overlap=app_config.get("summary_chunk_overlap", 100),
-        process_callback=summarization_assistant.process_documents
+    # Configure Summarization processing
+    summary_config = LoaderConfig(
+        chunk_size=app_config.get("summarization", {}).get("chunk_size", 1000),
+        chunk_overlap=app_config.get("summarization", {}).get("chunk_overlap", 100),
+        process_callback=None  # Will be set after Summarization assistant initialization
     )
     processor.register_assistant(AssistantType.SUMMARIZATION, summary_config)
+    
+    # Initialize the content loader with config settings
+    processor.initialize_loader(
+        temp_dir=app_config.get("directories", {}).get("temp", "input/tmp"),
+        audio_sample_rate=app_config.get("audio", {}).get("sample_rate", 16000),
+        perform_ocr=app_config.get("ocr", {}).get("enabled", True)
+    )
     
     return processor
 
@@ -248,6 +259,23 @@ async def chat_wrapper(
         # Cleanup temporary files
         if 'content_loader' in locals():
             content_loader.cleanup()
+
+# Add to main.py, outside of class definitions
+async def process_documents_temp_summarization(docs):
+    """Temporary implementation until SummarizationAssistant is updated."""
+    logger.info(f"Temporarily processing {len(docs)} documents for summarization")
+    # Store documents in a global variable or pass to summarization_assistant directly
+    if hasattr(summarization_assistant, 'documents'):
+        summarization_assistant.documents = docs
+    return docs
+
+async def process_documents_temp_transcription(docs):
+    """Temporary implementation until TranscriptionAssistant is updated."""
+    logger.info(f"Temporarily processing {len(docs)} documents for transcription")
+    # Store documents in a global variable for later reference
+    if hasattr(transcription_assistant, 'input_files'):
+        transcription_assistant.input_files = docs
+    return docs
                             
 # Wrapper function for loading documents (RAG and summarization)
 async def load_documents_wrapper(
@@ -259,23 +287,22 @@ async def load_documents_wrapper(
 ) -> Tuple[str, Optional[List[Document]]]:
     """Wrapper function for loading documents through the component."""
     try:
-        doc_loader = DocumentLoadingComponent()
+        # Get the content processor instance
+        processor = ContentProcessingComponent()
         
         # Validate inputs
         if not url_input and not file_input:
             return "No input provided. Please provide either URLs or files to process.", None
             
-        # Determine assistant type based on context if not provided
-        if assistant_type is None:
-            # You can determine this based on which tab is active or other context
-            current_tab = gr.Context.current_tab
-            assistant_type = (
-                AssistantType.RAG if "RAG" in current_tab
-                else AssistantType.SUMMARIZATION if "Summarization" in current_tab
-                else AssistantType.RAG  # Default to RAG if unclear
-            )
-            
-        return await doc_loader.load_documents(
+        # Update configuration for the specific request
+        if assistant_type in [AssistantType.RAG, AssistantType.SUMMARIZATION]:
+            config = processor.get_loader_config(assistant_type)
+            if config:
+                config.chunk_size = chunk_size
+                config.chunk_overlap = chunk_overlap
+        
+        # Process documents
+        return await processor.process_documents(
             assistant_type=assistant_type,
             url_input=url_input,
             file_input=file_input,
@@ -390,7 +417,10 @@ async def summarize_wrapper(
         verbose: Enable verbose logging (handled by Gradio checkbox)
     """
     # Only check for loaded documents as this isn't handled by Gradio UI constraints
-    if loaded_docs is None or len(loaded_docs) == 0:
+    if not loaded_docs and hasattr(summarization_assistant, 'documents'):
+        loaded_docs = summarization_assistant.documents
+        
+    if not loaded_docs or len(loaded_docs) == 0:
         return "Error: No documents loaded. Please load documents before summarizing."
 
     try:
@@ -410,6 +440,9 @@ async def summarize_wrapper(
             language_choice=language,
             verbose=verbose
         )
+
+        # Pass documents to the summarizer
+        summarizer.documents = loaded_docs
 
         # Perform summarization
         result = await summarizer.summarize(
@@ -1129,5 +1162,38 @@ with gr.Blocks() as demo:
     )
 
 if __name__ == "__main__":
+    # Load configuration
+    config = load_config()
+    
+    # Initialize content processing
+    content_processor = setup_content_processing(config.get("system", {}).get("processing", {}))
+    
+    # Initialize assistants
+    chat_assistant = ChatAssistant("Ollama (llama3.2)")
+    rag_assistant = RAGAssistant(
+        model_name="Ollama (llama3.2)",
+        embedding_model="nomic-embed-text"
+    )
+    summarization_assistant = SummarizationAssistant("Ollama (llama3.2)")
+    transcription_assistant = TranscriptionAssistant(model_size="base")
+    
+    # Set up RAG callback - this works because RAGAssistant already has setup_vectorstore_sync
+    rag_config = content_processor.get_loader_config(AssistantType.RAG)
+    if rag_config:
+        rag_config.process_callback = rag_assistant.setup_vectorstore_sync
+    
+    # Set up Summarization callback - using the temporary function for now
+    summary_config = content_processor.get_loader_config(AssistantType.SUMMARIZATION)
+    if summary_config:
+        # Use temporary function instead of a method that doesn't exist yet
+        summary_config.process_callback = process_documents_temp_summarization
+        
+    # Set up Transcription callback - using the temporary function for now
+    transcript_config = content_processor.get_loader_config(AssistantType.TRANSCRIPTION)
+    if transcript_config:
+        # Use temporary function instead of a method that doesn't exist yet
+        transcript_config.process_callback = process_documents_temp_transcription
+       # Launch Gradio interface
     logger.info("Starting the Gradio interface of the ai-workbench")
-    demo.launch(server_port=7960, debug=True, share=False)
+    print(f"The app will be available at: http://localhost:7960")
+    demo.launch(server_port=7960, server_name="0.0.0.0", debug=True, share=False)

@@ -49,6 +49,12 @@ from ..config.settings import load_config
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class LoaderConfig:
+    """Configuration for document loading and processing."""
+    chunk_size: int
+    chunk_overlap: int
+    process_callback: Optional[Callable] = None
 class EnhancedContentLoader:
     """
     A versatile content loader that handles multiple file types.
@@ -766,61 +772,48 @@ class ContentProcessingComponent:
         chunk_size: Optional[int] = None,
         chunk_overlap: Optional[int] = None
     ) -> Tuple[str, Optional[List[Document]]]:
-        """
-        Process documents according to assistant-specific requirements.
-        
-        Args:
-            assistant_type: Type of assistant
-            url_input: Optional URLs to process
-            file_input: Optional files to process
-            chunk_size: Optional override for chunk size
-            chunk_overlap: Optional override for chunk overlap
-            
-        Returns:
-            Tuple of (status message, processed documents)
-        """
+        """Process documents according to assistant-specific requirements."""
         try:
             if assistant_type not in self._configs:
                 return f"Assistant type {assistant_type} not registered.", None
                 
+            if not self._content_loader:
+                self.initialize_loader()
+            
             config = self._configs[assistant_type]
             
-            # Process file input
-            processed_files = (
-                file_input if isinstance(file_input, list)
-                else [file_input] if file_input
-                else None
-            )
-
-            # Use provided parameters or fall back to config defaults
-            effective_chunk_size = chunk_size or config.chunk_size
-            effective_chunk_overlap = chunk_overlap or config.chunk_overlap
-            
-            # Update loader parameters
-            self._content_loader.chunk_size = effective_chunk_size
-            self._content_loader.chunk_overlap = effective_chunk_overlap
-            
             # Load and split documents
-            docs = self._content_loader.load_and_split_documents(
-                file_paths=processed_files,
-                urls=url_input,
-                chunk_size=effective_chunk_size,
-                chunk_overlap=effective_chunk_overlap
-            )
-            
-            if not docs:
-                return "No documents were loaded", None
-            
-            # Call assistant-specific callback if registered
-            if config.process_callback:
-                await config.process_callback(docs)
-            
-            return f"Successfully loaded {len(docs)} document chunks", docs
-            
+            try:
+                docs = await asyncio.to_thread(
+                    self._content_loader.load_and_split_documents,
+                    file_paths=file_input,
+                    urls=url_input,
+                    chunk_size=chunk_size or config.chunk_size,
+                    chunk_overlap=chunk_overlap or config.chunk_overlap
+                )
+                
+                if not docs:
+                    return "No documents were loaded", None
+                
+                # Call assistant-specific callback if registered
+                if config.process_callback:
+                    if asyncio.iscoroutinefunction(config.process_callback):
+                        # Async callback
+                        await config.process_callback(docs)
+                    else:
+                        # Sync callback
+                        await asyncio.to_thread(config.process_callback, docs)
+                
+                return f"Successfully loaded {len(docs)} document chunks", docs
+                
+            except Exception as e:
+                logger.error(f"Error processing documents: {str(e)}")
+                return f"Error processing documents: {str(e)}", None
+                
         except Exception as e:
-            logger.error(f"Error loading documents: {str(e)}")
-            return f"Error loading documents: {str(e)}", None
-    
+            logger.error(f"Error in process_documents: {str(e)}")
+            return f"Error in document processing: {str(e)}", None
+            
     def get_loader_config(self, assistant_type: AssistantType) -> Optional[LoaderConfig]:
         """Get the current configuration for an assistant type."""
         return self._configs.get(assistant_type)
@@ -831,4 +824,3 @@ class ContentProcessingComponent:
         if self._content_loader is None:
             self.initialize_loader()
         return self._content_loader
-

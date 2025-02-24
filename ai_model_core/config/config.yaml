@@ -1,11 +1,25 @@
 system:
-  base_directory: "/Users/sytsevanderschaaf/documents/dev/projects/ai_workbench"
   directories:
+    base_directory: "/Users/sytsevanderschaaf/documents/dev/projects/ai_workbench"
     input_directory: "{base_directory}/input"
+    temp_directory: "{base_directory}/input/temp"
     output_directory: "{base_directory}/output"
     test_directory: "{base_directory}/tests"
     model_settings_directory: "{base_directory}/ai_model_core"
     config_directory: "{base_directory}/ai_model_core/config"
+  processing:
+    rag:
+      chunk_size: 500
+      chunk_overlap: 50
+    summarization:
+      chunk_size: 1000
+      chunk_overlap: 100
+    audio:
+      sample_rate: 16000
+    ocr:
+      enabled: true
+    vision:
+      enabled: false
 
 system_prompt_settings:
   english:
