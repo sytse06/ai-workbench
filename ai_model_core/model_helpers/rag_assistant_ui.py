@@ -2,6 +2,7 @@
 from typing import Optional, List, Dict, Union, AsyncGenerator
 import gradio as gr
 import logging
+import asyncio
 from pathlib import Path
 
 # Local imports
@@ -28,26 +29,60 @@ class RAGAssistantUI(BaseAssistantUI):
         super().__init__(rag_assistant)
         # Store a direct reference to the RAG assistant for easier access
         self.rag_assistant = rag_assistant
-        
-        # No need to create our own MessageProcessor - use the one from BaseAssistantUI
 
     async def process_gradio_message(
         self,
         message: Union[str, Dict],
         history: List[Dict],
+        model_choice: str,
+        temperature: float,
+        max_tokens: int, 
         **kwargs
     ) -> AsyncGenerator[Dict[str, str], None]:
         """Process messages using Gradio v5 format and generate responses."""
         try:
+            # Update temperature and max_tokens in the RAGAssistant instance
+            self.rag_assistant.temperature = temperature
+            self.rag_assistant.max_tokens = max_tokens
+            
             # Use message processor from BaseAssistantUI
             message_text = await self.message_processor.get_message_text(message)
+            
+            # Update model if needed
+            if model_choice and model_choice != self.rag_assistant.model_choice:
+                await self.rag_assistant.update_model(model_choice)
+            
+            # Update temperature and max_tokens if provided
+            if temperature is not None:
+                self.rag_assistant.temperature = temperature
+            
+            if max_tokens is not None:
+                self.rag_assistant.max_tokens = max_tokens
+                
+            # Use message processor from BaseAssistantUI
+            message_text = await self.message_processor.get_message_text(message)
+            
+            # Convert history if history_flag is True
+            langchain_history = []
+            if history and history_flag:
+                for h in history:
+                    if isinstance(h, str):
+                        h = {"role": "user", "content": h}
+                    if isinstance(h, dict) and "role" in h:
+                        msg = GradioMessage(role=h["role"], 
+                        content=h.get("content", ""))
+                        langchain_history.append(await 
+                        self.message_processor.gradio_to_langchain(msg))
+                        
+            # Log what we're calling query with
+            logger.debug(f"Calling RAGAssistant.query with message: {message_text[:30]}...")
+            logger.debug(f"History length: {len(langchain_history)}")
             
             # Forward to the RAG assistant's query method
             async for response in self.rag_assistant.query(
                 message=message_text,
-                history=history,
-                stream=True,
-                **kwargs
+                history=langchain_history,
+                prompt_template=prompt_info
             ):
                 if isinstance(response, dict):
                     yield response
@@ -62,7 +97,7 @@ class RAGAssistantUI(BaseAssistantUI):
             }
             
     # Enable RAG operations to the underlying RAG assistant
-    async def _process_uploaded_files(self, files: List[gr.File]) -> None:
+    async def process_uploaded_files(self, files: List[gr.File]) -> None:
         """Process uploaded files and update the vector store."""
         try:
             file_paths = []

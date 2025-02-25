@@ -43,6 +43,7 @@ from urllib.parse import urlparse
 import requests
 import yt_dlp
 import gradio as gr
+import asyncio
 
 # Local imports
 from ..config.settings import load_config

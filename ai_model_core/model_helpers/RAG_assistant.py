@@ -97,6 +97,7 @@ class RAGAssistant:
             self.num_similar_docs = num_similar_docs
             self.chunk_size = chunk_size
             self.chunk_overlap = chunk_overlap
+            self.model_local.bind(temperature=self.temperature, max_tokens=self.max_tokens)
             return
 
         # First time initialization
@@ -110,7 +111,7 @@ class RAGAssistant:
         self.max_tokens = max_tokens
         self.retrieval_method = retrieval_method
         
-        # Store chunking parameters
+        # Chunking parameters
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         
@@ -429,16 +430,35 @@ class RAGAssistant:
         message: Union[str, Dict, GradioMessage, BaseMessage],
         history: Optional[List[Union[Dict, GradioMessage, BaseMessage]]] = None,
         prompt_template: Optional[str] = None,
-        stream: bool = True
+        stream: bool = True,
+        use_context: bool = True
     ) -> AsyncGenerator[Union[str, Dict[str, str]], None]:
         """Process a query through the RAG pipeline using Langgraph workflow."""
+        logger.debug(f"RAGAssistant.query received parameters: {all_params.keys()}")
         try:
-            if not self.is_vectorstore_ready:
+            if not self.is_vectorstore_ready and use_context:
                 yield {"role": "assistant", "content": "Vector store not initialized. Please load documents first."}
                 return
 
+            # Get the message processor if not already initialized
+            if not hasattr(self, 'message_processor'):
+                self.message_processor = MessageProcessor()
+
             # Get the raw message content
-            message_text = await self.message_processor.get_message_text(message)
+            if hasattr(self.message_processor, 'get_message_text'):
+                message_text = await self.message_processor.get_message_text(message)
+            else:
+                # Fallback for string extraction
+                if isinstance(message, str):
+                    message_text = message
+                elif isinstance(message, dict) and "content" in message:
+                    message_text = message["content"]
+                elif isinstance(message, GradioMessage):
+                    message_text = message.content
+                elif isinstance(message, BaseMessage):
+                    message_text = message.content
+                else:
+                    message_text = str(message)
 
             # Initialize graph state
             initial_state = State(
@@ -449,10 +469,14 @@ class RAGAssistant:
                 all_actions=[]
             )
 
-            # Retrieve context and update state
-            relevant_docs = await self.retrieve_context(message_text)
-            context_text = "\n\n".join(doc.page_content for doc in relevant_docs)
-            initial_state["context"] = context_text
+            # Retrieve context and update state if vectorstore is ready and context is enabled
+            if self.is_vectorstore_ready and use_context:
+                relevant_docs = await self.retrieve_context(message_text)
+                context_text = "\n\n".join(doc.page_content for doc in relevant_docs)
+                initial_state["context"] = context_text
+            else:
+                # If no vectorstore or context disabled, proceed with empty context
+                initial_state["context"] = ""
 
             # Run graph workflow
             if stream:
