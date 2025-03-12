@@ -39,14 +39,15 @@ class BaseAssistantUI:
             self.assistant.set_temperature(temperature)
             self.assistant.set_max_tokens(max_tokens)
             
-            # Convert string message to proper format
+            # Convert string message to GradioMessage format
             if isinstance(message, str):
-                formatted_message = {"role": "user", "content": message}
+                gradio_message = GradioMessage(role="user", content=message)
+            elif isinstance(message, dict):
+                gradio_message = GradioMessage(role="user", content=message.get("content", ""))
             else:
-                formatted_message = message
+                gradio_message = GradioMessage(role="user", content=str(message))
 
-            # Create GradioMessage
-            message = GradioMessage(role="user", content=formatted_message.get("content", ""))
+            # Create GradioMessage to LangChain format
             langchain_message = await self.message_processor.gradio_to_langchain(message)
 
             # Format history properly
@@ -57,7 +58,8 @@ class BaseAssistantUI:
                         h = {"role": "user", "content": h}
                     if isinstance(h, dict) and "role" in h:
                         msg = GradioMessage(role=h["role"], content=h["content"])
-                        langchain_history.append(await self.message_processor.gradio_to_langchain(msg))
+                        langchain_history.append(
+                        await self.message_processor.gradio_to_langchain(msg))
 
             async for response in self.assistant.chat(
                 message=langchain_message,

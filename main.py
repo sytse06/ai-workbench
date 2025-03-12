@@ -121,8 +121,12 @@ def setup_content_processing(app_config: dict) -> ContentProcessingComponent:
     return processor
 
 # Initialize assistants with default models
-chat_assistant = ChatAssistant("Ollama (llama3.2)")
-chat_assistant.ui = BaseAssistantUI(chat_assistant)
+chat_assistant = ChatAssistant(
+    model_choice=model_choice,
+    temperature=temperature,
+    max_tokens=max_tokens
+)
+chat_ui = ChatAssistantUI(chat_assistant)
 rag_assistant = RAGAssistant(
     model_name="Ollama (llama3.2)",
     embedding_model="nomic-embed-text",
@@ -149,30 +153,30 @@ async def chat_wrapper(
 ) -> AsyncGenerator[List[Dict[str, str]], None]:
     """Wrapper for chat functionality with handling of context files."""
     try:
-        # Initialize the content loader
-        content_loader = EnhancedContentLoader()
-        
         # Extract files and text from multimodal message
         message_text = ""
-        file_paths = []
+        files = []
         
-        if isinstance(message, dict):
+        # Process multimodal message from Gradio v5
+        if isinstance(message, dict) and "text" in message:
+            # This is the old format where files were separate
             message_text = message.get("text", "").strip()
             file_paths = message.get("files", [])
             
-            # Process files if any and use_context is True
+            # Process files if provided
             if file_paths and use_context:
                 try:
+                    content_loader = EnhancedContentLoader()
                     # Use the enhanced content loader to process files
                     context = content_loader.load_and_process_files(file_paths=file_paths)
                     
-                    # Get formatted context as string, excluding empty content types
+                    # Get formatted context as string
                     formatted_context = content_loader.get_formatted_context(
                         context,
                         format_type="string"
                     )
                     
-                    # Start building the chat history
+                    # Current history
                     current_history = list(history) if history else []
                     
                     # Add context as system message if there's content
@@ -187,7 +191,26 @@ async def chat_wrapper(
                     current_history = list(history) if history else []
             else:
                 current_history = list(history) if history else []
+        elif isinstance(message, dict) and "content" in message:
+            # This is the new Gradio v5 format
+            if isinstance(message["content"], list):
+                # Process multimodal content
+                text_parts = []
+                for item in message["content"]:
+                    if isinstance(item, str):
+                        text_parts.append(item)
+                    elif isinstance(item, dict) and "path" in item:
+                        # This is a file
+                        files.append(item["path"])
+                
+                message_text = " ".join(text_parts)
+            else:
+                message_text = str(message["content"])
+            
+            # Current history
+            current_history = list(history) if history else []
         else:
+            # Plain text message
             message_text = str(message).strip()
             current_history = list(history) if history else []
         
@@ -200,33 +223,23 @@ async def chat_wrapper(
             assistant_message = {"role": "assistant", "content": accumulated_response}
             current_history.append(assistant_message)
             
-            # Initialize chat assistant
+            # Initialize ChatAssistantUI with a new ChatAssistant
             chat_assistant = ChatAssistant(
                 model_choice=model_choice,
                 temperature=temperature,
                 max_tokens=max_tokens
             )
             
-            # Update model if needed
-            if model_choice != chat_assistant.model_choice:
-                new_model = await update_model(model_choice, chat_assistant.model_choice)
-                if new_model:
-                    chat_assistant.model = new_model
-                    chat_assistant.model_choice = model_choice
-                    
-            # Update temperature and max_tokens
-            chat_assistant.set_temperature(temperature)
-            chat_assistant.set_max_tokens(max_tokens)
-            
-            chat_ui = BaseAssistantUI(chat_assistant)
+            chat_ui = ChatAssistantUI(chat_assistant)
             
             # Process through UI
-            async for response in chat_ui.process_gradio_message(
+            async for response in chat_ui.process_gradio_chat(
                 message=message_text,
-                history=current_history if history_flag else [],
+                history=current_history[:-1] if history_flag else [],
                 model_choice=model_choice,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                files=files,
                 use_context=use_context,
                 history_flag=history_flag,
                 prompt_info=prompt_info,
@@ -257,10 +270,6 @@ async def chat_wrapper(
             {"role": "user", "content": message_text},
             {"role": "assistant", "content": "An error occurred. Please try again."}
         ]
-    finally:
-        # Cleanup temporary files
-        if 'content_loader' in locals():
-            content_loader.cleanup()
 
 # Add to main.py, outside of class definitions
 async def process_documents_temp_summarization(docs):

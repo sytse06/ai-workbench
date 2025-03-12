@@ -19,6 +19,13 @@ import whisper
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.schema import (
+    HumanMessage,
+    AIMessage,
+    Document,
+    BaseMessage,
+    SystemMessage
+)
 
 # Local imports
 from ..config.credentials import get_api_key, load_credentials
@@ -53,7 +60,7 @@ def get_model(choice: str, **kwargs):
     """
     load_credentials() 
     
-        # Test model support for testing environment
+    # Test model support for testing environment
     if choice == "test_model" and os.getenv("TESTING") == "true":
         from langchain.schema import BaseMessage
         
@@ -218,6 +225,12 @@ def get_model(choice: str, **kwargs):
 
 async def update_model(new_choice: str, current_choice: str) -> Optional[Any]:
     """Get new model instance if choice has changed."""
+    # Add type checking
+    if not isinstance(new_choice, str):
+        raise TypeError(f"Expected string for new_choice, got {type(new_choice).__name__}")
+    if not isinstance(current_choice, str):
+        raise TypeError(f"Expected string for current_choice, got {type(current_choice).__name__}")
+        
     if new_choice != current_choice:
         return get_model(new_choice)
     return None

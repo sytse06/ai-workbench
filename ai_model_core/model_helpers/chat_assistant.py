@@ -326,7 +326,8 @@ class ChatAssistant:
         language_choice: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         """
-        Fixed chat method handling both Gradio and LangChain message formats.
+        Chat method handling both Gradio and LangChain message formats.
+        Uses instance variables for temperature and max_tokens.
         
         Args:
             message: Input message (either Gradio dict or LangChain HumanMessage)
@@ -354,7 +355,7 @@ class ChatAssistant:
             else:
                 langchain_message = message
 
-            # Convert history to LangChain format if needed
+            # History conversion to LangChain format if needed
             langchain_history = []
             if history_flag and history:
                 for h in history:
