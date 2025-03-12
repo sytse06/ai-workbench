@@ -5,11 +5,11 @@ import logging
 # Third-party imports
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_ollama import ChatOllama, OllamaEmbeddings
-from langchain-anthropic import ChatAnthropic
+from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.chat_models import ChatCohere
-from langchain_cohere import CohereEmbeddings
-from langchain_community.retrievers.cohere_rerank import CohereRerank
+from langchain_cohere import ChatCohere, CohereEmbeddings
+import cohere
 import whisper
 import mistralai
 
@@ -49,7 +49,7 @@ class CohereProvider(ModelProvider):
     
     def create_model(self, config: ModelConfig, **kwargs) -> Any:
         """Create a Cohere model instance"""
-                api_key = kwargs.pop('api_key', None)
+        api_key = kwargs.pop('api_key', None)
         
         if config.type == ModelType.CHAT:
             # Handle chat models
@@ -111,7 +111,24 @@ class OpenAIProvider(ModelProvider):
             )
         else:
             raise ValueError(f"Unsupported model type for OpenAI: {config.type}")
-
+class AnthropicProvider(ModelProvider):
+    """Provider for Anthropic models"""
+    
+    def __init__(self, provider_name: str = "Anthropic"):
+        self.provider_name = provider_name
+    
+    def create_model(self, config: ModelConfig, **kwargs) -> Any:
+        """Create an Anthropic model instance"""
+        api_key = kwargs.pop('api_key', None)
+        
+        if config.type == ModelType.CHAT:
+            return ChatAnthropic(
+                model=config.model_id,
+                anthropic_api_key=api_key,
+                **kwargs
+            )
+        else:
+            raise ValueError(f"Unsupported model type for Anthropic: {config.type}")
 class MistralProvider(ModelProvider):
     """Provider for Mistral AI models"""
     
@@ -179,3 +196,13 @@ class CustomEmbeddingProvider(ModelProvider):
             )
         else:
             raise ValueError(f"Unsupported model for CustomEmbedding: {config.model_id}")
+
+# Create instances of the provider classes
+ollama_provider = OllamaProvider()
+anthropic_provider = AnthropicProvider()
+cohere_provider = CohereProvider()
+openai_provider = OpenAIProvider()
+mistral_provider = MistralProvider()
+google_provider = GoogleProvider()
+whisper_provider = WhisperProvider()
+custom_embedding_provider = CustomEmbeddingProvider()

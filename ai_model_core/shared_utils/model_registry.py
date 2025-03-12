@@ -1,27 +1,19 @@
 # ai_model_core/shared_utils/model_registry.py
 from .factory import ModelFactory, ModelType, ModelConfig
-from .model_providers import (
-    OllamaProvider,
-    CohereProvider, 
-    OpenAIProvider,
-    MistralProvider, 
-    GoogleProvider,
-    WhisperProvider,
-    CustomEmbeddingProvider
+from .model_provider import (
+    ollama_provider,
+    openai_provider,
+    mistral_provider,
+    google_provider,
+    whisper_provider,
+    custom_embedding_provider,
+    anthropic_provider,
+    cohere_provider
 )
 
 # Register model providers
 def initialize_model_registry():
     """Initialize the model registry with all available providers and models"""
-    # Register providers
-    ollama_provider = OllamaProvider()
-    anthropic_provider = AnthropicProvider()
-    cohere_provider = CohereProvider()
-    openai_provider = OpenAIProvider()
-    mistral_provider = MistralProvider()
-    google_provider = GoogleProvider()
-    whisper_provider = WhisperProvider()
-    custom_embedding_provider = CustomEmbeddingProvider()
     
     ModelFactory.register_provider("ollama", ollama_provider)
     ModelFactory.register_provider("openai", openai_provider)
@@ -226,7 +218,7 @@ def initialize_model_registry():
         description="Deepseek Chat v3 via OpenRouter"
     ))
         
-        # Register Anthropic models for direct API access
+    # Register Anthropic models for direct API access
     anthropic_provider.register_model(ModelConfig(
         name="Claude 3 Opus",
         model_id="claude-3-opus-20240229",
@@ -268,7 +260,7 @@ def initialize_model_registry():
     ))
     
     # Also keep the existing OpenRouter registrations
-    openrouter_provider.register_model(ModelConfig(
+    openai_provider.register_model(ModelConfig(
         name="Claude Sonnet (via OpenRouter)",
         model_id="anthropic/claude-3.5-sonnet",
         provider="openrouter",
@@ -281,7 +273,7 @@ def initialize_model_registry():
         description="Claude 3.5 Sonnet via OpenRouter"
     ))
     
-    openrouter_provider.register_model(ModelConfig(
+    openai_provider.register_model(ModelConfig(
         name="Claude Sonnet beta (via OpenRouter)",
         model_id="anthropic/claude-3.5-sonnet:beta",
         provider="openrouter",

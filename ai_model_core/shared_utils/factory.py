@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 # Local imports
 from ..config.credentials import get_api_key, load_credentials
 
+logger = logging.getLogger(__name__)
+
 __all__ = ['get_model', 'get_embedding_model', 'WHISPER_MODELS', 'OUTPUT_FORMATS']
 
 # Whisper model options

@@ -35,7 +35,6 @@ from ai_model_core.model_helpers import (
 )
 from ai_model_core.shared_utils.utils import (
     EnhancedContentLoader,
-    EnhancedContentLoader,
     ContentProcessingComponent,
     AssistantType,
     LoaderConfig
@@ -47,10 +46,12 @@ from ai_model_core.shared_utils.message_types import (
     GradioFileContent,
     GradioRole
 )
-from ai_model_core.shared_utils.factory import (
+from ai_model_core.shared_utils import (
     get_model, 
     get_embedding_model, 
     update_model,
+    #get_reranker,
+    ModelType,
     WHISPER_MODELS, 
     OUTPUT_FORMATS
 )

@@ -17,6 +17,8 @@ ai_workbench/
 │   │   ├── __init__.py
 │   │   ├── factory.py
 │   │   ├── utils.py
+│   │   ├── model_provider.py
+│   │   ├── model_registry.py
 │   │   ├── message_types.py
 │   │   ├── message_processing.py
 │   │   └── prompt_utils.py

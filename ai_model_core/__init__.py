@@ -19,6 +19,10 @@ from .shared_utils.factory import (
     get_model,
     update_model, 
     get_embedding_model,
+    get_reranker,
+    ModelType 
+)
+from .shared_utils.model_registry import (
     WHISPER_MODELS,
     OUTPUT_FORMATS
 )
@@ -61,6 +65,8 @@ __all__ = [
     'get_model',
     'update_model',
     'get_embedding_model',
+    'get_reranker',
+    'ModelType',
     'WHISPER_MODELS',
     'OUTPUT_FORMATS',
     
