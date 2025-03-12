@@ -36,6 +36,7 @@ langchain-google-genai = "^2.0.7"
 langchain-ollama = "^0.2.2"
 google-genai = "^1.0.0"
 unstructured = "^0.16.20"
+langchain-cohere = "^0.4.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2"

@@ -4,28 +4,17 @@ import os
 import sys
 from typing import (
     List,
-    Generator,
     Any,
     Optional,
     Union,
     Tuple,
     Dict,
-    Generator, 
-    AsyncGenerator
+    ClassVar
 )
-
-# Third-party imports
-import whisper
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_ollama import ChatOllama, OllamaEmbeddings
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import (
-    HumanMessage,
-    AIMessage,
-    Document,
-    BaseMessage,
-    SystemMessage
-)
+from enum import Enum, auto
+from abc import ABC, abstractmethod
+import logging
+from dataclasses import dataclass, field
 
 # Local imports
 from ..config.credentials import get_api_key, load_credentials
@@ -45,6 +34,109 @@ WHISPER_SIZES = {
 OUTPUT_FORMATS = ["none", "txt", "srt", "vtt", "tsv", "json", "all"]
 WHISPER_MODELS = [f"Whisper {size}" for size in WHISPER_SIZES.keys()]
 
+# Define model categories
+class ModelType(Enum):
+    CHAT = auto()
+    RERANKER = auto()
+    VISION = auto()
+    EMBEDDING = auto()
+    AUDIO = auto()
+    TRANSCRIPTION = auto()
+
+# Base model configuration
+@dataclass
+class ModelConfig:
+    """Base configuration for any model"""
+    name: str
+    model_id: str  # The actual model ID used by the provider
+    provider: str
+    type: ModelType
+    description: str = ""
+    requires_api_key: bool = False
+    api_key_name: Optional[str] = None
+    default_params: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Validate configuration after initialization"""
+        if self.requires_api_key and not self.api_key_name:
+            raise ValueError(f"Model {self.name} requires API key but no key name specified")
+
+# Base class for all model providers
+class ModelProvider(ABC):
+    """Abstract base class for model providers"""
+    model_configs: ClassVar[Dict[str, ModelConfig]] = {}
+    
+    @classmethod
+    def register_model(cls, config: ModelConfig):
+        """Register a model configuration"""
+        cls.model_configs[config.name] = config
+        logger.debug(f"Registered model: {config.name} from provider {config.provider}")
+    
+    @classmethod
+    def get_model_config(cls, model_name: str) -> Optional[ModelConfig]:
+        """Get model configuration by name"""
+        return cls.model_configs.get(model_name)
+    
+    @classmethod
+    def list_models(cls, model_type: Optional[ModelType] = None) -> List[str]:
+        """List all registered models, optionally filtered by type"""
+        if model_type:
+            return [name for name, config in cls.model_configs.items() 
+                   if config.type == model_type]
+        return list(cls.model_configs.keys())
+    
+    @abstractmethod
+    def create_model(self, config: ModelConfig, **kwargs) -> Any:
+        """Create a model instance from configuration"""
+        pass
+
+# Main model factory
+class ModelFactory:
+    """Factory for creating language model instances"""
+    _providers: Dict[str, ModelProvider] = {}
+    
+    @classmethod
+    def register_provider(cls, provider_name: str, provider: ModelProvider):
+        """Register a model provider"""
+        cls._providers[provider_name] = provider
+        logger.info(f"Registered provider: {provider_name}")
+    
+    @classmethod
+    def get_model(cls, model_name: str, **kwargs) -> Any:
+        """Create a language model instance by name"""
+        # Find the provider that has this model registered
+        for provider in cls._providers.values():
+            config = provider.get_model_config(model_name)
+            if config:
+                # Get API key if needed
+                if config.requires_api_key:
+                    load_credentials()
+                    api_key = get_api_key(config.api_key_name)
+                    kwargs['api_key'] = api_key
+                
+                # Merge default parameters with provided ones
+                merged_kwargs = {**config.default_params, **kwargs}
+                
+                # Create and return the model
+                return provider.create_model(config, **merged_kwargs)
+                
+        # If we get here, no provider had this model
+        raise ValueError(f"Unknown model: {model_name}. Available models: {cls.list_models()}")
+    
+    @classmethod
+    def list_models(cls, model_type: Optional[ModelType] = None) -> List[str]:
+        """List all available models, optionally filtered by type"""
+        all_models = []
+        for provider in cls._providers.values():
+            all_models.extend(provider.list_models(model_type))
+        return all_models
+    
+    @classmethod
+    async def update_model(cls, new_model_name: str, current_model_name: str) -> Optional[Any]:
+        """Get new model instance if choice has changed"""
+        if new_model_name != current_model_name:
+            return cls.get_model(new_model_name)
+        return None
 
 def get_model(choice: str, **kwargs):
     """
@@ -293,3 +385,15 @@ def get_embedding_model(choice: str, **kwargs):
         )
     else:
         raise ValueError(f"Invalid embedding model choice: {choice}")
+
+def get_reranker(model_name: str, **kwargs):
+    """Get a reranker model by name"""
+    model = ModelFactory.get_model(model_name, **kwargs)
+    
+    # Verify it's a reranker
+    for provider in ModelFactory._providers.values():
+        config = provider.get_model_config(model_name)
+        if config and config.type == ModelType.RERANKER:
+            return model
+    
+    raise ValueError(f"Model {model_name} is not a reranker model")
