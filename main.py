@@ -122,12 +122,6 @@ def setup_content_processing(app_config: dict) -> ContentProcessingComponent:
     return processor
 
 # Initialize assistants with default models
-chat_assistant = ChatAssistant(
-    model_choice=model_choice,
-    temperature=temperature,
-    max_tokens=max_tokens
-)
-chat_ui = ChatAssistantUI(chat_assistant)
 rag_assistant = RAGAssistant(
     model_name="Ollama (llama3.2)",
     embedding_model="nomic-embed-text",
@@ -224,14 +218,15 @@ async def chat_wrapper(
             assistant_message = {"role": "assistant", "content": accumulated_response}
             current_history.append(assistant_message)
             
-            # Initialize ChatAssistantUI with a new ChatAssistant
-            chat_assistant = ChatAssistant(
-                model_choice=model_choice,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
+            # Update the global chat_assistant with the new parameters
+            # Instead of creating a new instance
+            global chat_assistant
+            await chat_assistant.update_model(model_choice)
+            chat_assistant.set_temperature(temperature)
+            chat_assistant.set_max_tokens(max_tokens)
             
-            chat_ui = ChatAssistantUI(chat_assistant)
+            # Use the existing chat_ui instance
+            global chat_ui
             
             # Process through UI
             async for response in chat_ui.process_gradio_chat(

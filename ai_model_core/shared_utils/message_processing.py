@@ -115,71 +115,84 @@ class MessageProcessor(BaseMessageProcessor):
 
     async def gradio_to_langchain(
         self, 
-        message: GradioMessage,
+        message: Union[GradioMessage, Dict, str], 
         files: Optional[List[Any]] = None
-    ) -> BaseMessage:
+    ) -> HumanMessage:
         """
-        Convert Gradio message format to LangChain format
+        Convert a Gradio message to a LangChain message.
+        Now handles direct string input and dictionary format.
         
         Args:
-            message: GradioMessage object with role and content
-            files: Optional list of uploaded files
+            message: Gradio message (GradioMessage, Dict, or str)
+            files: Optional list of files to process
             
         Returns:
-            LangChain BaseMessage subclass
+            LangChain HumanMessage
         """
-        # Process the content into a LangChain-compatible string
-        processed_content = await self.process_message_content(message.content)
-        
-        # Add additional file content if provided separately
+        # Handle different input types
+        if isinstance(message, str):
+            content = message
+            role = "user"
+        elif isinstance(message, Dict):
+            content = message.get("content", "")
+            role = message.get("role", "user")
+        elif isinstance(message, GradioMessage):
+            content = message.content
+            role = message.role
+        else:
+            # Default fallback
+            content = str(message)
+            role = "user"
+            
+        # Process files if provided
         if files:
-            file_descriptions = []
-            for file in files:
-                if not file or not hasattr(file, "name"):
-                    continue
+            file_contents = await self._process_files(files)
+            if file_contents:
+                # Add file content to message
+                if isinstance(content, str):
+                    # Convert to list format for multimodal
+                    content = [content] if content else []
                     
-                file_type = self._detect_file_type(file.name)
-                file_descriptions.append(f"[{file_type.capitalize()}: {Path(file.name).name}]")
-            
-            if file_descriptions:
-                processed_content += "\n\nAttached files: " + ", ".join(file_descriptions)
-        
+                # If content is already a list, extend it
+                if isinstance(content, list):
+                    content.extend(file_contents)
+                else:
+                    # Safety fallback
+                    content = [str(content)] + file_contents
+                    
         # Create appropriate LangChain message based on role
-        role = message.role
         if role == "user":
-            return HumanMessage(content=processed_content)
+            return HumanMessage(content=content)
         elif role == "assistant":
-            return AIMessage(content=processed_content)
+            return AIMessage(content=content)
         elif role == "system":
-            return SystemMessage(content=processed_content)
+            return SystemMessage(content=content)
         else:
-            logger.warning(f"Unknown role '{role}', defaulting to HumanMessage")
-            return HumanMessage(content=processed_content)
+            # Default to HumanMessage for unknown roles
+            return HumanMessage(content=content)
 
-    def langchain_to_gradio(self, message: BaseMessage) -> GradioMessage:
+    def langchain_to_gradio(self, message: Union[str, BaseMessage, Dict]) -> GradioMessage:
         """
-        Convert LangChain message format to Gradio format
-        
-        Args:
-            message: LangChain BaseMessage subclass
-            
-        Returns:
-            GradioMessage object
+        Convert a LangChain message to a Gradio message format.
+        Handles multiple input types.
         """
-        content = message.content
-        
-        # Determine the role based on LangChain message type
-        if isinstance(message, HumanMessage):
-            role = "user"
-        elif isinstance(message, AIMessage):
-            role = "assistant"
-        elif isinstance(message, SystemMessage):
-            role = "system"
+        if isinstance(message, str):
+            return GradioMessage(role="assistant", content=message)
+        elif isinstance(message, Dict) and "content" in message:
+            role = message.get("role", "assistant")
+            return GradioMessage(role=role, content=message["content"])
+        elif isinstance(message, BaseMessage):
+            # Get role - convert from camelCase to lowercase
+            role_map = {
+                "HumanMessage": "user",
+                "AIMessage": "assistant",
+                "SystemMessage": "system"
+            }
+            role = role_map.get(message.__class__.__name__, "assistant")
+            return GradioMessage(role=role, content=message.content)
         else:
-            logger.warning(f"Unknown message type {type(message)}, defaulting to 'user'")
-            role = "user"
-            
-        return GradioMessage(role=role, content=content)
+            # Default fallback
+            return GradioMessage(role="assistant", content=str(message))
         
     async def convert_history(
         self,

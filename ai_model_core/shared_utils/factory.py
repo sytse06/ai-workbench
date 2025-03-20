@@ -16,6 +16,14 @@ from abc import ABC, abstractmethod
 import logging
 from dataclasses import dataclass, field
 
+# Third-party imports
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_ollama import ChatOllama, OllamaEmbeddings
+from langchain_anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_cohere import ChatCohere, CohereEmbeddings
+import whisper
+
 # Local imports
 from ..config.credentials import get_api_key, load_credentials
 
@@ -152,6 +160,10 @@ def get_model(choice: str, **kwargs):
     Returns:
         ChatModel: Instance of the selected chat model
     """
+    # Type checking
+    if not isinstance(choice, str):
+        raise TypeError(f"Expected string for model choice, got {type(choice).__name__}. "
+                        f"Make sure you're passing a model name string, not a model object.")
     load_credentials() 
     
     # Test model support for testing environment
@@ -242,7 +254,7 @@ def get_model(choice: str, **kwargs):
             model="llama3.2-vision",
             base_url="http://localhost:11434",
             **kwargs)    
-    elif choice.startswith("Whisper"):
+    elif isinstance(choice, str) and choice.startswith("Whisper"):
         whisper_size = choice.split()[-1].lower()
         if whisper_size not in WHISPER_SIZES:
             raise ValueError(

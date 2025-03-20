@@ -2,6 +2,7 @@
 from typing import Optional, List, Dict, Union, AsyncGenerator
 import gradio as gr
 import logging
+import sys
 
 #Local imports
 from .chat_assistant import ChatAssistant
@@ -11,13 +12,25 @@ from ..shared_utils.message_types import GradioMessage
 
 logger = logging.getLogger(__name__)
 
-class ChatAssistantUI(ChatAssistant, BaseAssistantUI):
-    def __init__(self, assistant_instance=None, *args, **kwargs):
-        if assistant_instance is None:
-            assistant_instance = ChatAssistant(*args, **kwargs)
+class ChatAssistantUI:
+    """
+    UI class for Chat Assistant that composes BaseAssistantUI and 
+    assistant functionality through composition.
+    """
+    def __init__(self, assistant_obj=None, *args, **kwargs):
+        # Initialize message processor
+        self.message_processor = MessageProcessor()
         
-        super().__init__(assistant_instance)
-        self.chat_assistant = assistant_instance
+        # Store the assistant object without type checking
+        self._assistant = assistant_obj
+        
+        # Create the UI helper
+        if self._assistant is not None:
+            self.ui = BaseAssistantUI(self._assistant)
+        else:
+            # No UI helper if no assistant
+            self.ui = None
+            logger.warning("ChatAssistantUI initialized without an assistant")
 
     async def process_gradio_chat(
         self,
@@ -37,9 +50,16 @@ class ChatAssistantUI(ChatAssistant, BaseAssistantUI):
         message formatting, and calls the chat method.
         """
         try:
-            await self.chat_assistant.update_model(model_choice)
-            self.chat_assistant.set_temperature(temperature)
-            self.chat_assistant.set_max_tokens(max_tokens)
+            # Update assistant model if needed
+            if hasattr(self._assistant, 'update_model'):
+                await self._assistant.update_model(model_choice)
+            
+            # Set parameters if methods exist
+            if hasattr(self._assistant, 'set_temperature'):
+                self._assistant.set_temperature(temperature)
+                
+            if hasattr(self._assistant, 'set_max_tokens'):
+                self._assistant.set_max_tokens(max_tokens)
 
             # Convert to GradioMessage
             if isinstance(message, str):
@@ -67,18 +87,43 @@ class ChatAssistantUI(ChatAssistant, BaseAssistantUI):
                                 self.message_processor.format_assistant_message(h_message.content)
                             )
 
-            # Call the chat method directly on the assistant instance
-            async for response in self.chat_assistant.chat(
-                message=langchain_message,
-                history=langchain_history,
-                prompt_info=prompt_info,
-                language_choice=language_choice,
-                history_flag=history_flag,
-                stream=True,
-                use_context=use_context
-            ):
-                yield self.format_gradio_response(response)
+            # Call the chat method on the assistant
+            if hasattr(self._assistant, 'chat'):
+                async for response in self._assistant.chat(
+                    message=langchain_message,
+                    history=langchain_history,
+                    prompt_info=prompt_info,
+                    language_choice=language_choice,
+                    history_flag=history_flag,
+                    stream=True,
+                    use_context=use_context
+                ):
+                    # Use UI's formatter if available, otherwise format directly
+                    if self.ui:
+                        yield self.ui.format_gradio_response(response)
+                    else:
+                        yield self.format_gradio_response(response)
+            else:
+                yield {"role": "assistant", "content": "The assistant does not have a chat method."}
 
         except Exception as e:
             logger.error(f"Gradio chat processing error: {str(e)}")
             yield {"role": "assistant", "content": f"An error occurred: {str(e)}"}
+            
+    def format_gradio_response(self, response):
+        """Format response for Gradio when UI is not available"""
+        if isinstance(response, str):
+            return {"role": "assistant", "content": response}
+        elif isinstance(response, dict) and "content" in response:
+            role = response.get("role", "assistant")
+            return {"role": role, "content": response["content"]}
+        else:
+            return {"role": "assistant", "content": str(response)}
+        
+    async def process_gradio_message(self, *args, **kwargs):
+        """Delegate to UI component if available"""
+        if self.ui:
+            async for response in self.ui.process_gradio_message(*args, **kwargs):
+                yield response
+        else:
+            yield {"role": "assistant", "content": "UI component not initialized."}

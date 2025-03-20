@@ -17,6 +17,14 @@ logger = logging.getLogger(__name__)
 
 class BaseAssistantUI:
     def __init__(self, assistant_instance: Any):
+        """
+        Initialize BaseAssistantUI with an assistant instance.
+        
+        Args:
+            assistant_instance: An instance of a chat assistant class
+                that implements methods like get_model and update_model, set_temperature,
+                set_max_tokens, and chat.
+        """
         self.assistant = assistant_instance
         self.message_processor = MessageProcessor()
 
@@ -48,7 +56,7 @@ class BaseAssistantUI:
                 gradio_message = GradioMessage(role="user", content=str(message))
 
             # Create GradioMessage to LangChain format
-            langchain_message = await self.message_processor.gradio_to_langchain(message)
+            langchain_message = await self.message_processor.gradio_to_langchain(gradio_message, files)
 
             # Format history properly
             langchain_history = []
@@ -57,9 +65,15 @@ class BaseAssistantUI:
                     if isinstance(h, str):
                         h = {"role": "user", "content": h}
                     if isinstance(h, dict) and "role" in h:
-                        msg = GradioMessage(role=h["role"], content=h["content"])
-                        langchain_history.append(
-                        await self.message_processor.gradio_to_langchain(msg))
+                        msg = GradioMessage(role=h["role"], content=h.get("content", ""))
+                        if h["role"] == "user":
+                            langchain_history.append(
+                                await self.message_processor.gradio_to_langchain(msg)
+                            )
+                        else:
+                            langchain_history.append(
+                                self.message_processor.format_assistant_message(msg.content)
+                            )
 
             async for response in self.assistant.chat(
                 message=langchain_message,

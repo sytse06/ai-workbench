@@ -330,7 +330,7 @@ class ChatAssistant:
         Uses instance variables for temperature and max_tokens.
         
         Args:
-            message: Input message (either Gradio dict or LangChain HumanMessage)
+            message: Input message (Gradio dict, GradioMessage, or LangChain HumanMessage)
             history: Chat history in either format
             history_flag: Whether to include history
             stream: Whether to stream responses
@@ -352,6 +352,17 @@ class ChatAssistant:
                             text_parts.append(f"[File: {item['path']}]")
                     content = " ".join(text_parts)
                 langchain_message = HumanMessage(content=content)
+            elif isinstance(message, GradioMessage):
+                # Handle GradioMessage type specifically
+                content = message.content
+                if isinstance(content, list):
+                    # Handle multimodal content in GradioMessage
+                    content = " ".join(
+                        item if isinstance(item, str) 
+                        else f"[File: {item.get('path', 'unknown')}]" 
+                        for item in content if item
+                    )
+                langchain_message = HumanMessage(content=content)
             else:
                 langchain_message = message
 
@@ -366,14 +377,28 @@ class ChatAssistant:
                             # Handle multimodal content in history
                             content = " ".join(
                                 item if isinstance(item, str) 
-                                else f"[File: {item['path']}]" 
-                                for item in content
+                                else f"[File: {item.get('path', 'unknown')}]" 
+                                for item in content if item
                             )
                         if role == "user":
                             langchain_history.append(HumanMessage(content=content))
                         elif role == "assistant":
                             langchain_history.append(AIMessage(content=content))
+                    elif isinstance(h, GradioMessage):
+                        # Handle GradioMessage in history
+                        content = h.content
+                        if isinstance(content, list):
+                            content = " ".join(
+                                item if isinstance(item, str)
+                                else f"[File: {item.get('path', 'unknown')}]"
+                                for item in content if item
+                            )
+                        if h.role == "user":
+                            langchain_history.append(HumanMessage(content=content))
+                        elif h.role == "assistant":
+                            langchain_history.append(AIMessage(content=content))
                     else:
+                        # Already a LangChain message
                         langchain_history.append(h)
 
             # Prepare messages list
