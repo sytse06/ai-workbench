@@ -122,13 +122,6 @@ def setup_content_processing(app_config: dict) -> ContentProcessingComponent:
     return processor
 
 # Initialize assistants with default models
-rag_assistant = RAGAssistant(
-    model_name="Ollama (llama3.2)",
-    embedding_model="nomic-embed-text",
-    temperature=0.4,
-    max_tokens=1000
-)
-rag_assistant.ui = RAGAssistantUI(rag_assistant)
 assistant_type_state = gr.State(AssistantType.RAG)
 assistant_type_state = gr.State(AssistantType.SUMMARIZATION)
 summarization_assistant = SummarizationAssistant("Ollama (llama3.2)")
@@ -342,27 +335,24 @@ async def rag_wrapper(
 ) -> AsyncGenerator[List[Dict[str, str]], None]:
     """RAG wrapper with proper message handling between Gradio and LangChain."""
     try:
-        # Initialize RAGAssistant with provided parameters
-        rag_assistant = RAGAssistant(
-            model_name=model_choice,
-            embedding_model=embedding_choice,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            num_similar_docs=num_similar_docs,
-            retrieval_method=retrieval_method
-        )
-
-        # Initialize RAGAssistantUI with the RAGAssistant instance
-        rag_assistant.ui = RAGAssistantUI(rag_assistant)
+        # Use global RAG assistant
+        global rag_assistant
+        
+        # Update parameters
+        await rag_assistant.update_model(model_choice)
+        rag_assistant.temperature = temperature
+        rag_assistant.max_tokens = max_tokens
+        rag_assistant.num_similar_docs = num_similar_docs
+        rag_assistant.chunk_size = chunk_size
+        rag_assistant.chunk_overlap = chunk_overlap
+        rag_assistant.retrieval_method = retrieval_method
         
         # Handle None message
         if message is None:
             logger.warning("Received None message in rag_wrapper")
             message = ""
         
-        # Extract message text and files
+        # Extract message text
         message_processor = MessageProcessor()
         if isinstance(message, dict):
             message_text = message.get("text", "").strip() if message.get("text") else ""
@@ -377,7 +367,6 @@ async def rag_wrapper(
         
         # Process uploaded files if any
         if file_paths or files:
-            # Process files through content processor
             processor = ContentProcessingComponent()
             status_msg, docs = await processor.process_documents(
                 assistant_type=AssistantType.RAG,
@@ -399,26 +388,18 @@ async def rag_wrapper(
         assistant_message = {"role": "assistant", "content": accumulated_response}
         current_history.append(assistant_message)
         
-        # Update the global rag_assistant instance
-        await rag_assistant.update_model(model_choice)
-        rag_assistant.temperature = temperature
-        rag_assistant.max_tokens = max_tokens
-        rag_assistant.num_similar_docs = num_similar_docs
-        rag_assistant.chunk_size = chunk_size
-        rag_assistant.chunk_overlap = chunk_overlap
-        rag_assistant.retrieval_method = retrieval_method
-        
-        # Ensure we have a UI wrapper
+        # Make sure UI is available
         if not hasattr(rag_assistant, 'ui') or rag_assistant.ui is None:
             rag_assistant.ui = RAGAssistantUI(rag_assistant)
         
-        # Process message through the UI wrapper
-        async for response in rag_assistant.ui.process_gradio_message(
+        # Process message - IMPORTANT: Use process_gradio_chat instead of process_gradio_message
+        async for response in rag_assistant.ui.process_gradio_chat(
             message=message_text,
-            history=current_history if history_flag else [],
+            history=current_history[:-1] if history_flag else [],
             model_choice=model_choice,
             temperature=temperature,
             max_tokens=max_tokens,
+            files=files,
             use_context=True,
             history_flag=history_flag,
             prompt_info=prompt_info,
@@ -445,7 +426,7 @@ async def rag_wrapper(
         else:
             current_history.append({"role": "assistant", "content": error_msg})
         yield current_history
-            
+                    
 # Wrapper function for Gradio interface summarize_assistant:
 async def summarize_wrapper(
     loaded_docs: Union[List[Document], List[str], None],
@@ -1227,11 +1208,23 @@ if __name__ == "__main__":
     content_processor = setup_content_processing(config.get("system", {}).get("processing", {}))
     
     # Initialize assistants
-    chat_assistant = ChatAssistant("Ollama (llama3.2)")
+    chat_assistant = ChatAssistant(
+        model_choice="Ollama (llama3.2)",
+        temperature=0.1, 
+        max_tokens=2000
+    )
+    # Create the UI wrapper
+    chat_ui = ChatAssistantUI(chat_assistant)
+
+    # Initialize RAG assistant 
     rag_assistant = RAGAssistant(
         model_name="Ollama (llama3.2)",
-        embedding_model="nomic-embed-text"
+        embedding_model="nomic-embed-text",
+        temperature=0.4,
+        max_tokens=1000
     )
+    # Create the UI wrapper using our new pattern
+    rag_assistant.ui = RAGAssistantUI(rag_assistant)
     summarization_assistant = SummarizationAssistant("Ollama (llama3.2)")
     transcription_assistant = TranscriptionAssistant(model_size="base")
     

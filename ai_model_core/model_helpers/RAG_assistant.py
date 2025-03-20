@@ -1,3 +1,4 @@
+# ai_model_core/model_helpers/RAG_assistant.py
 # Standard library imports
 from typing import (
     TypedDict, 
@@ -431,10 +432,11 @@ class RAGAssistant:
         history: Optional[List[Union[Dict, GradioMessage, BaseMessage]]] = None,
         prompt_template: Optional[str] = None,
         stream: bool = True,
-        use_context: bool = True
+        use_context: bool = True,
+        history_flag: bool = True,  # Added this parameter
+        language_choice: Optional[str] = None  # Added for consistency
     ) -> AsyncGenerator[Union[str, Dict[str, str]], None]:
         """Process a query through the RAG pipeline using Langgraph workflow."""
-        logger.debug(f"RAGAssistant.query received parameters: {all_params.keys()}")
         try:
             if not self.is_vectorstore_ready and use_context:
                 yield {"role": "assistant", "content": "Vector store not initialized. Please load documents first."}
@@ -459,6 +461,15 @@ class RAGAssistant:
                     message_text = message.content
                 else:
                     message_text = str(message)
+
+            # Process history if flag is enabled
+            processed_history = []
+            if history and history_flag:
+                # History processing logic here if needed
+                # For now, we just acknowledge the flag
+                logger.debug(f"Processing history with {len(history)} messages")
+                # We're not actually using history in the graph workflow yet,
+                # but we could add it to the state if needed
 
             # Initialize graph state
             initial_state = State(
@@ -490,7 +501,7 @@ class RAGAssistant:
         except Exception as e:
             logger.error(f"Error in query method: {str(e)}")
             yield {"role": "assistant", "content": f"An error occurred: {str(e)}"}
-            
+                    
     def _get_base_rag_template(self):
         return (
             "Use the following pieces of context to answer the question at "
