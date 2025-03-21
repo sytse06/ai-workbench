@@ -31,6 +31,10 @@ from ..config.settings import (
     load_config
 )
 from ..shared_utils.utils import EnhancedContentLoader
+from ..shared_utils.content_coordinator import (
+    ContentProcessingComponent,
+    AssistantType
+)
 from ..shared_utils.factory import get_model, update_model
 from ..config.settings import load_config
 from ..shared_utils.prompt_utils import (

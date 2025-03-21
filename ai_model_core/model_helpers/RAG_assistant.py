@@ -433,13 +433,13 @@ class RAGAssistant:
         prompt_template: Optional[str] = None,
         stream: bool = True,
         use_context: bool = True,
-        history_flag: bool = True,  # Added this parameter
-        language_choice: Optional[str] = None  # Added for consistency
+        history_flag: bool = True,
+        language_choice: Optional[str] = None
     ) -> AsyncGenerator[Union[str, Dict[str, str]], None]:
         """Process a query through the RAG pipeline using Langgraph workflow."""
         try:
-            if not self.is_vectorstore_ready and use_context:
-                yield {"role": "assistant", "content": "Vector store not initialized. Please load documents first."}
+            if use_context and not self.is_vectorstore_ready:
+                yield {"role": "assistant", "content": "I'm your RAG assistant helping you answer questions about your content. The vector store has not been initialized. Please load documents using the 'Load content' button first."}
                 return
 
             # Get the message processor if not already initialized

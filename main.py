@@ -1,4 +1,4 @@
-# Main Gradio AI workbench app
+# main.py Gradio AI workbench app
 # Standard library imports
 import os
 import datetime
@@ -100,7 +100,7 @@ def setup_content_processing(app_config: dict) -> ContentProcessingComponent:
     rag_config = LoaderConfig(
         chunk_size=app_config.get("rag", {}).get("chunk_size", 500),
         chunk_overlap=app_config.get("rag", {}).get("chunk_overlap", 50),
-        process_callback=None  # Will be set after RAG assistant initialization
+        process_callback=None
     )
     processor.register_assistant(AssistantType.RAG, rag_config)
     
@@ -108,7 +108,7 @@ def setup_content_processing(app_config: dict) -> ContentProcessingComponent:
     summary_config = LoaderConfig(
         chunk_size=app_config.get("summarization", {}).get("chunk_size", 1000),
         chunk_overlap=app_config.get("summarization", {}).get("chunk_overlap", 100),
-        process_callback=None  # Will be set after Summarization assistant initialization
+        process_callback=None
     )
     processor.register_assistant(AssistantType.SUMMARIZATION, summary_config)
     
@@ -121,9 +121,27 @@ def setup_content_processing(app_config: dict) -> ContentProcessingComponent:
     
     return processor
 
+# Add to main.py, outside of class definitions
+async def process_documents_temp_summarization(docs):
+    """Temporary implementation until SummarizationAssistant is updated."""
+    logger.info(f"Temporarily processing {len(docs)} documents for summarization")
+    # Store documents in a global variable or pass to summarization_assistant directly
+    if hasattr(summarization_assistant, 'documents'):
+        summarization_assistant.documents = docs
+    return docs
+
+async def process_documents_temp_transcription(docs):
+    """Temporary implementation until TranscriptionAssistant is updated."""
+    logger.info(f"Temporarily processing {len(docs)} documents for transcription")
+    # Store documents in a global variable for later reference
+    if hasattr(transcription_assistant, 'input_files'):
+        transcription_assistant.input_files = docs
+    return docs
+
 # Initialize assistants with default models
-assistant_type_state = gr.State(AssistantType.RAG)
-assistant_type_state = gr.State(AssistantType.SUMMARIZATION)
+rag_assistant_type = gr.State(AssistantType.RAG)
+print(f"RAG assistant type component ID: {rag_assistant_type._id}")
+summarization_assistant_type = gr.State(AssistantType.SUMMARIZATION)
 summarization_assistant = SummarizationAssistant("Ollama (llama3.2)")
 transcription_assistant = TranscriptionAssistant(model_size="base")
 
@@ -259,23 +277,6 @@ async def chat_wrapper(
             {"role": "user", "content": message_text},
             {"role": "assistant", "content": "An error occurred. Please try again."}
         ]
-
-# Add to main.py, outside of class definitions
-async def process_documents_temp_summarization(docs):
-    """Temporary implementation until SummarizationAssistant is updated."""
-    logger.info(f"Temporarily processing {len(docs)} documents for summarization")
-    # Store documents in a global variable or pass to summarization_assistant directly
-    if hasattr(summarization_assistant, 'documents'):
-        summarization_assistant.documents = docs
-    return docs
-
-async def process_documents_temp_transcription(docs):
-    """Temporary implementation until TranscriptionAssistant is updated."""
-    logger.info(f"Temporarily processing {len(docs)} documents for transcription")
-    # Store documents in a global variable for later reference
-    if hasattr(transcription_assistant, 'input_files'):
-        transcription_assistant.input_files = docs
-    return docs
                             
 # Wrapper function for loading documents (RAG and summarization)
 async def load_documents_wrapper(
@@ -286,6 +287,7 @@ async def load_documents_wrapper(
     assistant_type: Optional[AssistantType] = None
 ) -> Tuple[str, Optional[List[Document]]]:
     """Wrapper function for loading documents through the component."""
+    print(f"Received assistant type: {assistant_type}, component ID: {id(assistant_type)}")
     try:
         # Get the content processor instance
         processor = ContentProcessingComponent()
@@ -904,7 +906,7 @@ with gr.Blocks() as demo:
                 file_input, 
                 chunk_size, 
                 chunk_overlap,
-                assistant_type_state],
+                rag_assistant_type],
             outputs=[load_output, loaded_docs]
         )
         
@@ -987,7 +989,7 @@ with gr.Blocks() as demo:
                     file_input, 
                     chunk_size, 
                     chunk_overlap,
-                    assistant_type_state],
+                    rag_assistant_type],
             outputs=[load_output, loaded_docs]
         )
 
