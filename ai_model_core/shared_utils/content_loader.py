@@ -33,7 +33,11 @@ class EnhancedContentLoader:
     
     This class handles raw file loading operations without assistant-specific processing.
     """
-    
+    # File upload constraints
+    MAX_TEXT_FILE_SIZE = 10 * 1024 * 1024  # 10MB in bytes
+    MAX_IMAGE_FILE_SIZE = 5 * 1024 * 1024   # 5MB in bytes
+    MAX_WORD_COUNT = 4000
+    MAX_COMBINED_SIZE = 10 * 1024 * 1024    # 10MB total
     def __init__(
         self,
         temp_dir: str = "input/tmp",
@@ -194,6 +198,38 @@ class EnhancedContentLoader:
     # Validation Functions
     # ----------------------
     
+    async def validate_files(self, files: List[Any]) -> None:
+        """Validate all files against size and content limits."""
+        combined_size = 0
+        
+        for file in files:
+            file_path = file.name if hasattr(file, "name") else str(file)
+            file_size = os.path.getsize(file_path)
+            combined_size += file_size
+            
+            # Check individual file size limits
+            if self._is_image_file(file_path):
+                if file_size > self.MAX_IMAGE_FILE_SIZE:
+                    raise ValueError(
+                        f"Image {os.path.basename(file_path)} exceeds size limit of 5MB"
+                    )
+            else:
+                if file_size > self.MAX_TEXT_FILE_SIZE:
+                    raise ValueError(
+                        f"File {os.path.basename(file_path)} exceeds size limit of 10MB"
+                    )
+                
+                # Check word count for text files
+                word_count = await self._count_words(file_path)
+                if word_count > self.MAX_WORD_COUNT:
+                    raise ValueError(
+                        f"File {os.path.basename(file_path)} exceeds word limit of {self.MAX_WORD_COUNT}"
+                    )
+        
+        # Check combined size limit
+        if combined_size > self.MAX_COMBINED_SIZE:
+            raise ValueError("Combined file size exceeds limit of 10MB")
+    
     def validate_file_input(
         self,
         file_input: Optional[Union[str, List[str], List[Any]]]
@@ -275,6 +311,35 @@ class EnhancedContentLoader:
             self.supported_image_formats
         )
         return sorted(list(all_formats))
+    
+    async def _count_words(self, file_path: str) -> int:
+        """Count words in a text file."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                # Split on whitespace and filter out empty strings
+                words = [w for w in content.split() if w.strip()]
+                return len(words)
+        except Exception as e:
+            logger.error(f"Error counting words in {file_path}: {str(e)}")
+            raise
+    
+    async def load_documents_with_validation(
+        self,
+        file_paths: Optional[Union[str, List[str]]] = None,
+        urls: Optional[str] = None
+    ) -> List[Document]:
+        """Load documents with validation before processing."""
+        if file_paths:
+            # Normalize to list
+            if not isinstance(file_paths, list):
+                file_paths = [file_paths]
+            
+            # Validate files before processing
+            await self.validate_files(file_paths)
+        
+        # Use existing method for loading
+        return self.load_documents(file_paths, urls)
     
     # ----------------------
     # Document Type-Specific Loading Functions

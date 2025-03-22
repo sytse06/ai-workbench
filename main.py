@@ -5,6 +5,7 @@ import datetime
 import logging
 import sys
 import asyncio
+import traceback
 from typing import (
     List,
     Generator,
@@ -33,12 +34,18 @@ from ai_model_core.model_helpers import (
     TranscriptionAssistant,
     TranscriptionContext
 )
-from ai_model_core.shared_utils.utils import (
-    EnhancedContentLoader,
-    ContentProcessingComponent,
+
+from ai_model_core.shared_utils.content_loader import EnhancedContentLoader
+from ai_model_core.shared_utils.content_processor import (
     AssistantType,
-    LoaderConfig
+    LoaderConfig,
+    BaseContentProcessor
 )
+from ai_model_core.shared_utils.content_coordinator import (
+    ContentProcessingComponent,
+    setup_content_processing
+)
+
 from ai_model_core.shared_utils.message_processing import MessageProcessor
 from ai_model_core.shared_utils.message_types import (
     GradioMessage,
@@ -46,6 +53,7 @@ from ai_model_core.shared_utils.message_types import (
     GradioFileContent,
     GradioRole
 )
+
 from ai_model_core.shared_utils import (
     get_model, 
     get_embedding_model, 
@@ -55,11 +63,14 @@ from ai_model_core.shared_utils import (
     WHISPER_MODELS, 
     OUTPUT_FORMATS
 )
+
 from ai_model_core.shared_utils.prompt_utils import (
     get_prompt_list, 
     update_prompt_list
 )
+
 from ai_model_core.config.settings import load_config
+
 
 # Set environment variables
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'

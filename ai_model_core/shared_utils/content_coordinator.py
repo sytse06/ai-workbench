@@ -156,6 +156,7 @@ class ContentProcessingComponent:
         assistant_type: AssistantType,
         url_input: Optional[str] = None,
         file_input: Optional[Union[str, List[str]]] = None,
+        validate_files: bool = True,
         chunk_size: Optional[int] = None,
         chunk_overlap: Optional[int] = None,
         **kwargs
@@ -164,18 +165,24 @@ class ContentProcessingComponent:
         Process content through loading and assistant-specific processing.
         
         Args:
-            assistant_type: Type of assistant
-            url_input: Optional URL string
-            file_input: Optional file path(s)
-            chunk_size: Optional custom chunk size
-            chunk_overlap: Optional custom chunk overlap
-            kwargs: Additional processing parameters
-            
+            assistant_type: Type of assistant (CHAT, RAG, SUMMARIZATION, etc.)
+            url_input: Optional URL string (can be multiple URLs separated by newlines)
+            file_input: Optional file path(s) - string or list of strings
+            validate_files: Whether to validate files before processing
+            chunk_size: Optional custom chunk size (overrides config)
+            chunk_overlap: Optional custom chunk overlap (overrides config)
+            **kwargs: Additional processing parameters:
+                - query: Optional user query for relevance-based formatting
+                - embedding_model: Name of embedding model (for RAG)
+                - method: Summarization method (for SUMMARIZATION)
+                - language: Language for processing (if relevant)
+                - max_documents: Maximum number of documents to include
+                
         Returns:
             Tuple of (status message, processed result)
         """
         try:
-            # Validate assistant type
+            # Validate assistant type is registered
             if assistant_type not in self._configs:
                 return f"Assistant type {assistant_type} not registered.", None
             
@@ -192,51 +199,138 @@ class ContentProcessingComponent:
             
             # Load documents first
             try:
-                # For audio files, allow potentially different loading behavior
+                # Special handling for transcription (no chunking needed)
                 if assistant_type == AssistantType.TRANSCRIPTION:
                     return await self._process_transcription_content(
-                        url_input, file_input, config, **kwargs)
+                        url_input, file_input, config, validate_files=validate_files, **kwargs)
                 
-                # Standard document loading and chunking
+                # Normalize file_input to list
+                if file_input and not isinstance(file_input, list):
+                    file_input = [file_input]
+                    
+                # Validate files if requested
+                if validate_files and file_input:
+                    try:
+                        await self._validate_files(file_input)
+                    except ValueError as ve:
+                        logger.warning(f"File validation failed: {str(ve)}")
+                        return f"Validation error: {str(ve)}", None
+                        
+                # Loading method selection
+                load_method = self._content_loader.load_documents
+                
+                # Standard document loading
                 docs = await asyncio.to_thread(
-                    self._content_loader.load_and_chunk_documents,
+                    load_method,
                     file_paths=file_input,
-                    urls=url_input,
-                    chunk_size=effective_chunk_size,
-                    chunk_overlap=effective_chunk_overlap
+                    urls=url_input
                 )
                 
                 if not docs:
                     return "No documents were loaded", None
+                    
+                # Chunk documents
+                chunked_docs = await asyncio.to_thread(
+                    self._content_loader.chunk_documents,
+                    documents=docs,
+                    chunk_size=effective_chunk_size,
+                    chunk_overlap=effective_chunk_overlap
+                )
                 
-                # Process through appropriate processor
+                # Get appropriate processor for this assistant type
                 processor = self._processors.get(assistant_type)
                 if not processor:
                     logger.warning(f"No processor registered for {assistant_type}")
                     
                     # Call callback directly if no processor but callback exists
                     if config.process_callback:
-                        result = await self._execute_callback(config.process_callback, docs)
-                        return f"Processed {len(docs)} documents (callback only)", result
+                        result = await self._execute_callback(config.process_callback, chunked_docs)
+                        return f"Processed {len(chunked_docs)} document chunks (callback only)", result
                     
-                    return f"No processor for {assistant_type}", docs
+                    return f"No processor for {assistant_type}", chunked_docs
                 
                 # Process through the appropriate processor
-                status, result = await processor.process_documents(docs, **kwargs)
+                status, result = await processor.process_documents(chunked_docs, **kwargs)
                 
                 # Execute callback if provided
                 if config.process_callback:
-                    await self._execute_callback(config.process_callback, docs)
+                    await self._execute_callback(config.process_callback, chunked_docs)
                 
                 return status, result
                 
             except Exception as e:
-                logger.error(f"Error processing documents: {str(e)}")
+                logger.error(f"Error processing documents: {str(e)}", exc_info=True)
                 return f"Error processing documents: {str(e)}", None
                 
         except Exception as e:
-            logger.error(f"Error in process_content: {str(e)}")
+            logger.error(f"Error in process_content: {str(e)}", exc_info=True)
             return f"Error in content processing: {str(e)}", None
+            
+    async def _validate_files(self, files: List[Any]) -> None:
+        """
+        Validate all files against size and content limits.
+        
+        Args:
+            files: List of file paths or file objects
+            
+        Raises:
+            ValueError: If validation fails
+        """
+        if not self._content_loader:
+            self.initialize_loader()
+            
+        # File upload constraints from the loader
+        max_text_size = getattr(self._content_loader, 'MAX_TEXT_FILE_SIZE', 10 * 1024 * 1024)
+        max_image_size = getattr(self._content_loader, 'MAX_IMAGE_FILE_SIZE', 5 * 1024 * 1024)
+        max_word_count = getattr(self._content_loader, 'MAX_WORD_COUNT', 4000)
+        max_combined_size = getattr(self._content_loader, 'MAX_COMBINED_SIZE', 10 * 1024 * 1024)
+
+        combined_size = 0
+        
+        for file in files:
+            file_path = file.name if hasattr(file, "name") else str(file)
+            
+            if not os.path.exists(file_path):
+                raise ValueError(f"File not found: {file_path}")
+                
+            # Check file size
+            file_size = os.path.getsize(file_path)
+            combined_size += file_size
+            
+            # Check individual file size limits
+            if self._content_loader._is_image_file(file_path):
+                if file_size > max_image_size:
+                    raise ValueError(
+                        f"Image {os.path.basename(file_path)} exceeds size limit of {max_image_size/1024/1024:.1f}MB"
+                    )
+            else:
+                if file_size > max_text_size:
+                    raise ValueError(
+                        f"File {os.path.basename(file_path)} exceeds size limit of {max_text_size/1024/1024:.1f}MB"
+                    )
+                
+                # Check word count for text files - only count for text files
+                text_extensions = ['.txt', '.md', '.py', '.docx', '.pdf']
+                if Path(file_path).suffix.lower() in text_extensions:
+                    try:
+                        word_count = 0
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            content = f.read()
+                            # Split on whitespace and filter out empty strings
+                            words = [w for w in content.split() if w.strip()]
+                            word_count = len(words)
+                            
+                        if word_count > max_word_count:
+                            raise ValueError(
+                                f"File {os.path.basename(file_path)} exceeds word limit of {max_word_count}"
+                            )
+                    except UnicodeDecodeError:
+                        # If we can't read as text, it might be a binary file - skip word count
+                        pass
+        
+        # Check combined size limit
+        if combined_size > max_combined_size:
+            raise ValueError(f"Combined file size exceeds limit of {max_combined_size/1024/1024:.1f}MB")
 
     async def process_content_for_messages(
         self,

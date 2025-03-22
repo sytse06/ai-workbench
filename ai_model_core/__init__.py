@@ -1,5 +1,18 @@
 # ai_model_core/__init__.py
-from .shared_utils.utils import EnhancedContentLoader
+from .shared_utils.content_loader import EnhancedContentLoader
+from .shared_utils.content_processor import (
+    BaseContentProcessor,
+    ChatContentProcessor,
+    RAGContentProcessor, 
+    SummarizationContentProcessor,
+    TranscriptionContentProcessor,
+    AssistantType,
+    LoaderConfig
+)
+from .shared_utils.content_coordinator import (
+    ContentProcessingComponent,
+    setup_content_processing
+)
 from .shared_utils.message_types import (
     BaseMessageProcessor,
     GradioMessage,
@@ -42,16 +55,29 @@ from .model_helpers.transcription_assistant import (
 )
 from .model_helpers.embeddings import E5Embeddings
 
-# Define everything that should be available for import
+# Definitions for imports elsewhere
 __all__ = [
-    # Core functionality
+    # Content loading and processing
     'EnhancedContentLoader',
-    'MessageProcessor',
+    'BaseContentProcessor',
+    'ChatContentProcessor',
+    'RAGContentProcessor',
+    'SummarizationContentProcessor',
+    'TranscriptionContentProcessor',
+    'ContentProcessingComponent',
+    'setup_content_processing',
+    'AssistantType',
+    'LoaderConfig',
+    
+    # Message processing
     'BaseMessageProcessor',
+    'MessageProcessor',
     'GradioMessage',
     'GradioContent',
     'GradioFileContent',
     'GradioRole',
+    
+    # Assistants
     'ChatAssistant',
     'RAGAssistant',
     'VisionAssistant',
