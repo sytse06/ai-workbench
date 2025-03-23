@@ -178,14 +178,29 @@ class ChatAssistant:
             Generated response text, streaming if requested
         """
         try:
-            # Get message text for context matching
-            message_text = await self.message_processor.get_message_text(message)
-            
-            # Convert message to LangChain format
-            if not isinstance(message, (HumanMessage, AIMessage, SystemMessage)):
-                langchain_message = await self.message_processor.gradio_to_langchain(message)
-            else:
+        # Extract message text differently based on message type
+            if isinstance(message, (HumanMessage, AIMessage, SystemMessage)):
+                message_text = message.content
                 langchain_message = message
+            elif isinstance(message, str):
+                message_text = message
+                langchain_message = HumanMessage(content=message)
+            elif isinstance(message, dict):
+                # Extract text from dictionary
+                if "content" in message:
+                    content = message["content"]
+                    message_text = content if isinstance(content, str) else str(content)
+                else:
+                    message_text = str(message)
+                # Create LangChain message
+                langchain_message = HumanMessage(content=message_text)
+            else:
+                # Fallback for any other type
+                message_text = str(message)
+                langchain_message = HumanMessage(content=message_text)
+                
+            # Convert message to LangChain format
+            langchain_message = await self.message_processor.gradio_to_langchain(message)
 
             # Convert history to LangChain format if needed
             langchain_history = []

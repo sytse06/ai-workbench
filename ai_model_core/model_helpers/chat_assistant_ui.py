@@ -90,7 +90,7 @@ class ChatAssistantUI:
             # Call the chat method on the assistant
             if hasattr(self._assistant, 'chat'):
                 async for response in self._assistant.chat(
-                    message=langchain_message,
+                    message=gradio_message,
                     history=langchain_history,
                     prompt_info=prompt_info,
                     language_choice=language_choice,

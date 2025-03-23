@@ -379,6 +379,10 @@ async def update_model(new_model_name: str, current_model_name: str):
     """Update model if needed"""
     return await ModelFactory.update_model(new_model_name, current_model_name)
 
+def get_reranker(model_name: str, **kwargs):
+    """Get a reranker model by name"""
+    return ModelFactory.get_model(model_name, **kwargs)
+
 # Constants for backward compatibility
 WHISPER_MODELS = ModelFactory.list_models(ModelType.TRANSCRIPTION)
 OUTPUT_FORMATS = ["none", "txt", "srt", "vtt", "tsv", "json", "all"]

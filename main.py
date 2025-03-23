@@ -58,7 +58,7 @@ from ai_model_core.shared_utils import (
     get_model, 
     get_embedding_model, 
     update_model,
-    #get_reranker,
+    get_reranker,
     ModelType,
     WHISPER_MODELS, 
     OUTPUT_FORMATS
@@ -106,6 +106,14 @@ def setup_content_processing(app_config: dict) -> ContentProcessingComponent:
     Handles various types of content including documents, images, and audio for multimodal support.
     """
     processor = ContentProcessingComponent()
+    
+    # Configure CHAT processing - Add this if missing
+    chat_config = LoaderConfig(
+        chunk_size=app_config.get("chat", {}).get("chunk_size", 1000),
+        chunk_overlap=app_config.get("chat", {}).get("chunk_overlap", 200),
+        process_callback=None 
+    )
+    processor.register_assistant(AssistantType.CHAT, chat_config)
     
     # Configure RAG processing
     rag_config = LoaderConfig(
@@ -168,92 +176,106 @@ async def chat_wrapper(
     prompt_info: Optional[str] = None,
     language_choice: Optional[str] = None
 ) -> AsyncGenerator[List[Dict[str, str]], None]:
-    """Wrapper for chat functionality with handling of context files."""
+    """Wrapper for chat functionality with integrated content processing."""
     try:
-        # Extract files and text from multimodal message
-        message_text = ""
+        # Initialize processors
+        message_processor = MessageProcessor()
+        content_processor = ContentProcessingComponent()
+        
+        # Create current history
+        current_history = list(history) if history else []
+        
+        # Extract files and message text from various message formats
         files = []
+        message_text = ""
         
-        # Process multimodal message from Gradio v5
-        if isinstance(message, dict) and "text" in message:
-            # This is the old format where files were separate
-            message_text = message.get("text", "").strip()
-            file_paths = message.get("files", [])
-            
-            # Process files if provided
-            if file_paths and use_context:
-                try:
-                    content_loader = EnhancedContentLoader()
-                    # Use the enhanced content loader to process files
-                    context = content_loader.load_and_process_files(file_paths=file_paths)
-                    
-                    # Get formatted context as string
-                    formatted_context = content_loader.get_formatted_context(
-                        context,
-                        format_type="string"
-                    )
-                    
-                    # Current history
-                    current_history = list(history) if history else []
-                    
-                    # Add context as system message if there's content
-                    if formatted_context:
-                        current_history.append({
-                            "role": "system",
-                            "content": "Context from uploaded files:\n" + formatted_context
-                        })
-                        
-                except Exception as e:
-                    logger.error(f"Error processing files: {str(e)}")
-                    current_history = list(history) if history else []
-            else:
-                current_history = list(history) if history else []
-        elif isinstance(message, dict) and "content" in message:
-            # This is the new Gradio v5 format
-            if isinstance(message["content"], list):
-                # Process multimodal content
-                text_parts = []
-                for item in message["content"]:
-                    if isinstance(item, str):
-                        text_parts.append(item)
-                    elif isinstance(item, dict) and "path" in item:
-                        # This is a file
-                        files.append(item["path"])
+        # Process different message formats
+        if isinstance(message, str):
+            # Simple string message
+            message_text = message
+        elif isinstance(message, dict):
+            if "content" in message:
+                # Gradio v5 format
+                if isinstance(message["content"], list):
+                    # Multimodal content
+                    text_parts = []
+                    for item in message["content"]:
+                        if isinstance(item, str):
+                            text_parts.append(item)
+                        elif isinstance(item, dict) and "path" in item:
+                            files.append(item["path"])
+                    message_text = " ".join(text_parts)
+                else:
+                    # Simple content
+                    message_text = str(message["content"])
+            elif "text" in message:
+                # Older format
+                message_text = message["text"]
+                if "files" in message:
+                    files.extend(message.get("files", []))
+        
+        logger.debug(f"Extracted message text: {message_text[:50]}...")
+        logger.debug(f"Extracted files: {files}")
+        
+        # Process files if any and context is enabled
+        if files and use_context:
+            try:
+                # Use the universal load_content_wrapper for CHAT assistant type
+                status, result = await load_content_wrapper(
+                    file_input=files,
+                    assistant_type=AssistantType.CHAT,
+                    query=message_text
+                )
                 
-                message_text = " ".join(text_parts)
-            else:
-                message_text = str(message["content"])
-            
-            # Current history
-            current_history = list(history) if history else []
+                # Add file notification message to history
+                if result and "files_message" in result:
+                    current_history.append({
+                        "role": "system", 
+                        "content": result["files_message"]
+                    })
+                
+                # Add context as system message if available
+                if result and "context" in result and result["context"]:
+                    current_history.append({
+                        "role": "system",
+                        "content": f"Context from uploaded files:\n{result['context']}"
+                    })
+                    
+            except Exception as e:
+                logger.error(f"Error processing files: {str(e)}", exc_info=True)
+                # Add error message to history
+                current_history.append({
+                    "role": "system",
+                    "content": f"Error processing files: {str(e)}"
+                })
+        
+        # Add user message to history
+        if message_text:
+            current_history.append({"role": "user", "content": message_text})
+            logger.debug(f"Added user message to history: {message_text[:50]}...")
         else:
-            # Plain text message
-            message_text = str(message).strip()
-            current_history = list(history) if history else []
+            current_history.append({"role": "user", "content": "[Empty message]"})
         
-        # Add the user message (without file content)
-        current_history.append({"role": "user", "content": message_text})
+        # Add empty assistant message that we'll update
+        accumulated_response = ""
+        assistant_message = {"role": "assistant", "content": accumulated_response}
+        current_history.append(assistant_message)
         
+        # Update the global chat_assistant with the new parameters
+        global chat_assistant
+        await chat_assistant.update_model(model_choice)
+        chat_assistant.set_temperature(temperature)
+        chat_assistant.set_max_tokens(max_tokens)
+        
+        # Get previous history (excluding the current user message and empty assistant response)
+        chat_history = current_history[:-2] if history_flag else []
+        
+        # Chat through UI
         try:
-            # Add empty assistant message that we'll update
-            accumulated_response = ""
-            assistant_message = {"role": "assistant", "content": accumulated_response}
-            current_history.append(assistant_message)
-            
-            # Update the global chat_assistant with the new parameters
-            # Instead of creating a new instance
-            global chat_assistant
-            await chat_assistant.update_model(model_choice)
-            chat_assistant.set_temperature(temperature)
-            chat_assistant.set_max_tokens(max_tokens)
-            
-            # Use the existing chat_ui instance
             global chat_ui
-            
-            # Process through UI
             async for response in chat_ui.process_gradio_chat(
-                message=message_text,
-                history=current_history[:-1] if history_flag else [],
+                message={"role": "user", "content": message_text},
+                history=chat_history,
                 model_choice=model_choice,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -265,67 +287,114 @@ async def chat_wrapper(
             ):
                 if isinstance(response, dict) and "content" in response:
                     accumulated_response += response["content"]
-                    assistant_message["content"] = accumulated_response
-                    yield current_history
                 elif isinstance(response, str):
                     accumulated_response += response
-                    assistant_message["content"] = accumulated_response
-                    yield current_history
-
+                
+                assistant_message["content"] = accumulated_response
+                yield current_history
+                
         except Exception as e:
-            logger.error(f"Error in model response: {str(e)}")
+            logger.error(f"Error generating response: {str(e)}", exc_info=True)
             error_msg = (
                 "Er is een fout opgetreden. Probeer het opnieuw."
                 if language_choice and language_choice.lower() == "dutch"
                 else "An error occurred. Please try again."
             )
-            current_history[-1] = {"role": "assistant", "content": error_msg}
+            assistant_message["content"] = error_msg
             yield current_history
-
+            
     except Exception as e:
-        logger.error(f"General chat wrapper error: {str(e)}")
+        logger.error(f"General chat wrapper error: {str(e)}", exc_info=True)
         yield [
-            {"role": "user", "content": message_text},
+            {"role": "user", "content": message_text if 'message_text' in locals() and message_text else "Error processing message"},
             {"role": "assistant", "content": "An error occurred. Please try again."}
         ]
                             
-# Wrapper function for loading documents (RAG and summarization)
-async def load_documents_wrapper(
-    url_input: str,
-    file_input: Union[str, List[str]],
-    chunk_size: int,
-    chunk_overlap: int,
-    assistant_type: Optional[AssistantType] = None
-) -> Tuple[str, Optional[List[Document]]]:
-    """Wrapper function for loading documents through the component."""
-    print(f"Received assistant type: {assistant_type}, component ID: {id(assistant_type)}")
+# Wrapper function for loading documents
+async def load_content_wrapper(
+    url_input: Optional[str] = None,
+    file_input: Optional[Union[str, List[str]]] = None,
+    chunk_size: Optional[int] = None,
+    chunk_overlap: Optional[int] = None,
+    assistant_type: AssistantType = AssistantType.RAG,
+    query: Optional[str] = None,
+    **kwargs
+) -> Tuple[str, Optional[Dict[str, Any]]]:
+    """
+    Universal wrapper for loading and processing content for multiple assistant types.
+    
+    Args:
+        url_input: Optional URL input (can be multiple URLs separated by newlines)
+        file_input: Optional file path(s) or file objects
+        chunk_size: Optional chunk size (overrides default config)
+        chunk_overlap: Optional chunk overlap (overrides default config)
+        assistant_type: Type of assistant (RAG, CHAT, SUMMARIZATION, etc.)
+        query: Optional query for relevance-based processing
+        **kwargs: Additional processing parameters
+        
+    Returns:
+        Tuple of (status message, processed result)
+    """
     try:
         # Get the content processor instance
         processor = ContentProcessingComponent()
         
+        # Check if the assistant type is registered 
+        if assistant_type not in processor._configs:
+            error_msg = f"Assistant type {assistant_type.value} not registered."
+            logger.error(error_msg)
+            return error_msg, None
+        
+        # Validate assistant_type
+        if assistant_type is None:
+            logger.warning("No assistant type provided, defaulting to CHAT")
+            assistant_type = AssistantType.CHAT
+        
         # Validate inputs
         if not url_input and not file_input:
             return "No input provided. Please provide either URLs or files to process.", None
+        
+        # Normalize file_input
+        if file_input and not isinstance(file_input, list):
+            file_input = [file_input]
             
-        # Update configuration for the specific request
-        if assistant_type in [AssistantType.RAG, AssistantType.SUMMARIZATION]:
+        # Extract file paths from gradio.File objects if needed
+        if file_input and all(hasattr(f, 'name') for f in file_input):
+            file_input = [f.name for f in file_input]
+            
+        # Update configuration for the specific request if needed
+        if chunk_size or chunk_overlap:
             config = processor.get_loader_config(assistant_type)
             if config:
-                config.chunk_size = chunk_size
-                config.chunk_overlap = chunk_overlap
+                if chunk_size:
+                    config.chunk_size = chunk_size
+                if chunk_overlap:
+                    config.chunk_overlap = chunk_overlap
+                    
+        logger.debug(f"Processing content for {assistant_type.value} with {len(file_input) if file_input else 0} files")
         
-        # Process documents
-        return await processor.process_documents(
+        # Process content through the processor
+        status, result = await processor.process_content(
             assistant_type=assistant_type,
             url_input=url_input,
             file_input=file_input,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
+            query=query,
+            **kwargs
         )
         
+        # Create a user-friendly status message
+        user_message = status
+        if result and isinstance(result, dict) and "files_message" in result:
+            user_message = result["files_message"]
+            
+        logger.info(f"Content processing for {assistant_type.value}: {user_message}")
+        
+        return user_message, result
+        
     except Exception as e:
-        logger.error(f"Error in load_documents_wrapper: {str(e)}")
-        return f"An error occurred while loading documents: {str(e)}", None
+        error_msg = f"Error loading content: {str(e)}"
+        logger.error(error_msg)
+        return error_msg, None
 
 # Wrapper function for Gradio interface RAG_assistant:
 async def rag_wrapper(
@@ -347,6 +416,9 @@ async def rag_wrapper(
     documents: Optional[List[Document]] = None
 ) -> AsyncGenerator[List[Dict[str, str]], None]:
     """RAG wrapper with proper message handling between Gradio and LangChain."""
+    # Initialize current history
+    current_history = list(history) if history else []
+    
     try:
         # Use global RAG assistant
         global rag_assistant
@@ -381,7 +453,7 @@ async def rag_wrapper(
         # Process uploaded files if any
         if file_paths or files:
             processor = ContentProcessingComponent()
-            status_msg, docs = await processor.process_documents(
+            status_msg, docs = await processor.process_content(
                 assistant_type=AssistantType.RAG,
                 file_input=file_paths or files,
                 url_input=urls if urls else None,
@@ -389,9 +461,6 @@ async def rag_wrapper(
                 chunk_overlap=chunk_overlap
             )
             logger.info(f"File processing: {status_msg}")
-        
-        # Format current history
-        current_history = list(history) if history else []
         
         # Add user message to history
         current_history.append({"role": "user", "content": message_text})
@@ -407,7 +476,7 @@ async def rag_wrapper(
         
         # Process message - IMPORTANT: Use process_gradio_chat instead of process_gradio_message
         async for response in rag_assistant.ui.process_gradio_chat(
-            message=message_text,
+            message={"role": "user", "content": message_text},
             history=current_history[:-1] if history_flag else [],
             model_choice=model_choice,
             temperature=temperature,
@@ -909,15 +978,15 @@ with gr.Blocks() as demo:
                 )
 
         # Connect the load_button to the load_documents_wrapper function
-        loaded_docs = gr.State()
+        loaded_docs = gr.State(AssistantType.RAG)
         load_button.click(
-            fn=load_documents_wrapper,
+            fn=load_content_wrapper,
             inputs=[
                 url_input, 
                 file_input, 
                 chunk_size, 
                 chunk_overlap,
-                rag_assistant_type],
+                gr.State(AssistantType.RAG)],
             outputs=[load_output, loaded_docs]
         )
         
@@ -995,12 +1064,12 @@ with gr.Blocks() as demo:
         # Connect the load_button to the load_documents_wrapper function
         loaded_docs = gr.State()
         load_button.click(
-            fn=load_documents_wrapper,
+            fn=load_content_wrapper,
             inputs=[url_input, 
                     file_input, 
                     chunk_size, 
                     chunk_overlap,
-                    rag_assistant_type],
+                    gr.State(AssistantType.SUMMARIZATION)],
             outputs=[load_output, loaded_docs]
         )
 
@@ -1228,6 +1297,12 @@ if __name__ == "__main__":
     )
     # Create the UI wrapper
     chat_ui = ChatAssistantUI(chat_assistant)
+    
+    # Set up Chat callback
+    chat_config = content_processor.get_loader_config(AssistantType.CHAT)
+    if chat_config:
+        # Make sure ChatAssistant has a process_documents method
+        chat_config.process_callback = chat_assistant.process_documents
 
     # Initialize RAG assistant 
     rag_assistant = RAGAssistant(

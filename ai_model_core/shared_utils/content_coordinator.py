@@ -76,6 +76,9 @@ class ContentProcessingComponent:
         # Processor instances for different assistant types
         self._processors = {}
         
+        # Message processor instance 
+        self._message_processor = MessageProcessor() 
+        
         # State flag
         self._initialized = True
         
@@ -572,93 +575,6 @@ class ContentProcessingComponent:
             processor: Custom content processor
         """
         self._processors[assistant_type] = processor
-    
-    async def process_content(
-        self,
-        assistant_type: AssistantType,
-        url_input: Optional[str] = None,
-        file_input: Optional[Union[str, List[str]]] = None,
-        chunk_size: Optional[int] = None,
-        chunk_overlap: Optional[int] = None,
-        **kwargs
-    ) -> Tuple[str, Optional[Any]]:
-        """
-        Process content through loading and assistant-specific processing.
-        
-        Args:
-            assistant_type: Type of assistant
-            url_input: Optional URL string
-            file_input: Optional file path(s)
-            chunk_size: Optional custom chunk size
-            chunk_overlap: Optional custom chunk overlap
-            kwargs: Additional processing parameters
-            
-        Returns:
-            Tuple of (status message, processed result)
-        """
-        try:
-            # Validate assistant type
-            if assistant_type not in self._configs:
-                return f"Assistant type {assistant_type} not registered.", None
-            
-            # Get config for this assistant type
-            config = self._configs[assistant_type]
-            
-            # Initialize loader if needed
-            if not self._content_loader:
-                self.initialize_loader()
-            
-            # Use provided chunk parameters or fall back to config
-            effective_chunk_size = chunk_size or config.chunk_size
-            effective_chunk_overlap = chunk_overlap or config.chunk_overlap
-            
-            # Load documents first
-            try:
-                # For audio files, allow potentially different loading behavior
-                if assistant_type == AssistantType.TRANSCRIPTION:
-                    return await self._process_transcription_content(
-                        url_input, file_input, config, **kwargs)
-                
-                # Standard document loading and chunking
-                docs = await asyncio.to_thread(
-                    self._content_loader.load_and_chunk_documents,
-                    file_paths=file_input,
-                    urls=url_input,
-                    chunk_size=effective_chunk_size,
-                    chunk_overlap=effective_chunk_overlap
-                )
-                
-                if not docs:
-                    return "No documents were loaded", None
-                
-                # Process through appropriate processor
-                processor = self._processors.get(assistant_type)
-                if not processor:
-                    logger.warning(f"No processor registered for {assistant_type}")
-                    
-                    # Call callback directly if no processor but callback exists
-                    if config.process_callback:
-                        result = await self._execute_callback(config.process_callback, docs)
-                        return f"Processed {len(docs)} documents (callback only)", result
-                    
-                    return f"No processor for {assistant_type}", docs
-                
-                # Process through the appropriate processor
-                status, result = await processor.process_documents(docs, **kwargs)
-                
-                # Execute callback if provided
-                if config.process_callback:
-                    await self._execute_callback(config.process_callback, docs)
-                
-                return status, result
-                
-            except Exception as e:
-                logger.error(f"Error processing documents: {str(e)}")
-                return f"Error processing documents: {str(e)}", None
-                
-        except Exception as e:
-            logger.error(f"Error in process_content: {str(e)}")
-            return f"Error in content processing: {str(e)}", None
     
     async def _process_transcription_content(
         self,
