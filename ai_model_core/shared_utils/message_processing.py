@@ -201,34 +201,32 @@ class MessageProcessor(BaseMessageProcessor):
             logger.error(f"Error processing message content: {str(e)}")
             return str(content)
     
-    async def gradio_to_langchain(self, message):
-        """Convert Gradio message format to LangChain format."""
-        from langchain.schema import HumanMessage, AIMessage, SystemMessage
-        
+    async def gradio_to_langchain(self, gradio_message, files=None):
+        """Convert Gradio message format to LangChain format."""        
         try:
             # Already a LangChain message
-            if isinstance(message, (HumanMessage, AIMessage, SystemMessage)):
-                return message
+            if isinstance(gradio_message, (HumanMessage, AIMessage, SystemMessage)):
+                return gradio_message
                 
             # Convert simple string to HumanMessage
-            if isinstance(message, str):
-                return HumanMessage(content=message)
+            if isinstance(gradio_message, str):
+                return HumanMessage(content=gradio_message)
                 
             # Convert GradioMessage to LangChain
-            if isinstance(message, GradioMessage):
-                content = await self.get_message_text(message)
+            if isinstance(gradio_message, GradioMessage):
+                content = await self.get_message_text(gradio_message)
                 
-                if message.role == GradioRole.USER:
+                if gradio_message.role == GradioRole.USER:
                     return HumanMessage(content=content)
-                elif message.role == GradioRole.ASSISTANT:
+                elif gradio_message.role == GradioRole.ASSISTANT:
                     return AIMessage(content=content)
-                elif message.role == GradioRole.SYSTEM:
+                elif gradio_message.role == GradioRole.SYSTEM:
                     return SystemMessage(content=content)
                     
             # Convert dictionary format
-            if isinstance(message, dict):
-                content = await self.get_message_text(message)
-                role = message.get("role", "user").lower()
+            if isinstance(gradio_message, dict):
+                content = await self.get_message_text(gradio_message)
+                role = gradio_message.get("role", "user").lower()
                 
                 if role == "user":
                     return HumanMessage(content=content)
@@ -238,11 +236,11 @@ class MessageProcessor(BaseMessageProcessor):
                     return SystemMessage(content=content)
             
             # Default fallback
-            return HumanMessage(content=str(message))
+            return HumanMessage(content=str(gradio_message))
             
         except Exception as e:
             logger.warning(f"Error converting message: {e}")
-            return HumanMessage(content=str(message))
+            return HumanMessage(content=str(gradio_message))
         
     def langchain_to_gradio(
         self,
