@@ -76,6 +76,10 @@ class EnhancedContentLoader:
     # Core Loading Functions
     # ----------------------
     
+    def _is_image_file(self, file_path: str) -> bool:
+        """Check if file is an image based on extension."""
+        return Path(file_path).suffix.lower() in self.supported_image_formats
+        
     def load_document(self, file_path: str) -> List[Document]:
         """
         Load a single document based on file type.
@@ -140,7 +144,87 @@ class EnhancedContentLoader:
         except Exception as e:
             logger.error(f"Error in load_documents: {str(e)}")
             raise
-    
+        
+    def _load_image_document(self, file_path: str) -> List[Document]:
+        """
+        Load image file with enhanced metadata for better processing.
+        
+        Args:
+            file_path: Path to the image file
+            
+        Returns:
+            List of Document objects with image data
+        """
+        try:
+            mime_type = mimetypes.guess_type(file_path)[0]
+            file_name = Path(file_path).name
+            
+            # Basic metadata for the image
+            metadata = {
+                "source": str(file_path),
+                "type": "image",
+                "mime_type": mime_type,
+                "file_name": file_name,
+                "has_ocr": False,
+                "for_vlm": True  # Mark as suitable for Vision models
+            }
+            
+            documents = []
+            
+            # Load image for dimensions and potential OCR
+            try:
+                with Image.open(file_path) as img:
+                    # Convert image to RGB if necessary
+                    if img.mode not in ('L', 'RGB'):
+                        img = img.convert('RGB')
+                    
+                    # Get image dimensions
+                    width, height = img.size
+                    metadata.update({
+                        "width": width,
+                        "height": height,
+                        "mode": img.mode
+                    })
+                    
+                    # Create document for image reference
+                    img_doc = Document(
+                        page_content=f"Image file: {file_name} (Dimensions: {width}x{height})",
+                        metadata=metadata.copy()
+                    )
+                    documents.append(img_doc)
+                    
+                    # Perform OCR if enabled
+                    if self.perform_ocr:
+                        ocr_text = pytesseract.image_to_string(img)
+                        
+                        if ocr_text.strip():
+                            # Create document for OCR text
+                            ocr_metadata = metadata.copy()
+                            ocr_metadata.update({
+                                "content_type": "ocr_text",
+                                "has_ocr": True
+                            })
+                            ocr_doc = Document(
+                                page_content=ocr_text.strip(),
+                                metadata=ocr_metadata
+                            )
+                            documents.append(ocr_doc)
+            except Exception as img_error:
+                logger.warning(f"Image processing error for {file_path}: {str(img_error)}")
+                
+                # Still create a basic document even if image processing fails
+                img_doc = Document(
+                    page_content=f"Image file: {file_name}",
+                    metadata=metadata
+                )
+                documents.append(img_doc)
+            
+            return documents
+                
+        except Exception as e:
+            logger.error(f"Error processing image file {file_path}: {str(e)}")
+            return []
+            
     def chunk_documents(
         self, 
         documents: List[Document], 

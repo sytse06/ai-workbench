@@ -268,6 +268,11 @@ class ContentProcessingComponent:
         except Exception as e:
             logger.error(f"Error in process_content: {str(e)}", exc_info=True)
             return f"Error in content processing: {str(e)}", None
+
+    def is_image_file(self, file_path: str) -> bool:
+        """Check if file is an image based on extension."""
+        image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp'}
+        return Path(file_path).suffix.lower() in image_extensions
             
     async def _validate_files(self, files: List[Any]) -> None:
         """
@@ -301,7 +306,7 @@ class ContentProcessingComponent:
             combined_size += file_size
             
             # Check individual file size limits
-            if self._content_loader._is_image_file(file_path):
+            if self.is_image_file(file_path):
                 if file_size > max_image_size:
                     raise ValueError(
                         f"Image {os.path.basename(file_path)} exceeds size limit of {max_image_size/1024/1024:.1f}MB"
@@ -397,7 +402,7 @@ class ContentProcessingComponent:
                 f"Error processing content: {str(e)}"
             )
             return error_message, None
-            
+    
     async def create_file_notification_message(
         self,
         assistant_type: AssistantType,

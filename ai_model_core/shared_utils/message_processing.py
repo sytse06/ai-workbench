@@ -215,13 +215,17 @@ class MessageProcessor(BaseMessageProcessor):
             # Convert GradioMessage to LangChain
             if isinstance(gradio_message, GradioMessage):
                 content = await self.get_message_text(gradio_message)
+                role_str = str(gradio_message.role).lower()
                 
-                if gradio_message.role == GradioRole.USER:
+                if role_str == "user":
                     return HumanMessage(content=content)
-                elif gradio_message.role == GradioRole.ASSISTANT:
+                elif role_str == "assistant":
                     return AIMessage(content=content)
-                elif gradio_message.role == GradioRole.SYSTEM:
+                elif role_str == "system":
                     return SystemMessage(content=content)
+                else:
+                    logger.warning(f"Unknown role type: {gradio_message.role}, defaulting to HumanMessage")
+                    return HumanMessage(content=content)
                     
             # Convert dictionary format
             if isinstance(gradio_message, dict):

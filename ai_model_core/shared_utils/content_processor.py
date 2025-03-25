@@ -71,6 +71,80 @@ class BaseContentProcessor:
         """
         raise NotImplementedError("Subclasses must implement process_documents")
     
+    def process_image_document(self, document: Document, for_vlm: bool = False) -> Dict[str, Any]:
+        """
+        Process an image document for different use cases.
+        
+        Args:
+            document: Image document to process
+            for_vlm: Whether this is for a vision language model
+            
+        Returns:
+            Dictionary with processed image information
+        """
+        metadata = document.metadata
+        file_path = metadata.get("source", "")
+        filename = metadata.get("file_name", Path(file_path).name if file_path else "Unknown image")
+        
+        result = {
+            "filename": filename,
+            "path": file_path,
+            "type": "image",
+            "has_ocr": metadata.get("has_ocr", False),
+            "ocr_text": document.page_content if metadata.get("has_ocr", False) else "",
+            "width": metadata.get("width", "unknown"),
+            "height": metadata.get("height", "unknown"),
+            "for_vlm": for_vlm
+        }
+        
+        return result
+        
+    def get_image_context(self, documents: List[Document], max_images: int = 3, for_vlm: bool = False) -> Tuple[str, List[str]]:
+        """
+        Create formatted context from image documents.
+        
+        Args:
+            documents: List of image documents
+            max_images: Maximum number of images to include
+            for_vlm: Whether this is for a vision language model
+            
+        Returns:
+            Tuple of (formatted context string, list of image paths)
+        """
+        if not documents:
+            return "", []
+        
+        # Filter to just image documents
+        image_docs = [doc for doc in documents if doc.metadata.get("type") == "image"]
+        if not image_docs:
+            return "", []
+        
+        # Take most recent images first, up to max_images
+        selected_docs = image_docs[-max_images:]
+        
+        # Process images
+        context_parts = []
+        image_paths = []
+        
+        for doc in selected_docs:
+            img_info = self.process_image_document(doc, for_vlm)
+            
+            if img_info["path"] and os.path.exists(img_info["path"]):
+                image_paths.append(img_info["path"])
+                
+                # Format context differently based on OCR availability
+                if img_info["has_ocr"] and img_info["ocr_text"]:
+                    context_parts.append(
+                        f"Image: {img_info['filename']} (Dimensions: {img_info['width']}x{img_info['height']})\n"
+                        f"Text content: {img_info['ocr_text']}"
+                    )
+                else:
+                    context_parts.append(
+                        f"Image: {img_info['filename']} (Dimensions: {img_info['width']}x{img_info['height']})"
+                    )
+        
+        return "\n\n".join(context_parts), image_paths
+    
     def get_metadata_summary(self, documents: List[Document]) -> Dict[str, Any]:
         """
         Generate a summary of document metadata.
@@ -178,7 +252,7 @@ class ChatContentProcessor(BaseContentProcessor):
                                 query: str = "", 
                                 max_documents: int = 5) -> str:
         """
-        Format documents into context string for chat.
+        Format documents into context string for chat with improved image handling.
         
         Args:
             documents: List of Document objects
@@ -202,23 +276,29 @@ class ChatContentProcessor(BaseContentProcessor):
         # Process each type with appropriate formatter
         context_parts = []
         
+        # Process image documents first for better VLM handling
+        if "image" in docs_by_type:
+            image_context = self._format_image_documents(
+                docs_by_type["image"], query, max_documents)
+            if image_context:
+                context_parts.append(image_context)
+        
         # Process text documents
         if "text" in docs_by_type:
-            context_parts.append(self._format_text_documents(
-                docs_by_type["text"], query, max_documents))
-        
-        # Process image documents
-        if "image" in docs_by_type:
-            context_parts.append(self._format_image_documents(
-                docs_by_type["image"], max_documents))
+            text_context = self._format_text_documents(
+                docs_by_type["text"], query, max_documents)
+            if text_context:
+                context_parts.append(text_context)
         
         # Process audio documents
         if "audio" in docs_by_type:
-            context_parts.append(self._format_audio_documents(
-                docs_by_type["audio"], max_documents))
+            audio_context = self._format_audio_documents(
+                docs_by_type["audio"], max_documents)
+            if audio_context:
+                context_parts.append(audio_context)
         
         # Combine all formatted contexts
-        return "\n\n".join([part for part in context_parts if part])
+        return "\n\n".join(context_parts)
     
     def _format_text_documents(self, 
                               documents: List[Document],
@@ -258,13 +338,15 @@ class ChatContentProcessor(BaseContentProcessor):
         return "\n".join(context_parts)
     
     def _format_image_documents(self, 
-                               documents: List[Document],
-                               max_documents: int = 5) -> str:
+                            documents: List[Document],
+                            query: str = "",
+                            max_documents: int = 3) -> str:
         """
-        Format image documents focusing on OCR text if available.
+        Format image documents with enhanced support for VLMs.
         
         Args:
             documents: List of Document objects
+            query: Optional query for relevance-based formatting
             max_documents: Maximum number of documents to include
             
         Returns:
@@ -273,32 +355,21 @@ class ChatContentProcessor(BaseContentProcessor):
         if not documents:
             return ""
         
-        # Prioritize documents with OCR text
-        ocr_docs = [doc for doc in documents 
-                   if doc.metadata.get("has_ocr", False)]
-        other_docs = [doc for doc in documents 
-                     if not doc.metadata.get("has_ocr", False)]
+        # Check if any documents appear to be for VLM processing
+        has_vlm_hints = any("vlm" in str(doc.metadata).lower() for doc in documents)
         
-        # Combine with OCR docs first, then others
-        selected_docs = (ocr_docs + other_docs)[:max_documents]
+        # Get formatted context and paths
+        context, image_paths = self.get_image_context(
+            documents, 
+            max_images=max_documents,
+            for_vlm=has_vlm_hints
+        )
         
-        context_parts = []
-        for doc in selected_docs:
-            filename = doc.metadata.get('file_name', 'Unknown image')
-            
-            if doc.metadata.get("has_ocr", False):
-                context_parts.append(
-                    f"Text extracted from image {filename}:\n{doc.page_content}"
-                )
-            else:
-                # Just basic metadata for images without OCR
-                width = doc.metadata.get('width', 'unknown')
-                height = doc.metadata.get('height', 'unknown')
-                context_parts.append(
-                    f"Image file: {filename} (Dimensions: {width}x{height})"
-                )
+        if has_vlm_hints and image_paths:
+            # Add special marker for VLM processing
+            return f"{context}\n\n[NOTE: {len(image_paths)} images are available for vision processing]"
         
-        return "\n".join(context_parts)
+        return context
     
     def _format_audio_documents(self, 
                                documents: List[Document],
