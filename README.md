@@ -1,72 +1,42 @@
-# AI workbench 
+# AI Workbench
 
-This Langchain based AI workbench enables users to interact with various language models (LLMs) through a browser based interface. Users can engage in real-time conversations, select from multiple models, and reuse prompts for efficient task completion, making it a versatile tool to streamline complex tasks and foster rapid experimentation.
+A multi-modal AI workbench with six assistants in a single Gradio
+interface. My first serious project with LangChain and Gradio — built
+to experiment with different LLM capabilities and run them against
+real tasks.
 
-## Setup
+Supports local models (Ollama) and cloud providers (OpenAI, Anthropic,
+Mistral) from the same interface.
 
-- Ensure you have Poetry installed.
-- Clone this repository.
-- Navigate to the project directory.
+## Assistants
 
-### Project structure:
-```
-ai_workbench/
-├── ai_model_core/
-│   ├── __init__.py
-│   ├── shared_utils/
-│   │   ├── __init__.py
-│   │   ├── factory.py
-│   │   ├── utils.py
-│   ├── model_helpers/
-│   │   ├── __init__.py
-│   │   ├── chat_assistant_.py
-│   │   ├── prompt_assistant.py
-│   │   ├── RAG_assistant.py
-│   │   ├── summarize_assistant.py
-│   │   ├── transcription_assistant.py
-│   │   └── vision_assistant.py
-│   └── config/
-│       ├── __init__.py
-│       ├── credentials.py
-│       ├── settings.py
-│       └── config.yaml
-├── input/
-├── output/
-├── tests/
-│   ├── __init__.py
-│   ├── conftest.py
-│   ├── summarization
-│   │   ├── __init__.py
-│   │   ├── conftest.py
-│   │   ├── summarization-tests.py
-├── .env
-└── main.py
-```
-### Component flow ai_model_interface
-Contents __init.py
-from .factory import get_model, get_embedding_model
-from .config.credentials import load_credentials, get_api_key
-from .shared_utils.utils import format_prompt, get_system_prompt, get_prompt_template, format_history
-from .config.settings import load_config, get_directory, get_prompt, get_prompt_list, update_prompt_list
-```
-utils.py
-    ↓
-__init__.py
-    ↓
-factory.py
-    ↓
-main.py
+| Assistant | What it does |
+|---|---|
+| **Chat** | Conversational interface with conversation history |
+| **Prompt** | Reusable prompt templates for repeatable tasks |
+| **RAG** | Q&A over your own documents (PDF, DOCX, images) |
+| **Summarise** | Document summarisation with adjustable depth |
+| **Transcription** | Audio and video transcription via Whisper |
+| **Vision** | Image analysis and visual Q&A |
+
+## Model support
+
+Local: Llama 3.1, LLaVA, Deepseek R1 (via Ollama)
+Cloud: OpenAI, Anthropic, Mistral
+
+## Stack
+
+LangChain · LangGraph · Gradio · FAISS · Whisper · sentence-transformers
+· PyMuPDF · yt-dlp
+
+## Quick start
+
+```bash
+git clone https://github.com/sytse06/ai-workbench
+cd ai-workbench
+poetry install
+ollama pull llama3.1   # optional, for local models
+python main.py
 ```
 
-## Installation
-
-- Run `poetry install` to set up the virtual environment and install dependencies.
-- Ensure Ollama is installed and the Llama3.1 and LLaVA models are pulled (`ollama pull [model_name]`).
-
-## Usage
-
-- Activate the virtual environment: `poetry shell`
-- Save your api_keys for paid model use in a credentials.json file and specify its location in CREDENTIALS_PATH variable in credentials.py.
-- Run the script: `python main.py`
-
-The script will spin up a browser tab where the Gradio UI serves the available model assistants of the AI workbench.
+Add API keys to `.env` for cloud model access.
